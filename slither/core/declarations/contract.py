@@ -79,6 +79,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         self._is_upgradeable: Optional[bool] = None
         self._is_upgradeable_proxy: Optional[bool] = None
+        self._fallback_function: Optional["FunctionContract"] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -448,6 +449,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             for f in self.functions
             if f.visibility in ["public", "external"] and not f.is_shadowed or f.is_fallback
         ]
+
+    @property
+    def fallback_function(self) -> Optional["FunctionContract"]:
+        """
+        optional(FunctionContract): The fallback function
+        """
+        if self._fallback_function is None:
+            for f in self.functions:
+                if f.is_fallback:
+                    self._fallback_function = f
+                    break
+        return self._fallback_function
 
     @property
     def modifiers(self) -> List["Modifier"]:
@@ -1069,26 +1082,124 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @property
     def is_upgradeable_proxy(self) -> bool:
         from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
         from slither.slithir.operations import LowLevelCall
+        from slither.core.expressions.expression_typed import ExpressionTyped
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
 
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
-            if "Proxy" in self.name:
-                self._is_upgradeable_proxy = True
-                return True
-            for f in self.functions:
-                if f.is_fallback:
-                    for node in f.all_nodes():
-                        for ir in node.irs:
-                            if isinstance(ir, LowLevelCall) and ir.function_name == "delegatecall":
-                                self._is_upgradeable_proxy = True
-                                return self._is_upgradeable_proxy
-                        if node.type == NodeType.ASSEMBLY:
-                            inline_asm = node.inline_asm
-                            if inline_asm:
-                                if "delegatecall" in inline_asm:
+            # if "Proxy" in self.name:      # @webthethird: This flags ProxyFactory contracts, which create proxies,
+            #     self._is_upgradeable_proxy = True       # as proxies themselves, which they are not
+            #     return True
+
+            is_delegating = False
+            delegate_to: Variable = None
+            if self.fallback_function is not None:
+                print("\n" + self._name + " has fallback function")
+                for node in self.fallback_function.all_nodes():
+                    for ir in node.irs:
+                        if isinstance(ir, LowLevelCall):
+                            print("\nFound LowLevelCall\n")
+                            if ir.function_name == "delegatecall":
+                                print("\nFound delegatecall in LowLevelCall\n")
+                                is_delegating = True
+                                if ir.destination.is_constant:
+                                    self._is_upgradeable_proxy = False
+                                    return False
+                                else:
+                                    delegate_to = ir.destination
+                    if node.type == NodeType.ASSEMBLY:
+                        inline_asm = node.inline_asm
+                        print("\nFound Assembly Node\n")
+                        if inline_asm:                          # @webthethird: inline_asm appears to be always None?
+                            print("\nFound Inline ASM\n" + str(inline_asm) + "\n")      # Because this never prints,
+                            if "delegatecall" in inline_asm:                            # when tested on Put.sol
+                                print("\nFound delegatecall in inline asm\n")
+                                is_delegating = True
+                    if node.type == NodeType.EXPRESSION:        # @webthethird: finds delegatecalls when above doesn't
+                        expression = node.expression
+                        if "delegatecall" in str(expression):   # TODO
+                            is_delegating = True
+                            print("\nFound delegatecall in expression:\n" + str(expression) + "\n")
+                            if isinstance(expression, ExpressionTyped):
+                                print("Expression Type: " + str(expression.type))
+                                if isinstance(expression, AssignmentOperation):
+                                    expression = expression.expression_right
+                                    print("Checking right side of assignment expression...")
+                            if isinstance(expression, CallExpression) and "delegatecall" in str(expression.called):
+                                dest = expression.arguments[1]  # @webthethird: is dest always 2nd arg in delegatecall?
+                                if isinstance(dest, Identifier):
+                                    var = dest.value
+                                    if var.is_constant:
+                                        self._is_upgradeable_proxy = False
+                                        return False
+                                    else:
+                                        print("Call destination " + str(var) + " is not constant\n")
+                                        delegate_to = var
+
+            # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
+            if is_delegating and delegate_to is not None:
+                print(self.name + " is delegating to " + delegate_to.name + "\nLooking for setImplementation\n")
+                for f in self.functions:
+                    if f.name is not None:
+                        print("Checking function: " + f.name)
+                        for v in f.variables_written:
+                            if isinstance(v, Variable):
+                                print(f.name + " writes to variable: " + v.name)
+                                if v.name == delegate_to.name or v.name == "_" + delegate_to.name:
+                                    print("\nImplementation set by function: " + f.name + "\n")
                                     self._is_upgradeable_proxy = True
                                     return self._is_upgradeable_proxy
+                        if f.contains_assembly:
+                            print(f.name + " contains assembly")
+                            for e in f.all_expressions():
+                                if "sstore" in str(e) and "impl" in str(e).lower():
+                                    print("\nImplementation set by function: " + f.name)
+                                    print("Assembly calls sstore and includes 'impl': " + str(e) + "\n")
+                                    self._is_upgradeable_proxy = True
+                                    return self._is_upgradeable_proxy
+
+
+            # for f in self.functions:
+            #     if f.is_fallback:
+            #         print(self._name + " has fallback function")
+            #         for node in f.all_nodes():
+            #             for ir in node.irs:
+            #                 if isinstance(ir, LowLevelCall):
+            #                     print("\nFound LowLevelCall\n")
+            #                     if ir.function_name == "delegatecall":
+            #                         print("\nFound delegatecall in LowLevelCall\n")
+            #                         self._is_upgradeable_proxy = True   # @webthethird: What if it delegates calls to
+            #                         return self._is_upgradeable_proxy   # a hard-coded address? Can't upgrade.
+            #             if node.type == NodeType.ASSEMBLY:
+            #                 inline_asm = node.inline_asm
+            #                 print("\nFound Assembly Node\n")
+            #                 if inline_asm:                      # @webthethird: inline_asm appears to be always None?
+            #                     print("\nFound Inline ASM\n" + str(inline_asm) + "\n")  # Because this never prints,
+            #                     if "delegatecall" in inline_asm:                        # when tested on Put.sol
+            #                         print("\nFound delegatecall in inline asm\n")
+            #                         self._is_upgradeable_proxy = True
+            #                         return self._is_upgradeable_proxy
+            #             if node.type == NodeType.EXPRESSION:    # @webthethird: finds delegatecalls when above doesn't
+            #                 expression = node.expression
+            #                 if "delegatecall" in str(expression):
+            #                     print("\nFound delegatecall in expression:\n" + str(expression) + "\n")
+            #                     if isinstance(expression, ExpressionTyped):
+            #                         print("Expression Type: " + str(expression.type))
+            #                         if isinstance(expression, AssignmentOperation):
+            #                             expression = expression.expression_right
+            #                             print("Checking right side of assignment expression...")
+            #                     if isinstance(expression, CallExpression) and "delegatecall" in str(expression.called):
+            #                         dest = expression.arguments[1]  # @webthethird: dest always 2nd arg in delegatecall?
+            #                         if isinstance(dest, Identifier):
+            #                             var = dest.value
+            #                             if not var.is_constant:
+            #                                 print("Call destination " + str(dest) + " is not constant")
+            #                                 self._is_upgradeable_proxy = True
+            #                                 return self._is_upgradeable_proxy
         return self._is_upgradeable_proxy
 
     # endregion
