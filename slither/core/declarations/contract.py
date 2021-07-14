@@ -1091,9 +1091,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
-            # if "Proxy" in self.name:      # @webthethird: This flags ProxyFactory contracts, which create proxies,
-            #     self._is_upgradeable_proxy = True       # as proxies themselves, which they are not
-            #     return True
 
             is_delegating = False
             delegate_to: Variable = None
