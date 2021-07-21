@@ -940,7 +940,7 @@ class FunctionSolc:
                 yul_object = self._new_yul_block(statement["src"], scope)
                 entrypoint = yul_object.entrypoint
                 exitpoint = yul_object.convert(statement["AST"])
-
+                entrypoint.underlying_node.add_inline_asm(statement)
                 # technically, entrypoint and exitpoint are YulNodes and we should be returning a NodeSolc here
                 # but they both expose an underlying_node so oh well
                 link_underlying_nodes(node, entrypoint)
