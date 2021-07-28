@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 
 from crytic_compile.platform import Type as PlatformType
 
+import slither.core.expressions.expression
 from slither.core.cfg.scope import Scope
 from slither.core.solidity_types.type import Type
 from slither.core.source_mapping.source_mapping import SourceMapping
@@ -1092,7 +1093,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
             is_delegating = False
-            delegate_to = None
+            delegate_to: Variable = None
             if self.fallback_function is not None:
                 print("\n" + self._name + " has fallback function\n")
                 for node in self.fallback_function.all_nodes():
@@ -1115,38 +1116,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("\nFound Assembly Node\n")
                         if node.inline_asm:
                             # print("\nFound Inline ASM\n")
-                            if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
-                                # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
-                                for statement in node.inline_asm["AST"]["statements"]:
-                                    if statement["nodeType"] == "YulExpressionStatement":
-                                        statement = statement["expression"]
-                                    if statement["nodeType"] == "YulVariableDeclaration":
-                                        statement = statement["value"]
-                                    if statement["nodeType"] == "YulFunctionCall":
-                                        if statement["functionName"]["name"] == "delegatecall":
-                                            print("\nFound delegatecall in YulFunctionCall\n")
-                                            is_delegating = True
-                                            # args = statement["arguments"] # @webthethird: allow algorithm to find the
-                                            # dest = args[1]                # delegate_to var in expression node below
-                                            # if dest["nodeType"] == "YulIdentifier":
-                                            #     delegate_to = dest["name"]
-                                            break
-                            else:
-                                asm_split = node.inline_asm.split("\n")
-                                for asm in asm_split:
-                                    # print(asm)
-                                    if "delegatecall" in asm:
-                                        print("\nFound delegatecall in inline asm\n")
-                                        is_delegating = True
-                                        params = asm.split("delegatecall(")[1].split(", ")
-                                        dest = params[1]
-                                        for v in self.fallback_function.variables_read:
-                                            # print(str(v.expression))
-                                            if v.name == dest and not v.is_constant:
-                                                print("Call destination " + str(v) + " is not constant\n")
-                                                delegate_to = v
-                                                break
-                                        break
+                            is_delegating, delegate_to = self.find_delegatecall_in_asm(node.inline_asm)
+                            if delegate_to is not None and delegate_to.is_constant:
+                                print("Call destination " + str(delegate_to) + " is constant\n")
+                                self._is_upgradeable_proxy = False
+                                return False
                     elif node.type == NodeType.EXPRESSION:        # @webthethird: finds delegate_to when above doesn't
                         expression = node.expression
                         print("Found Expression Node: " + str(expression))
@@ -1203,8 +1177,50 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                   + "\n")
                                             self._is_upgradeable_proxy = True
                                             return self._is_upgradeable_proxy
-
         return self._is_upgradeable_proxy
+
+    def find_delegatecall_in_asm(
+            self,
+            inline_asm: Union[str, Dict]
+    ) -> (bool, Union["Variable", None]):
+        is_delegating: bool = False
+        delegate_to = None
+        if "AST" in inline_asm and isinstance(inline_asm, Dict):
+            # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
+            for statement in inline_asm["AST"]["statements"]:
+                if statement["nodeType"] == "YulExpressionStatement":
+                    statement = statement["expression"]
+                if statement["nodeType"] == "YulVariableDeclaration":
+                    statement = statement["value"]
+                if statement["nodeType"] == "YulFunctionCall":
+                    if statement["functionName"]["name"] == "delegatecall":
+                        print("\nFound delegatecall in YulFunctionCall\n")
+                        is_delegating = True
+                        args = statement["arguments"] # @webthethird: allow algorithm to find the
+                        dest = args[1]                # delegate_to var in expression node below
+                        if dest["nodeType"] == "YulIdentifier":
+                            for v in self.fallback_function.variables_read:
+                                # print(str(v.expression))
+                                if v.name == dest["name"]:
+                                    delegate_to = v
+                                    break
+                        break
+        else:
+            asm_split = inline_asm.split("\n")
+            for asm in asm_split:
+                # print(asm)
+                if "delegatecall" in asm:
+                    print("\nFound delegatecall in inline asm\n")
+                    is_delegating = True
+                    params = asm.split("delegatecall(")[1].split(", ")
+                    dest = params[1]
+                    for v in self.fallback_function.variables_read:
+                        # print(str(v.expression))
+                        if v.name == dest:
+                            delegate_to = v
+                            break
+                    break
+        return is_delegating, delegate_to
 
     # endregion
     ###################################################################################
