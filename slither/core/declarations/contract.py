@@ -7,7 +7,6 @@ from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 
 from crytic_compile.platform import Type as PlatformType
 
-import slither.core.expressions.expression
 from slither.core.cfg.scope import Scope
 from slither.core.solidity_types.type import Type
 from slither.core.source_mapping.source_mapping import SourceMapping
