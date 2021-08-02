@@ -1082,7 +1082,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @property
     def is_upgradeable_proxy(self) -> bool:
         from slither.core.cfg.node import NodeType
-        from slither.core.variables.variable import Variable
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
         from slither.slithir.operations import LowLevelCall
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1116,10 +1117,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if node.inline_asm:
                             # print("\nFound Inline ASM\n")
                             is_delegating, delegate_to = self.find_delegatecall_in_asm(node.inline_asm)
-                            if delegate_to is not None and delegate_to.is_constant:
-                                print("Call destination " + str(delegate_to) + " is constant\n")
-                                self._is_upgradeable_proxy = False
-                                return False
+                            if delegate_to is not None:
+                                if delegate_to.is_constant:
+                                    print("Call destination " + str(delegate_to) + " is constant\n")
+                                    self._is_upgradeable_proxy = False
+                                    return False
                     elif node.type == NodeType.EXPRESSION:        # @webthethird: finds delegate_to when above doesn't
                         expression = node.expression
                         print("Found Expression Node: " + str(expression))
@@ -1129,6 +1131,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 expression = expression.expression_right
                                 print("Checking right side of assignment expression...")
                         if isinstance(expression, CallExpression):
+                            print("Expression called: " + str(expression.called) + "\nArgs:")
+                            if len(expression.arguments) > 0:
+                                for arg in expression.arguments:
+                                    print(str(arg))
                             if "delegatecall" in str(expression.called):
                                 is_delegating = True
                                 print("\nFound delegatecall in expression:\n" + str(expression) + "\n")
@@ -1152,8 +1158,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("Unnamed function of type: " + str(f.function_type))
                     if f.name is not None and not f.name == "fallback" and "constructor" not in f.name.lower():
                         for v in f.variables_written:
-                            if isinstance(v, Variable):
-                                print(f.name + " writes to variable: " + v.name)
+                            if isinstance(v, LocalVariable) and v in f.returns:
+                                print(f.name + " returns local variable: " + v.name)
+                                continue
+                            elif isinstance(v,StateVariable):
+                                print(f.name + " writes to state variable: " + v.name)
                                 if str(delegate_to).strip("_") in v.name:
                                     print("\nImplementation set by function: " + f.name + "\n")
                                     self._is_upgradeable_proxy = True
@@ -1199,7 +1208,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = args[1]                # delegate_to var in expression node below
                         if dest["nodeType"] == "YulIdentifier":
                             for v in self.fallback_function.variables_read:
-                                # print(str(v.expression))
+                                print(str(v.expression))
                                 if v.name == dest["name"]:
                                     delegate_to = v
                                     break
@@ -1207,17 +1216,29 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         else:
             asm_split = inline_asm.split("\n")
             for asm in asm_split:
-                # print(asm)
+                print(asm)
                 if "delegatecall" in asm:
                     print("\nFound delegatecall in inline asm\n")
                     is_delegating = True
                     params = asm.split("delegatecall(")[1].split(", ")
                     dest = params[1]
+                    print("Destination param is called '" + dest + "'\n")
                     for v in self.fallback_function.variables_read:
-                        # print(str(v.expression))
+                        print(str(v.expression))
                         if v.name == dest:
                             delegate_to = v
                             break
+                    if delegate_to is None:
+                        for f in self.functions:
+                            if dest in f.name.lower():
+                                print("Found '" + dest + "' in function named " + f.name)
+                                if len(f.returns) > 0:
+                                    for ret in f.returns:
+                                        if ret.name is not None and str(ret.type) == "address":
+                                            delegate_to = ret
+                                            break
+                                    if delegate_to is not None:
+                                        break
                     break
         return is_delegating, delegate_to
 
