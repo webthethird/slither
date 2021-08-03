@@ -1101,7 +1101,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         break
                     print(str(node.type))
                     for ir in node.irs:
-                        if isinstance(ir, LowLevelCall):        # @webthethird: this appears to never find LowLevelCalls
+                        if isinstance(ir, LowLevelCall):
                             print("\nFound LowLevelCall\n")
                             if ir.function_name == "delegatecall":
                                 print("\nFound delegatecall in LowLevelCall\n")
@@ -1111,7 +1111,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     return False
                                 else:
                                     delegate_to = ir.destination
+                                    print("Call destination " + str(delegate_to) + " is not constant\n")
                                     break
+                    if is_delegating and delegate_to is not None:
+                        break
                     if node.type == NodeType.ASSEMBLY:
                         print("\nFound Assembly Node\n")
                         if node.inline_asm:
@@ -1137,16 +1140,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print(str(arg))
                             if "delegatecall" in str(expression.called):
                                 is_delegating = True
-                                print("\nFound delegatecall in expression:\n" + str(expression) + "\n")
-                                dest = expression.arguments[1]
-                                if isinstance(dest, Identifier):
-                                    var = dest.value
-                                    if var.is_constant:
-                                        self._is_upgradeable_proxy = False
-                                        return False
-                                    else:
-                                        print("Call destination " + str(var) + " is not constant\n")
-                                        delegate_to = var
+                                print("\nFound delegatecall in expression:\n" + str(expression.called) + "\n")
+                                if len(expression.arguments) > 1:
+                                    # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
+                                    dest = expression.arguments[1]
+                                    if isinstance(dest, Identifier):
+                                        var = dest.value
+                                        if var.is_constant:
+                                            self._is_upgradeable_proxy = False
+                                            return False
+                                        else:
+                                            print("Call destination " + str(var) + " is not constant\n")
+                                            delegate_to = var
 
             # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
             if is_delegating and delegate_to is not None:
@@ -1222,10 +1227,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     is_delegating = True
                     params = asm.split("delegatecall(")[1].split(", ")
                     dest = params[1]
-                    print("Destination param is called '" + dest + "'\n")
+                    print("Destination param is called '" + dest + "'\nChecking variables read")
                     for v in self.fallback_function.variables_read:
-                        print(str(v.expression))
-                        if v.name == dest:
+                        print(str(v))
+                        if v.name in dest:
                             delegate_to = v
                             break
                     if delegate_to is None:

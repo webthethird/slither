@@ -62,3 +62,6 @@ class Structure(SourceMapping):
                                                   or (elems1[i].type.storage_size != elems2[i].type.storage_size):
                 return False
         return True
+
+    def __hash__(self):
+        return hash(str(self))
