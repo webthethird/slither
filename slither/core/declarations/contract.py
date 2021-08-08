@@ -1239,7 +1239,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print("Found '" + dest + "' in function named " + f.name)
                                 if len(f.returns) > 0:
                                     for ret in f.returns:
-                                        if ret.name is not None and str(ret.type) == "address":
+                                        if ret.name != "" and str(ret.type) == "address":
+                                            print("Which returns address " + str(ret))
                                             delegate_to = ret
                                             break
                                     if delegate_to is not None:
