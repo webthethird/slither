@@ -80,6 +80,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._is_upgradeable: Optional[bool] = None
         self._is_upgradeable_proxy: Optional[bool] = None
         self._fallback_function: Optional["FunctionContract"] = None
+        self._is_proxy: Optional[bool] = None
+        self._delegates_to: Optional["Variable"] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -1081,51 +1083,89 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
     @property
     def is_upgradeable_proxy(self) -> bool:
-        from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+
+        if self._is_upgradeable_proxy is None and self.is_proxy:
+            self._is_upgradeable_proxy = False
+
+            # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
+            if self._is_proxy and self._delegates_to is not None:
+                if self._delegates_to.is_constant:
+                    print("Call destination " + str(self._delegates_to) + " is constant\n")
+                    self._is_upgradeable_proxy = False
+                    return False
+                print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setImplementation\n")
+                for f in self.functions:
+                    if f.name is not None:
+                        print("Checking function: " + f.name)
+                    else:
+                        print("Unnamed function of type: " + str(f.function_type))
+                    if f.name is not None and not f.name == "fallback" and "constructor" not in f.name.lower():
+                        for v in f.variables_written:
+                            if isinstance(v, LocalVariable) and v in f.returns:
+                                print(f.name + " returns local variable: " + v.name)
+                                continue
+                            elif isinstance(v, StateVariable):
+                                print(f.name + " writes to state variable: " + v.name)
+                                if str(self._delegates_to).strip("_") in v.name:
+                                    print("\nImplementation set by function: " + f.name + "\n")
+                                    self._is_upgradeable_proxy = True
+                                    return self._is_upgradeable_proxy
+                        if f.contains_assembly:
+                            print(f.name + " contains assembly")
+                            for node in f.all_nodes():
+                                inline = node.inline_asm
+                                if inline:
+                                    if "sstore" in inline \
+                                            and str(self._delegates_to).strip("_").lower() in inline.lower():
+                                        print("\nImplementation set by function: " + f.name)
+                                        print("Assembly calls sstore and includes delegates_to.name:\n" + inline + "\n")
+                                        self._is_upgradeable_proxy = True
+                                        return self._is_upgradeable_proxy
+                                else:   # @webthethird: inline_asm not set for version >= 0.6.0
+                                    for e in f.all_expressions():
+                                        if "sstore" in str(e) and str(self._delegates_to).strip("_") in str(e).lower():
+                                            print("\nImplementation set by function: " + f.name)
+                                            print("Assembly calls sstore and includes delegates_to.name: " + str(e)
+                                                  + "\n")
+                                            self._is_upgradeable_proxy = True
+                                            return self._is_upgradeable_proxy
+        return self._is_upgradeable_proxy
+
+    @property
+    def is_proxy(self) -> bool:
+        from slither.core.cfg.node import NodeType
         from slither.slithir.operations import LowLevelCall
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.identifier import Identifier
 
-        if self._is_upgradeable_proxy is None:
-            self._is_upgradeable_proxy = False
-            is_delegating = False
-            delegate_to: Variable = None
+        if self._is_proxy is None:
+            self._is_proxy = False
+            self._delegates_to = None
             if self.fallback_function is not None:
                 print("\n" + self._name + " has fallback function\n")
                 for node in self.fallback_function.all_nodes():
-                    if is_delegating and delegate_to is not None:
-                        break
                     print(str(node.type))
                     for ir in node.irs:
                         if isinstance(ir, LowLevelCall):
                             print("\nFound LowLevelCall\n")
                             if ir.function_name == "delegatecall":
                                 print("\nFound delegatecall in LowLevelCall\n")
-                                is_delegating = True
-                                if ir.destination.is_constant:
-                                    self._is_upgradeable_proxy = False
-                                    return False
-                                else:
-                                    delegate_to = ir.destination
-                                    print("Call destination " + str(delegate_to) + " is not constant\n")
-                                    break
-                    if is_delegating and delegate_to is not None:
+                                self._is_proxy = True
+                                self._delegates_to = ir.destination
+                    if self._is_proxy and self._delegates_to is not None:
                         break
                     if node.type == NodeType.ASSEMBLY:
                         print("\nFound Assembly Node\n")
                         if node.inline_asm:
                             # print("\nFound Inline ASM\n")
-                            is_delegating, delegate_to = self.find_delegatecall_in_asm(node.inline_asm)
-                            if delegate_to is not None:
-                                if delegate_to.is_constant:
-                                    print("Call destination " + str(delegate_to) + " is constant\n")
-                                    self._is_upgradeable_proxy = False
-                                    return False
-                    elif node.type == NodeType.EXPRESSION:        # @webthethird: finds delegate_to when above doesn't
+                            self.find_delegatecall_in_asm(node.inline_asm)
+                            if self._is_proxy and self._delegates_to is not None:
+                                break
+                    elif node.type == NodeType.EXPRESSION:  # @webthethird: finds delegates_to when above doesn't
                         expression = node.expression
                         print("Found Expression Node: " + str(expression))
                         if isinstance(expression, ExpressionTyped):
@@ -1139,65 +1179,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 for arg in expression.arguments:
                                     print(str(arg))
                             if "delegatecall" in str(expression.called):
-                                is_delegating = True
+                                self._is_proxy = True
                                 print("\nFound delegatecall in expression:\n" + str(expression.called) + "\n")
                                 if len(expression.arguments) > 1:
                                     # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
                                     dest = expression.arguments[1]
                                     if isinstance(dest, Identifier):
-                                        var = dest.value
-                                        if var.is_constant:
-                                            self._is_upgradeable_proxy = False
-                                            return False
-                                        else:
-                                            print("Call destination " + str(var) + " is not constant\n")
-                                            delegate_to = var
+                                        self._delegates_to = dest.value
+        return self._is_proxy
 
-            # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
-            if is_delegating and delegate_to is not None:
-                print(self.name + " is delegating to " + str(delegate_to) + "\nLooking for setImplementation\n")
-                for f in self.functions:
-                    if f.name is not None:
-                        print("Checking function: " + f.name)
-                    else:
-                        print("Unnamed function of type: " + str(f.function_type))
-                    if f.name is not None and not f.name == "fallback" and "constructor" not in f.name.lower():
-                        for v in f.variables_written:
-                            if isinstance(v, LocalVariable) and v in f.returns:
-                                print(f.name + " returns local variable: " + v.name)
-                                continue
-                            elif isinstance(v,StateVariable):
-                                print(f.name + " writes to state variable: " + v.name)
-                                if str(delegate_to).strip("_") in v.name:
-                                    print("\nImplementation set by function: " + f.name + "\n")
-                                    self._is_upgradeable_proxy = True
-                                    return self._is_upgradeable_proxy
-                        if f.contains_assembly:
-                            print(f.name + " contains assembly")
-                            for node in f.all_nodes():
-                                inline = node.inline_asm
-                                if inline:
-                                    if "sstore" in inline and str(delegate_to).strip("_").lower() in inline.lower():
-                                        print("\nImplementation set by function: " + f.name)
-                                        print("Assembly calls sstore and includes delegate_to.name:\n" + inline + "\n")
-                                        self._is_upgradeable_proxy = True
-                                        return self._is_upgradeable_proxy
-                                else:   # @webthethird: inline_asm not set for version >= 0.6.0
-                                    for e in f.all_expressions():
-                                        if "sstore" in str(e) and str(delegate_to).strip("_") in str(e).lower():
-                                            print("\nImplementation set by function: " + f.name)
-                                            print("Assembly calls sstore and includes delegate_to.name: " + str(e)
-                                                  + "\n")
-                                            self._is_upgradeable_proxy = True
-                                            return self._is_upgradeable_proxy
-        return self._is_upgradeable_proxy
+    @property
+    def delegates_to(self) -> Optional["Variable"]:
+        if self.is_proxy:
+            return self._delegates_to
+        return self._delegates_to
 
     def find_delegatecall_in_asm(
             self,
             inline_asm: Union[str, Dict]
-    ) -> (bool, Union["Variable", None]):
-        is_delegating: bool = False
-        delegate_to = None
+    ):
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
             for statement in inline_asm["AST"]["statements"]:
@@ -1208,14 +1208,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if statement["nodeType"] == "YulFunctionCall":
                     if statement["functionName"]["name"] == "delegatecall":
                         print("\nFound delegatecall in YulFunctionCall\n")
-                        is_delegating = True
+                        self._is_proxy = True
                         args = statement["arguments"] # @webthethird: allow algorithm to find the
-                        dest = args[1]                # delegate_to var in expression node below
+                        dest = args[1]                # delegates_to var in expression node below
                         if dest["nodeType"] == "YulIdentifier":
                             for v in self.fallback_function.variables_read:
                                 print(str(v.expression))
                                 if v.name == dest["name"]:
-                                    delegate_to = v
+                                    self._delegates_to = v
                                     break
                         break
         else:
@@ -1224,16 +1224,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 print(asm)
                 if "delegatecall" in asm:
                     print("\nFound delegatecall in inline asm\n")
-                    is_delegating = True
+                    self._is_proxy = True
                     params = asm.split("delegatecall(")[1].split(", ")
                     dest = params[1]
                     print("Destination param is called '" + dest + "'\nChecking variables read")
                     for v in self.fallback_function.variables_read:
                         print(str(v))
                         if v.name in dest:
-                            delegate_to = v
+                            self._delegates_to = v
                             break
-                    if delegate_to is None:
+                    if self._delegates_to is None:
                         for f in self.functions:
                             if dest in f.name.lower():
                                 print("Found '" + dest + "' in function named " + f.name)
@@ -1241,12 +1241,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     for ret in f.returns:
                                         if ret.name != "" and str(ret.type) == "address":
                                             print("Which returns address " + str(ret))
-                                            delegate_to = ret
+                                            self._delegates_to = ret
                                             break
-                                    if delegate_to is not None:
+                                    if self._delegates_to is not None:
                                         break
                     break
-        return is_delegating, delegate_to
 
     # endregion
     ###################################################################################
