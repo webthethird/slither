@@ -1083,8 +1083,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
     @property
     def is_upgradeable_proxy(self) -> bool:
+        from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
 
         if self._is_upgradeable_proxy is None and self.is_proxy:
             self._is_upgradeable_proxy = False
@@ -1131,6 +1136,77 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                   + "\n")
                                             self._is_upgradeable_proxy = True
                                             return self._is_upgradeable_proxy
+                print("\nCould not find implementation setter in " + self.name + "\nLooking for getter\n")
+                impl_getter = None
+                for f in self.functions:
+                    if impl_getter is not None:
+                        break
+                    if f.name is not None:
+                        print("Checking function: " + f.name)
+                    else:
+                        print("Unnamed function of type: " + str(f.function_type))
+                    if f.name is not None and not f.name == "fallback" and "constructor" not in f.name.lower():
+                        if len(f.returns) > 0:
+                            for v in f.returns:
+                                print(f.name + " returns " + str(v.type) + " variable " +
+                                      (("called " + v.name) if v.name != "" else ""))
+                                if str(v.type) == "address" and str(self._delegates_to).strip("_") in f.name:
+                                    print("\n" + f.name + " appears to be the implementation getter\n")
+                                    impl_getter = f
+                                    break
+                if impl_getter is not None:
+                    exp = None
+                    for node in impl_getter.all_nodes():
+                        print(node.type)
+                        # if node.expression is not None:
+                        if node.type == NodeType.RETURN:
+                            print(node.expression)
+                            if isinstance(node.expression, CallExpression):
+                                print("This return node is a CallExpression")
+                                exp: CallExpression = node.expression
+                                print(exp.called)
+                                if isinstance(exp.called, MemberAccess):
+                                    print("The CallExpression is for MemberAccess")
+                                    exp: MemberAccess = exp.called
+                                    break
+                            elif isinstance(node.expression, Identifier):
+                                print("This return node is a variable Identifier")
+                            elif node.expression.type is not None:
+                                print(node.expression.type)
+                        # if node.type == NodeType.EXPRESSION:
+                        #     print(node.expression)
+                        # elif node.type == NodeType.ASSEMBLY:
+                        #     print(node.expression)
+                        # elif node.type == NodeType.RETURN:
+                        #     print(node.expression)
+                        elif node.type == NodeType.VARIABLE:
+                            print(node.variable_declaration.expression)
+                    if isinstance(exp, MemberAccess):   # Getter calls function of another contract in return expression
+                        call_exp = exp.expression
+                        call_function = exp.member_name
+                        call_type = None
+                        if isinstance(call_exp, TypeConversion):
+                            print("The return node calls a function from a contract of type " + str(call_exp.type))
+                            call_type = call_exp.type
+                        if call_type is not None:
+                            interface = None
+                            for c in self.compilation_unit.contracts:
+                                print(c.name)
+                                if c.name == str(call_type):
+                                    print("\nFound contract called by proxy: " + c.name)
+                                    if c.is_interface:
+                                        print("It is an interface\n")
+                                        interface = c
+                                    else:
+                                        print("It is not an interface\n")
+                                    break
+                            if interface is not None:
+                                print("\nLooking for a contract that implements the interface " + interface.name)
+                                for c in self.compilation_unit.contracts:
+                                    if interface in c.inheritance:
+                                        print("Contract " + c.name + " inherits the interface " + interface)
+
+
         return self._is_upgradeable_proxy
 
     @property
