@@ -1095,7 +1095,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self._is_upgradeable_proxy = False
 
             # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
-            if self._is_proxy and self._delegates_to is not None:
+            if self._delegates_to is not None:
                 if self._delegates_to.is_constant:
                     print("Call destination " + str(self._delegates_to) + " is constant\n")
                     self._is_upgradeable_proxy = False
@@ -1160,53 +1160,81 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print(node.type)
                         # if node.expression is not None:
                         if node.type == NodeType.RETURN:
-                            print(node.expression)
-                            if isinstance(node.expression, CallExpression):
+                            exp = node.expression
+                            print(exp)
+                            if isinstance(exp, CallExpression):
                                 print("This return node is a CallExpression")
-                                exp: CallExpression = node.expression
                                 print(exp.called)
                                 if isinstance(exp.called, MemberAccess):
                                     print("The CallExpression is for MemberAccess")
-                                    exp: MemberAccess = exp.called
+                                    exp = exp.called
                                     break
                             elif isinstance(node.expression, Identifier):
                                 print("This return node is a variable Identifier")
                             elif node.expression.type is not None:
                                 print(node.expression.type)
-                        # if node.type == NodeType.EXPRESSION:
-                        #     print(node.expression)
-                        # elif node.type == NodeType.ASSEMBLY:
-                        #     print(node.expression)
-                        # elif node.type == NodeType.RETURN:
-                        #     print(node.expression)
                         elif node.type == NodeType.VARIABLE:
                             print(node.variable_declaration.expression)
                     if isinstance(exp, MemberAccess):   # Getter calls function of another contract in return expression
                         call_exp = exp.expression
                         call_function = exp.member_name
-                        call_type = None
+                        call_contract = None
                         if isinstance(call_exp, TypeConversion):
                             print("The return node calls a function from a contract of type " + str(call_exp.type))
                             call_type = call_exp.type
                         if call_type is not None:
-                            interface = None
-                            for c in self.compilation_unit.contracts:
-                                print(c.name)
-                                if c.name == str(call_type):
-                                    print("\nFound contract called by proxy: " + c.name)
-                                    if c.is_interface:
-                                        print("It is an interface\n")
-                                        interface = c
-                                    else:
-                                        print("It is not an interface\n")
-                                    break
-                            if interface is not None:
-                                print("\nLooking for a contract that implements the interface " + interface.name)
-                                for c in self.compilation_unit.contracts:
-                                    if interface in c.inheritance:
-                                        print("Contract " + c.name + " inherits the interface " + interface)
-
-
+                            call_contract = self.compilation_unit.get_contract_from_name(str(call_type))
+                            if call_contract is not None:
+                                print("\nFound contract called by proxy: " + call_contract.name)
+                                interface = None
+                                if call_contract.is_interface:
+                                    print("It is an interface")
+                                    interface = call_contract
+                                    call_contract = None
+                                    print("\nLooking for a contract that implements the interface " + interface.name)
+                                    for c in self.compilation_unit.contracts:
+                                        if interface in c.inheritance:
+                                            print(c.name + " inherits the interface " + interface.name)
+                                            call_contract = c
+                                            break
+                                    if call_contract is None:
+                                        print("Could not find a contract that inherits " + interface.name)
+                                        for c in self.compilation_unit.contracts:
+                                            has_all_func_sigs = True
+                                            if c == interface:
+                                                continue
+                                            for f in interface.functions_signatures:
+                                                if not has_all_func_sigs:
+                                                    break
+                                                if f in c.functions_signatures:
+                                                    print(c.name + " has function " + f + " from interface")
+                                                else:
+                                                    print(c.name + " is missing function " + f)
+                                                    has_all_func_sigs = False
+                                            if has_all_func_sigs:
+                                                print(c.name + " implements the interface " + interface.name)
+                                                call_contract = c
+                                                break
+                                    if call_contract is None:
+                                        print("Could not find a contract that implements all of the following from "
+                                              + interface.name + ":")
+                                        for s in interface.functions_signatures:
+                                            print(s)
+                                        # print("Looking for public variables that match " + str(exp))
+                                else:
+                                    contains_getter = False
+                                    contains_setter = False
+                                    for f in call_contract.functions:
+                                        if f.name == exp.member_name:
+                                            for v in f.returns:
+                                                if str(v.type) == "address":
+                                                    print("Found getter " + f.name + " in " + call_contract.name)
+                                                    contains_getter = True
+                                                    break
+                            else:
+                                print("Could not find a contract called " + str(call_type) + " in compilation unit")
+                else:
+                    print("Could not find implementation getter")
         return self._is_upgradeable_proxy
 
     @property
@@ -1315,9 +1343,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print("Found '" + dest + "' in function named " + f.name)
                                 if len(f.returns) > 0:
                                     for ret in f.returns:
-                                        if ret.name != "" and str(ret.type) == "address":
+                                        if str(ret.type) == "address":
                                             print("Which returns address " + str(ret))
                                             self._delegates_to = ret
+                                            if ret.name == "":
+                                                self._delegates_to.name = f.name
                                             break
                                     if self._delegates_to is not None:
                                         break
