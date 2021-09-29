@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 
 from crytic_compile.platform import Type as PlatformType
 
+import slither.core.declarations.contract
 from slither.core.cfg.scope import Scope
 from slither.core.solidity_types.type import Type
 from slither.core.source_mapping.source_mapping import SourceMapping
@@ -1091,52 +1092,26 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
 
+        print_debug = True
+
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
 
             # @webthethird Look for implementation setter (misses ProductProxy where Factory manages implementation)
             if self.is_proxy and self._delegates_to is not None:
                 if self._delegates_to.is_constant:
-                    print("Call destination " + str(self._delegates_to) + " is constant\n")
+                    if print_debug:
+                        print("Call destination " + str(self._delegates_to) + " is constant\n")
                     self._is_upgradeable_proxy = False
                     return False
-                print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setImplementation\n")
-                for f in self.functions:
-                    if f.name is not None:
-                        print("Checking function: " + f.name)
-                    else:
-                        print("Unnamed function of type: " + str(f.function_type))
-                    if f.name is not None and not f.name == "fallback" and "constructor" not in f.name.lower():
-                        for v in f.variables_written:
-                            if isinstance(v, LocalVariable) and v in f.returns:
-                                print(f.name + " returns local variable: " + v.name)
-                                continue
-                            elif isinstance(v, StateVariable):
-                                print(f.name + " writes to state variable: " + v.name)
-                                if str(self._delegates_to).strip("_") in v.name:
-                                    print("\nImplementation set by function: " + f.name + "\n")
-                                    self._is_upgradeable_proxy = True
-                                    return self._is_upgradeable_proxy
-                        if f.contains_assembly:
-                            print(f.name + " contains assembly")
-                            for node in f.all_nodes():
-                                inline = node.inline_asm
-                                if inline:
-                                    if "sstore" in inline \
-                                            and str(self._delegates_to).strip("_").lower() in inline.lower():
-                                        print("\nImplementation set by function: " + f.name)
-                                        print("Assembly calls sstore and includes delegates_to.name:\n" + inline + "\n")
-                                        self._is_upgradeable_proxy = True
-                                        return self._is_upgradeable_proxy
-                                else:   # @webthethird: inline_asm not set for version >= 0.6.0
-                                    for e in f.all_expressions():
-                                        if "sstore" in str(e) and str(self._delegates_to).strip("_") in str(e).lower():
-                                            print("\nImplementation set by function: " + f.name)
-                                            print("Assembly calls sstore and includes delegates_to.name: " + str(e)
-                                                  + "\n")
-                                            self._is_upgradeable_proxy = True
-                                            return self._is_upgradeable_proxy
-                print("\nCould not find implementation setter in " + self.name + "\nLooking for getter\n")
+                if print_debug:
+                    print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setter\n")
+                impl_setter = self.find_setter_in_contract(self, self._delegates_to)
+                if impl_setter is not None:
+                    self._is_upgradeable_proxy = True
+                    return self._is_upgradeable_proxy
+                if print_debug:
+                    print("\nCould not find implementation setter in " + self.name + "\nLooking for getter\n")
                 impl_getter = None
                 for f in self.functions:
                     if impl_getter is not None:
@@ -1223,7 +1198,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         # print("Looking for public variables that match " + str(exp))
                                     else:
                                         print("Looking for implementation setter in " + call_contract.name)
-
+                                        impl_setter = self.find_setter_in_contract(call_contract, self._delegates_to)
+                                        if impl_setter is not None:
+                                            self._is_upgradeable_proxy = True
+                                            return self._is_upgradeable_proxy
                                 if call_contract is not None and not call_contract.is_interface:
                                     contains_getter = False
                                     contains_setter = False
@@ -1244,45 +1222,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 break
                                     if contains_getter:
                                         print("Looking for implementation setter in " + call_contract.name)
-                                        for f in call_contract.functions:
-                                            if f.name is not None:
-                                                print("Checking function: " + f.name)
-                                            else:
-                                                print("Unnamed function of type: " + str(f.function_type))
-                                            if f.name is not None and not f.name == "fallback" and "constructor" \
-                                                    not in f.name.lower() and "initialize" not in f.name.lower():
-                                                for v in f.variables_written:
-                                                    if isinstance(v, LocalVariable) and v in f.returns:
-                                                        print(f.name + " returns local variable: " + v.name)
-                                                        continue
-                                                    elif isinstance(v, StateVariable):
-                                                        print(f.name + " writes to state variable: " + v.name)
-                                                        if str(self._delegates_to).strip("_") in v.name:
-                                                            print("\nImplementation set by function: " + f.name + "\n")
-                                                            self._is_upgradeable_proxy = True
-                                                            return self._is_upgradeable_proxy
-                                                if f.contains_assembly:
-                                                    print(f.name + " contains assembly")
-                                                    for node in f.all_nodes():
-                                                        inline = node.inline_asm
-                                                        if inline:
-                                                            if "sstore" in inline \
-                                                                    and str(self._delegates_to).strip("_").lower() \
-                                                                    in inline.lower():
-                                                                print("\nImplementation set by function: " + f.name)
-                                                                print("Assembly calls sstore and includes "
-                                                                      "delegates_to.name:\n" + inline + "\n")
-                                                                self._is_upgradeable_proxy = True
-                                                                return self._is_upgradeable_proxy
-                                                        else:  # @webthethird: inline_asm not set for version >= 0.6.0
-                                                            for e in f.all_expressions():
-                                                                if "sstore" in str(e) and str(self._delegates_to).strip(
-                                                                        "_") in str(e).lower():
-                                                                    print("\nImplementation set by function: " + f.name)
-                                                                    print("Assembly calls sstore and includes "
-                                                                          "delegates_to.name: " + str(e) + "\n")
-                                                                    self._is_upgradeable_proxy = True
-                                                                    return self._is_upgradeable_proxy
+                                        impl_setter = self.find_setter_in_contract(call_contract, self._delegates_to)
+                                        if impl_setter is not None:
+                                            self._is_upgradeable_proxy = True
+                                            return self._is_upgradeable_proxy
                             else:
                                 print("Could not find a contract called " + str(call_type) + " in compilation unit")
                 else:
@@ -1404,6 +1347,54 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if self._delegates_to is not None:
                                         break
                     break
+
+    def find_setter_in_contract(
+            self,
+            contract: "Contract",
+            var_to_set: Union[str, "Variable"]
+    ) -> Union[Function, None]:
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+
+        setter = None
+        for f in contract.functions:
+            if setter is not None:
+                break
+            if f.name is not None:
+                print("Checking function: " + f.name)
+            else:
+                print("Unnamed function of type: " + str(f.function_type))
+                continue
+            if not f.name == "fallback" and "constructor" not in f.name.lower() and "init" not in f.name.lower():
+                for v in f.variables_written:
+                    if isinstance(v, LocalVariable) and v in f.returns:
+                        print(f.name + " returns local variable: " + v.name)
+                        continue
+                    elif isinstance(v, StateVariable):
+                        print(f.name + " writes to state variable: " + v.name)
+                        if str(var_to_set).strip("_").lower() in v.name.strip("_").lower():
+                            print("\nImplementation set by function: " + f.name + "\n")
+                            setter = f
+                            break
+                if f.contains_assembly:
+                    print(f.name + " contains assembly")
+                    for node in f.all_nodes():
+                        if setter is not None:
+                            break
+                        inline = node.inline_asm
+                        if inline:
+                            if "sstore" in inline \
+                                    and str(var_to_set).strip("_").lower() in inline.strip("_").lower():
+                                print("\nImplementation set by function: " + f.name)
+                                setter = f
+                                break
+                        else:  # @webthethird: inline_asm not set for version >= 0.6.0
+                            for e in f.all_expressions():
+                                if "sstore" in str(e) and str(self._delegates_to).strip("_") in str(e).lower():
+                                    print("\nImplementation set by function: " + f.name)
+                                    setter = f
+                                    break
+        return setter
 
     # endregion
     ###################################################################################
