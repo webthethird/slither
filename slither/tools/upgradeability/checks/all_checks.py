@@ -22,3 +22,5 @@ from slither.tools.upgradeability.checks.variables_order import (
 )
 
 from slither.tools.upgradeability.checks.constant import WereConstant, BecameConstant
+
+from slither.tools.upgradeability.checks.proxy_standards import NonStandardProxy
