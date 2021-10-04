@@ -83,6 +83,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._is_proxy: Optional[bool] = None
         self._delegates_to: Optional["Variable"] = None
         self._proxy_impl_setter: Optional["Function"] = None
+        self._proxy_impl_getter: Optional["Function"] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -1096,6 +1097,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
+            self._proxy_impl_setter = None
+            self._proxy_impl_getter = None
 
             if self.is_proxy and self._delegates_to is not None:
                 if self._delegates_to.is_constant:
@@ -1111,12 +1114,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("\nImplementation set by function: " + self._proxy_impl_setter.name + " in contract: "
                               + self.name)
                     self._is_upgradeable_proxy = True
-                    return self._is_upgradeable_proxy
-                if print_debug:
-                    print("\nCould not find implementation setter in " + self.name + "\nLooking for getter\n")
-                impl_getter = None
+                elif print_debug:
+                    print("\nCould not find implementation setter in " + self.name)
+                print("Looking for getter\n")
+
                 for f in self.functions:
-                    if impl_getter is not None:
+                    if self._proxy_impl_getter is not None:
                         break
                     if f.name is not None:
                         print("Checking function: " + f.name)
@@ -1132,158 +1135,173 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if str(v.type) == "address" and str(self._delegates_to).strip("_") in f.name:
                                     if print_debug:
                                         print("\n" + f.name + " appears to be the implementation getter\n")
-                                    impl_getter = f
+                                    self._proxy_impl_getter = f
                                     break
-                if impl_getter is not None:
-                    exp = None
-                    for node in impl_getter.all_nodes():
-                        if print_debug:
-                            print(node.type)
-                        # if node.expression is not None:
-                        if node.type == NodeType.RETURN:
-                            exp = node.expression
-                            if print_debug:
-                                print(exp)
-                            if isinstance(exp, CallExpression):
-                                if print_debug:
-                                    print("This return node is a CallExpression")
-                                if isinstance(exp.called, MemberAccess):
-                                    if print_debug:
-                                        print("The CallExpression is for MemberAccess")
-                                    exp = exp.called
-                                    break
-                            elif isinstance(node.expression, Identifier):
-                                if print_debug:
-                                    print("This return node is a variable Identifier")
-                            elif node.expression.type is not None:
-                                if print_debug:
-                                    print(node.expression.type)
-                        elif node.type == NodeType.VARIABLE:
-                            if print_debug:
-                                print(node.variable_declaration.expression)
-                    if isinstance(exp, MemberAccess):  # Getter calls function of another contract in return expression
-                        call_exp = exp.expression
-                        call_function = exp.member_name
-                        call_contract = None
-                        if isinstance(call_exp, TypeConversion):
-                            if print_debug:
-                                print("The return node calls a function from a contract of type " + str(call_exp.type))
-                            call_type = call_exp.type
-                        if call_type is not None:
-                            call_contract = self.compilation_unit.get_contract_from_name(str(call_type))
-                            if call_contract is not None:
-                                if print_debug:
-                                    print("\nFound contract called by proxy: " + call_contract.name)
-                                interface = None
-                                if call_contract.is_interface:
-                                    interface = call_contract
-                                    call_contract = None
-                                    if print_debug:
-                                        print("It's an interface\nLooking for a contract that implements the interface "
-                                              + interface.name)
-                                    for c in self.compilation_unit.contracts:
-                                        if interface in c.inheritance:
-                                            if print_debug:
-                                                print(c.name + " inherits the interface " + interface.name)
-                                            call_contract = c
-                                            break
-                                    if call_contract is None:
-                                        if print_debug:
-                                            print("Could not find a contract that inherits " + interface.name + "\n"
-                                                  + "Looking for a contract with " + call_function)
-                                        for c in self.compilation_unit.contracts:
-                                            has_called_func = False
-                                            if c == interface:
-                                                continue
-                                            for f in interface.functions_signatures:
-                                                if exp.member_name not in f:
-                                                    continue
-                                                if f in c.functions_signatures:
-                                                    if print_debug:
-                                                        print(c.name + " has function " + f + " from interface")
-                                                    has_called_func = True
-                                                    break
-                                            if has_called_func:
-                                                print(c.name + " contains the implementation getter")
-                                                call_contract = c
-                                                break
-                                    if call_contract is None:
-                                        if print_debug:
-                                            print("Could not find a contract that implements " + exp.member_name
-                                                  + " from " + interface.name + ":")
-                                    else:
-                                        if print_debug:
-                                            print("Looking for implementation setter in " + call_contract.name)
-                                        self._proxy_impl_setter = self.find_setter_in_contract(call_contract,
-                                                                                               self._delegates_to)
-                                        if self._proxy_impl_setter is not None:
-                                            if print_debug:
-                                                print("\nImplementation set by function: "
-                                                      + self._proxy_impl_setter.name + " in contract: "
-                                                      + call_contract.name)
-                                            self._is_upgradeable_proxy = True
-                                            return self._is_upgradeable_proxy
-                                if call_contract is not None and not call_contract.is_interface:
-                                    contains_getter = False
-                                    contains_setter = False
-                                    implementation = None
-                                    for f in call_contract.functions:
-                                        if f.name == exp.member_name:
-                                            for v in f.returns:
-                                                if str(v.type) == "address":
-                                                    if print_debug:
-                                                        print("Found getter " + f.name + " in " + call_contract.name)
-                                                    contains_getter = True
-                                                    call_function = f
-                                                    break
-                                            if contains_getter:
-                                                for v in f.variables_read:
-                                                    if isinstance(v, StateVariable):
-                                                        implementation = v
-                                                        break
-                                                break
-                                    if contains_getter:
-                                        if print_debug:
-                                            print("Looking for implementation setter in " + call_contract.name)
-                                        self._proxy_impl_setter = self.find_setter_in_contract(call_contract,
-                                                                                               self._delegates_to)
-                                        if self._proxy_impl_setter is not None:
-                                            if print_debug:
-                                                print("Found implementation setter ")
-                                            self._is_upgradeable_proxy = True
-                                            return self._is_upgradeable_proxy
-                            else:
-                                if print_debug:
-                                    print("Could not find a contract called " + str(call_type) + " in compilation unit")
+                if self._proxy_impl_getter is not None:
+                    self._is_upgradeable_proxy = True
+                    return self._is_upgradeable_proxy
+                    # TODO: Generalize this method and move this logic to an upgradeability check
+                    # exp = None
+                    # for node in impl_getter.all_nodes():
+                    #     if print_debug:
+                    #         print(node.type)
+                    #     # if node.expression is not None:
+                    #     if node.type == NodeType.RETURN:
+                    #         exp = node.expression
+                    #         if print_debug:
+                    #             print(exp)
+                    #         if isinstance(exp, CallExpression):
+                    #             if print_debug:
+                    #                 print("This return node is a CallExpression")
+                    #             if isinstance(exp.called, MemberAccess):
+                    #                 if print_debug:
+                    #                     print("The CallExpression is for MemberAccess")
+                    #                 exp = exp.called
+                    #                 break
+                    #         elif isinstance(node.expression, Identifier):
+                    #             if print_debug:
+                    #                 print("This return node is a variable Identifier")
+                    #         elif node.expression.type is not None:
+                    #             if print_debug:
+                    #                 print(node.expression.type)
+                    #     elif node.type == NodeType.VARIABLE:
+                    #         if print_debug:
+                    #             print(node.variable_declaration.expression)
+                    # if isinstance(exp, MemberAccess):  # Getter calls function of another contract in return expression
+                    #     call_exp = exp.expression
+                    #     call_function = exp.member_name
+                    #     call_contract = None
+                    #     if isinstance(call_exp, TypeConversion):
+                    #         if print_debug:
+                    #             print("The return node calls a function from a contract of type " + str(call_exp.type))
+                    #         call_type = call_exp.type
+                    #     if call_type is not None:
+                    #         call_contract = self.compilation_unit.get_contract_from_name(str(call_type))
+                    #         if call_contract is not None:
+                    #             if print_debug:
+                    #                 print("\nFound contract called by proxy: " + call_contract.name)
+                    #             interface = None
+                    #             if call_contract.is_interface:
+                    #                 interface = call_contract
+                    #                 call_contract = None
+                    #                 if print_debug:
+                    #                     print("It's an interface\nLooking for a contract that implements the interface "
+                    #                           + interface.name)
+                    #                 for c in self.compilation_unit.contracts:
+                    #                     if interface in c.inheritance:
+                    #                         if print_debug:
+                    #                             print(c.name + " inherits the interface " + interface.name)
+                    #                         call_contract = c
+                    #                         break
+                    #                 if call_contract is None:
+                    #                     if print_debug:
+                    #                         print("Could not find a contract that inherits " + interface.name + "\n"
+                    #                               + "Looking for a contract with " + call_function)
+                    #                     for c in self.compilation_unit.contracts:
+                    #                         has_called_func = False
+                    #                         if c == interface:
+                    #                             continue
+                    #                         for f in interface.functions_signatures:
+                    #                             if exp.member_name not in f:
+                    #                                 continue
+                    #                             if f in c.functions_signatures:
+                    #                                 if print_debug:
+                    #                                     print(c.name + " has function " + f + " from interface")
+                    #                                 has_called_func = True
+                    #                                 break
+                    #                         if has_called_func:
+                    #                             print(c.name + " contains the implementation getter")
+                    #                             call_contract = c
+                    #                             break
+                    #                 if call_contract is None:
+                    #                     if print_debug:
+                    #                         print("Could not find a contract that implements " + exp.member_name
+                    #                               + " from " + interface.name + ":")
+                    #                 else:
+                    #                     if print_debug:
+                    #                         print("Looking for implementation setter in " + call_contract.name)
+                    #                     self._proxy_impl_setter = self.find_setter_in_contract(call_contract,
+                    #                                                                            self._delegates_to)
+                    #                     if self._proxy_impl_setter is not None:
+                    #                         if print_debug:
+                    #                             print("\nImplementation set by function: "
+                    #                                   + self._proxy_impl_setter.name + " in contract: "
+                    #                                   + call_contract.name)
+                    #                         self._is_upgradeable_proxy = True
+                    #                         return self._is_upgradeable_proxy
+                    #             if call_contract is not None and not call_contract.is_interface:
+                    #                 contains_getter = False
+                    #                 contains_setter = False
+                    #                 implementation = None
+                    #                 for f in call_contract.functions:
+                    #                     if f.name == exp.member_name:
+                    #                         for v in f.returns:
+                    #                             if str(v.type) == "address":
+                    #                                 if print_debug:
+                    #                                     print("Found getter " + f.name + " in " + call_contract.name)
+                    #                                 contains_getter = True
+                    #                                 call_function = f
+                    #                                 break
+                    #                         if contains_getter:
+                    #                             for v in f.variables_read:
+                    #                                 if isinstance(v, StateVariable):
+                    #                                     implementation = v
+                    #                                     break
+                    #                             break
+                    #                 if contains_getter:
+                    #                     if print_debug:
+                    #                         print("Looking for implementation setter in " + call_contract.name)
+                    #                     self._proxy_impl_setter = self.find_setter_in_contract(call_contract,
+                    #                                                                            self._delegates_to)
+                    #                     if self._proxy_impl_setter is not None:
+                    #                         if print_debug:
+                    #                             print("Found implementation setter ")
+                    #                         self._is_upgradeable_proxy = True
+                    #                         return self._is_upgradeable_proxy
+                    #         else:
+                    #             if print_debug:
+                    #                 print("Could not find a contract called " + str(call_type) + " in compilation unit")
                 else:
                     if print_debug:
                         print("Could not find implementation getter")
-                    if isinstance(self._delegates_to, LocalVariable) and self._delegates_to.location is not None:
-                        if "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" \
-                                in self._delegates_to.location:
-                            if print_debug:
-                                print(self.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
-                            proxiable = self.compilation_unit.get_contract_from_name("Proxiable")
-                            if proxiable is not None:
-                                self._proxy_impl_setter \
-                                    = proxiable.get_function_from_signature("updateCodeAddress(address)")
-                                if self._proxy_impl_setter is not None:
-                                    if print_debug:
-                                        print("Found implementation setter " + self._proxy_impl_setter.signature_str
-                                              + " in contract " + proxiable.name)
-                                    base = proxiable
-                                    for c in self.compilation_unit.contracts:
-                                        if c == base:
-                                            continue
-                                        if base in c.inheritance:
-                                            if print_debug:
-                                                print("Contract " + c.name + " inherits " + base.name)
-                                            base = c
-                                    self._is_upgradeable_proxy = True
-                                    return self._is_upgradeable_proxy
-                        else:
-                            if print_debug:
-                                print(self._delegates_to.location)
+                    for n in self.fallback_function.all_nodes():
+                        print(n.type)
+                        if n.type == NodeType.VARIABLE: # and n.variable_declaration == self._delegates_to:
+                            print(n.variable_declaration)
+                            print(n.expression)
+                        elif n.type == NodeType.EXPRESSION:
+                            print(n.expression)
+                        elif n.type == NodeType.ASSEMBLY:
+                            inline_asm = n.inline_asm
+                            if inline_asm and "sload" in inline_asm:
+                                print(inline_asm)
+                    # TODO: Generalize this method and move the logic below to an upgradeability check
+                    # if isinstance(self._delegates_to, LocalVariable) and self._delegates_to.location is not None:
+                    #     if "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" \
+                    #             in self._delegates_to.location:
+                    #         if print_debug:
+                    #             print(self.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
+                    #         proxiable = self.compilation_unit.get_contract_from_name("Proxiable")
+                    #         if proxiable is not None:
+                    #             self._proxy_impl_setter \
+                    #                 = proxiable.get_function_from_signature("updateCodeAddress(address)")
+                    #             if self._proxy_impl_setter is not None:
+                    #                 if print_debug:
+                    #                     print("Found implementation setter " + self._proxy_impl_setter.signature_str
+                    #                           + " in contract " + proxiable.name)
+                    #                 base = proxiable
+                    #                 for c in self.compilation_unit.contracts:
+                    #                     if c == base:
+                    #                         continue
+                    #                     if base in c.inheritance:
+                    #                         if print_debug:
+                    #                             print("Contract " + c.name + " inherits " + base.name)
+                    #                         base = c
+                    #                 self._is_upgradeable_proxy = True
+                    #                 return self._is_upgradeable_proxy
+                    #     else:
+                    #         if print_debug:
+                    #             print(self._delegates_to.location)
         return self._is_upgradeable_proxy
 
     @property
@@ -1365,6 +1383,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             return self._proxy_impl_setter
         return self._proxy_impl_setter
 
+    @property
+    def proxy_implementation_getter(self) -> Optional["Function"]:
+        if self.is_upgradeable_proxy:
+            return self._proxy_impl_getter
+        return self._proxy_impl_getter
+
     def find_delegatecall_in_asm(
             self,
             inline_asm: Union[str, Dict]
@@ -1387,8 +1411,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug:
                             print("\nFound delegatecall in YulFunctionCall\n")
                         self._is_proxy = True
-                        args = statement["arguments"]  # @webthethird: allow algorithm to find the
-                        dest = args[1]  # delegates_to var in expression node below
+                        args = statement["arguments"]
+                        dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
                             for v in self.fallback_function.variables_read:
                                 if print_debug:
@@ -1417,9 +1441,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(v, StateVariable):
                                 self._delegates_to = v
                                 if print_debug:
-                                    print("Destination variable is " + str(self._delegates_to))
+                                    print("Destination variable is " + str(v))
                                     if self._delegates_to.type is not None:
-                                        print("which has type: " + str(self._delegates_to.type))
+                                        print("which has type: " + str(v.type))
                                 break
                             elif isinstance(v, LocalVariable):
                                 print(v.expression)
