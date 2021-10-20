@@ -1273,8 +1273,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             print(n.expression)
                         elif n.type == NodeType.ASSEMBLY:
                             inline_asm = n.inline_asm
-                            if inline_asm and "sload" in inline_asm:
+                            if inline_asm and "sload" in inline_asm and self._delegates_to.name in inline_asm:
                                 print(inline_asm)
+                                self._is_upgradeable_proxy = True
                     # TODO: Generalize this method and move the logic below to an upgradeability check
                     # if isinstance(self._delegates_to, LocalVariable) and self._delegates_to.location is not None:
                     #     if "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" \
@@ -1431,6 +1432,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     self._is_proxy = True
                     params = asm.split("delegatecall(")[1].split(", ")
                     dest = params[len(params) - 5]
+                    if dest.startswith("sload("):
+                        dest = dest.replace(")", "(").split("(")[1]
+
+                    if "_slot" in dest.lower():
+                        dest = dest.replace("_slot", "")
                     if print_debug:
                         print("\nFound delegatecall in inline asm")
                         print("Destination param is called '" + dest + "'\nChecking variables read\n")
