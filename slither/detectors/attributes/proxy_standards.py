@@ -86,64 +86,65 @@ or one of the proxy patterns developed by OpenZeppelin.
                 json = self.generate_result(info)
                 results.append(json)
                 delegate = proxy.delegates_to
-                if delegate is not None:
-                    print(proxy.name + " delegates to variable of type " + str(delegate.type) + " called " + delegate.name)
-                    lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
-                    ierc_1538 = proxy.compilation_unit.get_contract_from_name("IERC1538")
-                    print(ierc_1538)
-                    if lib_diamond is not None and lib_diamond.get_structure_from_name("DiamondStorage") is not None:
-                        info = [proxy, " appears to be an EIP-2535 Diamond Proxy: This is a WIP.\n"]
-                        json = self.generate_result(info)
-                        results.append(json)
-                    elif ierc_1538 is not None and ierc_1538 in proxy.inheritance:
-                        info = [proxy, " appears to be an EIP-1538 Transparent Proxy:\nThis EIP has been "
-                                       "withdrawn and replaced with EIP-2535: Diamonds, Multi-Facet Proxy\n"]
-                        json = self.generate_result(info)
-                        results.append(json)
-                    elif isinstance(delegate, StateVariable):
-                        info = [
-                            proxy,
-                            " stores implementation as state variable: ",
-                            delegate,
-                            "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
-                            "EIP-1967, EIP-1822, or OpenZeppelin's Unstructured Storage.\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
-                    else:
-                        constants = [variable for variable in proxy.variables if variable.is_constant]
-                        setter = proxy.proxy_implementation_setter
-                        if setter is not None:
-                            if isinstance(setter, FunctionContract) and setter.contract != proxy:
-                                info = [
-                                    "Implementation setter for proxy contract ",
-                                    proxy,
-                                    " is located in another contract:\n",
-                                    setter,
-                                    "\n"
-                                ]
-                                json = self.generate_result(info)
-                                results.append(json)
-                            slot = None
-                            if isinstance(delegate, LocalVariable):
-                                exp = delegate.expression
-                                if exp is not None:
-                                    print(exp)
-                                else:
-                                    for node in setter.all_nodes():
-                                        print(str(node.type))
-                                        if node.type == NodeType.VARIABLE:
-                                            exp = node.variable_declaration.expression
-                                            if exp is not None and isinstance(exp, Identifier):
-                                                slot = str(exp.value.expression)
-                                                break
-                                        elif node.type == NodeType.EXPRESSION:
-                                            print(node.expression)
-                                        elif node.type == NodeType.ASSEMBLY:
-                                            slot = find_slot_in_setter_asm(node.inline_asm, delegate)
+                print(proxy.name + " delegates to variable of type " + str(delegate.type) + " called " + delegate.name)
+                lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
+                ierc_1538 = proxy.compilation_unit.get_contract_from_name("IERC1538")
+                if lib_diamond is not None and lib_diamond.get_structure_from_name("DiamondStorage") is not None:
+                    info = [proxy, " appears to be an EIP-2535 Diamond Proxy: This is a WIP.\n"]
+                    json = self.generate_result(info)
+                    results.append(json)
+                elif ierc_1538 is not None and ierc_1538 in proxy.inheritance:
+                    info = [proxy, " appears to be an EIP-1538 Transparent Proxy:\nThis EIP has been "
+                                   "withdrawn and replaced with EIP-2535: Diamonds, Multi-Facet Proxy\n"]
+                    json = self.generate_result(info)
+                    results.append(json)
+                elif isinstance(delegate, StateVariable):
+                    info = [
+                        proxy,
+                        " stores implementation as state variable: ",
+                        delegate,
+                        "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
+                        "EIP-1967, EIP-1822, Unstructured Storage, Eternal Storage or another well-audited pattern.\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
+                else:
+                    constants = [variable for variable in proxy.variables if variable.is_constant]
+                    setter = proxy.proxy_implementation_setter
+                    slot = None
+                    if setter is not None:
+                        if isinstance(setter, FunctionContract) and setter.contract != proxy:
+                            info = [
+                                "Implementation setter for proxy contract ",
+                                proxy,
+                                " is located in another contract:\n",
+                                setter,
+                                "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        if isinstance(delegate, LocalVariable):
+                            exp = delegate.expression
+                            if exp is not None:
+                                print(exp)
+                            else:
+                                for node in setter.all_nodes():
+                                    print(str(node.type))
+                                    if node.type == NodeType.VARIABLE:
+                                        exp = node.variable_declaration.expression
+                                        if exp is not None and isinstance(exp, Identifier):
+                                            slot = str(exp.value.expression)
                                             break
-                                    if slot is not None:
-                                        print(slot)
+                                    elif node.type == NodeType.EXPRESSION:
+                                        print(node.expression)
+                                    elif node.type == NodeType.ASSEMBLY:
+                                        slot = find_slot_in_setter_asm(node.inline_asm, delegate)
+                                        break
+                                if slot is not None:
+                                    print(slot)
+                    else:
+                        getter = proxy.proxy_implementation_getter
+
             elif contract.is_proxy:
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
