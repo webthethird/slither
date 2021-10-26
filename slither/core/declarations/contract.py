@@ -1100,6 +1100,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self._is_upgradeable_proxy = False
             if print_debug:
                 ("\nChecking contract: " + self.name)
+            # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
             if self.is_proxy and self._delegates_to is not None:
                 if self._delegates_to.is_constant:
                     if print_debug:
@@ -1332,6 +1333,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
     @property
     def is_proxy(self) -> bool:
+        """
+        Checks for 'delegatecall' in the fallback function CFG, setting self._is_proxy = True if found.
+        Also tries to set self._delegates_to: Variable in the process.
+        :return: Boolean
+        """
         from slither.core.cfg.node import NodeType
         from slither.slithir.operations import LowLevelCall
         from slither.core.expressions.expression_typed import ExpressionTyped
@@ -1351,6 +1357,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug:
                         print(str(node.type))
                     for ir in node.irs:
+                        """
+                        Handles finding delegatecall outside of an assembly block, 
+                        i.e. delegate.delegatecall(msg.data)  
+                        ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability) 
+                        """
                         if isinstance(ir, LowLevelCall):
                             if print_debug:
                                 print("\nFound LowLevelCall\n")
@@ -1362,11 +1373,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if self._is_proxy and self._delegates_to is not None:
                         break
                     if node.type == NodeType.ASSEMBLY:
+                        """
+                        Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
+                        That method cannot always find the delegates_to Variable
+                        """
                         if print_debug:
                             print("\nFound Assembly Node\n")
                         if node.inline_asm:
                             # print("\nFound Inline ASM\n")
-                            self.find_delegatecall_in_asm(node.inline_asm)
+                            (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm)
                             if self._is_proxy and self._delegates_to is not None:
                                 break
                     elif node.type == NodeType.EXPRESSION:  # @webthethird: finds delegates_to when above doesn't
@@ -1420,7 +1435,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def find_delegatecall_in_asm(
             self,
             inline_asm: Union[str, Dict]
-    ):
+    ) -> (bool, Optional["Variable"]):
+        """
+        Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
+        as well as the address Variable which the 'delegatecall' targets.
+        It is necessary to handle two separate cases, for contracts using Solidity versions
+        < 0.6.0 and >= 0.6.0, due to a change in how assembly is represented after compiling,
+        i.e. as an AST for versions >= 0.6.0 and as a simple string for earlier versions.
+        :return: boolean is_proxy, and Variable delegates_to (if found)
+        """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
@@ -1429,6 +1452,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
 
         print_debug = True
+        is_proxy = False
+        delegates_to: Variable = None
 
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
@@ -1441,7 +1466,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if statement["functionName"]["name"] == "delegatecall":
                         if print_debug:
                             print("\nFound delegatecall in YulFunctionCall\n")
-                        self._is_proxy = True
+                        is_proxy = True
                         args = statement["arguments"]
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
@@ -1449,7 +1474,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if print_debug:
                                     print(str(v.expression))
                                 if v.name == dest["name"]:
-                                    self._delegates_to = v
+                                    delegates_to = v
                                     break
                         break
         else:
@@ -1459,7 +1484,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug:
                     print(asm)
                 if "delegatecall" in asm:
-                    self._is_proxy = True   # Now look for the target of this delegatecall
+                    is_proxy = True   # Now look for the target of this delegatecall
                     params = asm.split("delegatecall(")[1].split(", ")
                     dest: str = params[1]   # Target should be 2nd parameter, but 1st param might have 2 params
                     if dest.endswith(")"):  # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
@@ -1474,15 +1499,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             print(str(v))
                         if v.name == dest:
                             if isinstance(v, StateVariable):
-                                self._delegates_to = v
+                                delegates_to = v
                                 if print_debug:
                                     print("Destination variable is " + str(v))
-                                    if self._delegates_to.type is not None:
+                                    if delegates_to.type is not None:
                                         print("which has type: " + str(v.type))
                                 break
                             elif isinstance(v, LocalVariable):
                                 print(v.expression)
-                    if self._delegates_to is None:
+                    if delegates_to is None:
                         for f in self.functions:
                             if dest in f.name.lower():
                                 if print_debug:
@@ -1492,14 +1517,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if str(ret.type) == "address":
                                             if print_debug:
                                                 print("Which returns address " + str(ret))
-                                            self._delegates_to = ret
+                                            delegates_to = ret
                                             if ret.name == "":
-                                                self._delegates_to.name = f.name
+                                                delegates_to.name = f.name
                                             break
-                                    if self._delegates_to is not None:
+                                    if delegates_to is not None:
                                         break
                     break
-            if self._is_proxy and self._delegates_to is None and dest is not None:
+            if is_proxy and delegates_to is None and dest is not None:
+                """
+                This means we extracted the name of the address variable passed as the second parameter
+                to delegatecall, but could not find a state variable 
+                """
                 if print_debug:
                     print("Could not find state variable or getter function for " + dest)
                 for node in self.fallback_function.all_nodes():
@@ -1508,7 +1537,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print(node.expression)
                         if node.variable_declaration is not None and node.variable_declaration.name == dest:
                             print("Found variable declaration for " + dest + "!")
-                            self._delegates_to = node.variable_declaration
+                            delegates_to = node.variable_declaration
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
                         print(exp)
@@ -1528,24 +1557,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if _dest is not None:
                                 arg = exp.arguments[_dest]
                                 if isinstance(arg, Identifier) and str(arg.value.type) == "address":
-                                    self._delegates_to = arg.value
+                                    delegates_to = arg.value
                                     print(arg.value.expression)
                                     break
-                if self._delegates_to is None:
+                if delegates_to is None:
                     for asm in asm_split:
                         if dest in asm and "= sload(" in asm:
                             slot = asm.split("(", 1)[1].strip(")")
                             if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
-                                self._delegates_to = LocalVariable()
-                                self._delegates_to.set_type(ElementaryType("address"))
-                                self._delegates_to.name = dest
-                                self._delegates_to.set_location(slot)
+                                delegates_to = LocalVariable()
+                                delegates_to.set_type(ElementaryType("address"))
+                                delegates_to.name = dest
+                                delegates_to.set_location(slot)
                                 break
                             else:
                                 for v in self.variables:
                                     if v.name == slot:
-                                        self._delegates_to = v
+                                        delegates_to = v
                                         break
+        return is_proxy, delegates_to
 
     @staticmethod
     def find_setter_in_contract(
@@ -1587,6 +1617,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             break
                         inline = node.inline_asm
                         if inline:
+                            # TODO: need cleanup
                             if "sstore" in inline \
                                     and (str(var_to_set).strip("_").lower() in inline.strip("_").lower()
                                          or (isinstance(var_to_set, LocalVariable) and var_to_set.location in inline)):
