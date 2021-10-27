@@ -1085,6 +1085,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
     @property
     def is_upgradeable_proxy(self) -> bool:
+        """
+        Determines if a proxy contract can be upgraded, i.e. if there's an implementation address setter for upgrading
+
+        :return: True if an implementation setter is found, or if the implementation getter suggests upgradeability
+        """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
@@ -1154,6 +1159,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
                     else:
+                        """
+                        If we could only find the getter, but not the setter, make sure that the getter does not return
+                        a variable that can never be set (i.e. is practically constant, but not declared constant)
+                        Instead we would like to see if the getter returns the result of a call to another function,
+                        possibly a function in another contract.
+                        ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
+                            though AppProxyUpgradeable obviously should be
+                        """
                         for node in self._proxy_impl_getter.all_nodes():
                             if print_debug:
                                 print(str(node.type) + ": " + str(node.expression))
@@ -1167,6 +1180,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     return self._is_upgradeable_proxy
                                 # elif isinstance(exp, Identifier) and isinstance(exp.value, StateVariable)
                     # TODO: Generalize this method and move this logic to an upgradeability check
+                    """
+                    All of the commented out code below is for cross-contract analysis,
+                    i.e. to discover calls to an implementation getter that is located in another contract
+                    """
                     # exp = None
                     # for node in impl_getter.all_nodes():
                     #     if print_debug:
@@ -1288,6 +1305,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     #             if print_debug:
                     #                 print("Could not find a contract called " + str(call_type) + " in compilation unit")
                 else:
+                    """
+                    Handle the case, as in EIP 1822, where the Proxy has no implementation getter because it is
+                    loaded explicitly from a hard-coded slot within the fallback itself.
+                    We assume in this case that, if the Proxy needs to load the implementation address from storage slot
+                    then the address must not be constant - otherwise why not use a constant address
+                    This is only necessary if the Proxy also doesn't have an implementation setter, because it is
+                    located in another contract. The assumption is only necessary if we do not search cross-contracts.
+                    """
                     if print_debug:
                         print("Could not find implementation getter")
                     for n in self.fallback_function.all_nodes():
@@ -1303,6 +1328,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print(inline_asm)
                                 self._is_upgradeable_proxy = True
                     # TODO: Generalize this method and move the logic below to an upgradeability check
+                    """
+                    This is related to the last corner case in self.find_delegatecall_in_asm - more specifically, 
+                    EIP 1822: UUPS, in which the storage slot is keccack256("PROXIABLE") and the implementation
+                    setter resides in the logic contract Proxiable. But it's probably too specific to be used here. 
+                    ex: /tests/proxies/EIP1822Token.sol
+                    """
                     # if isinstance(self._delegates_to, LocalVariable) and self._delegates_to.location is not None:
                     #     if "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" \
                     #             in self._delegates_to.location:
@@ -1336,7 +1367,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         """
         Checks for 'delegatecall' in the fallback function CFG, setting self._is_proxy = True if found.
         Also tries to set self._delegates_to: Variable in the process.
-        :return: Boolean
+
+        :return: True if 'delegatecall' is found in fallback function, otherwise False
         """
         from slither.core.cfg.node import NodeType
         from slither.slithir.operations import LowLevelCall
@@ -1352,7 +1384,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self._delegates_to = None
             if self.fallback_function is not None:
                 if print_debug:
-                    print("\n" + self._name + " has fallback function\n")
+                    print("\nBegin self.is_proxy\n" + self._name + " has fallback function\n")
                 for node in self.fallback_function.all_nodes():
                     if print_debug:
                         print(str(node.type))
@@ -1375,16 +1407,24 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if node.type == NodeType.ASSEMBLY:
                         """
                         Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
-                        That method cannot always find the delegates_to Variable
+                        That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
                         """
                         if print_debug:
                             print("\nFound Assembly Node\n")
                         if node.inline_asm:
                             # print("\nFound Inline ASM\n")
-                            (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm)
+                            (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm,
+                                                                                                 node.function)
                             if self._is_proxy and self._delegates_to is not None:
                                 break
-                    elif node.type == NodeType.EXPRESSION:  # @webthethird: finds delegates_to when above doesn't
+                    elif node.type == NodeType.EXPRESSION:
+                        """
+                        For versions >= 0.6.0, in addition to Assembly nodes as seen above, it seems that 
+                        Slither creates Expression nodes for expressions within an inline assembly block.
+                        This is convenient, because sometimes self.find_delegatecall_in_asm fails to find 
+                        the target Variable self._delegates_to, so this serves as a fallback for such cases.
+                        ex: /tests/proxies/App2.sol (for comparison, /tests/proxies/App.sol is an earlier version)
+                        """
                         expression = node.expression
                         if print_debug:
                             print("Found Expression Node: " + str(expression))
@@ -1392,6 +1432,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if print_debug:
                                 print("Expression Type: " + str(expression.type))
                             if isinstance(expression, AssignmentOperation):
+                                """
+                                Handles the common case like this: 
+                                let result := delegatecall(gas, implementation, 0, calldatasize, 0, 0)
+                                """
                                 expression = expression.expression_right
                                 if print_debug:
                                     print("Checking right side of assignment expression...")
@@ -1412,6 +1456,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if isinstance(dest, Identifier):
                                         print(dest.value.expression)
                                         self._delegates_to = dest.value
+        if print_debug:
+            print("\nEnd self.is_proxy\n")
         return self._is_proxy
 
     @property
@@ -1434,7 +1480,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
     def find_delegatecall_in_asm(
             self,
-            inline_asm: Union[str, Dict]
+            inline_asm: Union[str, Dict],
+            parent_func: Function
     ) -> (bool, Optional["Variable"]):
         """
         Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
@@ -1442,7 +1489,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         It is necessary to handle two separate cases, for contracts using Solidity versions
         < 0.6.0 and >= 0.6.0, due to a change in how assembly is represented after compiling,
         i.e. as an AST for versions >= 0.6.0 and as a simple string for earlier versions.
-        :return: boolean is_proxy, and Variable delegates_to (if found)
+
+        :param inline_asm: The assembly code as either a string or an AST, depending on the solidity version
+        :param parent_func: The function associated with the assembly node (may be another function called by fallback)
+        :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
@@ -1450,13 +1500,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.identifier import Identifier
         from slither.core.solidity_types.elementary_type import ElementaryType
+        from slither.analyses.data_dependency import data_dependency
 
         print_debug = True
         is_proxy = False
         delegates_to: Variable = None
 
+        if print_debug:
+            print("\nBegin self.find_delegatecall_in_asm\n")
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
+            # see tests/proxies/ExampleYulAST.txt for an example
             for statement in inline_asm["AST"]["statements"]:
                 if statement["nodeType"] == "YulExpressionStatement":
                     statement = statement["expression"]
@@ -1470,7 +1524,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         args = statement["arguments"]
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
-                            for v in self.fallback_function.variables_read:
+                            for v in parent_func.variables_read:
                                 if print_debug:
                                     print(str(v.expression))
                                 if v.name == dest["name"]:
@@ -1478,6 +1532,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     break
                         break
         else:
+            # TODO: break out corner cases to clean this mess up
             asm_split = inline_asm.split("\n")
             dest = None
             for asm in asm_split:
@@ -1494,7 +1549,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug:
                         print("\nFound delegatecall in inline asm")
                         print("Destination param is called '" + dest + "'\nChecking variables read\n")
-                    for v in self.fallback_function.variables_read:
+                        print("Current function: " + parent_func.name)
+                    for v in parent_func.variables_read:
                         if print_debug:
                             print(str(v))
                         if v.name == dest:
@@ -1508,7 +1564,27 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             elif isinstance(v, LocalVariable):
                                 print(v.expression)
                     if delegates_to is None:
+                        for p in parent_func.parameters:
+                            """
+                            Testing out data_dependency here, using /tests/proxies/App.sol
+                            It seems that get_dependencies(p, self) and get_dependencies(p, parent_func), where 
+                            p is a function parameter, both return just one variable called 'TMP_89'.
+                            """
+                            if p.name == dest and str(p.type) == "address":
+                                if print_debug:
+                                    print("Found " + dest + ": it is a parameter of the function " + parent_func.name)
+                                    print("Checking data dependency")
+                                dependencies = data_dependency.get_dependencies(p, parent_func)
+                                for d in dependencies:
+                                    print(d.name)   # Do nothing but print debug info for now
                         for f in self.functions:
+                            """
+                            Handles the common case in which fallback calls _delegate(_implementation()),
+                            and where the signature for _delegate is _delegate(address implementation)
+                            i.e. the function parameter 'implementation' w/o underscore is passed to delegatecall, but 
+                            that variable can't be found anywhere else and there's no other variable to trace it back to
+                            ex: /tests/proxies/App.sol
+                            """
                             if dest in f.name.lower():
                                 if print_debug:
                                     print("Found '" + dest + "' in function named " + f.name)
@@ -1527,7 +1603,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if is_proxy and delegates_to is None and dest is not None:
                 """
                 This means we extracted the name of the address variable passed as the second parameter
-                to delegatecall, but could not find a state variable 
+                to delegatecall, but could not find a state variable or getter function that matches it.
+                ex: /tests/proxies/APMRegistry.sol, in which we find '_dst' but want 'target':
+                function () payable public {
+                    address target = getCode();
+                    delegatedFwd(target, msg.data);
+                }
+                function delegatedFwd(address _dst, bytes _calldata) internal {
+                    assembly {
+                        let result := delegatecall(sub(gas, 10000), _dst, add(_calldata, 0x20), mload(_calldata), 0, 0)
+                        ...
+                    }
+                }
                 """
                 if print_debug:
                     print("Could not find state variable or getter function for " + dest)
@@ -1561,6 +1648,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print(arg.value.expression)
                                     break
                 if delegates_to is None:
+                    """
+                    Finally, here I am trying to handle the case where there are no variables at all in the proxy,
+                    except for one defined within the assembly block itself and the slot hardcoded as seen below.
+                    In such an instance, there is literally no Variable object to assign to self._delegates_to,
+                    so we attempt to create a new one if appropriate
+                    ex: /tests/proxies/EIP1822Token.sol
+                    function() external payable {
+                        assembly { // solium-disable-line
+                            let logic := sload(0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7)
+                            calldatacopy(0x0, 0x0, calldatasize)
+                            let success := delegatecall(sub(gas, 10000), logic, 0x0, calldatasize, 0, 0)
+                            ...
+                        }
+                    }
+                    """
                     for asm in asm_split:
                         if dest in asm and "= sload(" in asm:
                             slot = asm.split("(", 1)[1].strip(")")
@@ -1570,11 +1672,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 delegates_to.name = dest
                                 delegates_to.set_location(slot)
                                 break
-                            else:
-                                for v in self.variables:
-                                    if v.name == slot:
-                                        delegates_to = v
-                                        break
+        if print_debug:
+            print("\nEnd self.find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
 
     @staticmethod
@@ -1582,18 +1681,29 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             contract: "Contract",
             var_to_set: Union[str, "Variable"]
     ) -> Optional[Function]:
+        """
+        Tries to find the setter function for a given variable.
+        Static because we can use this for cross-contract implementation setters, i.e. EIP 1822 Proxy/Proxiable
+
+        :param contract: the Contract to look in
+        :param var_to_set: the Variable to look for, or at least its name as a string
+        :return: the function in contract which sets var_to_set, if found
+        """
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
 
         print_debug = True
         setter = None
+
+        if print_debug:
+            print("\nBegin self.find_setter_in_asm\n")
         for f in contract.functions:
             if setter is not None:
                 break
             if f.name is not None:
                 if print_debug:
                     print("Checking function: " + f.name)
-            else:
+            else:   # I don't know why but I occasionally run into unnamed functions that would crash an unchecked print
                 if print_debug:
                     print("Unnamed function of type: " + str(f.function_type))
                 continue
@@ -1606,6 +1716,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     elif isinstance(v, StateVariable):
                         if print_debug:
                             print(f.name + " writes to state variable: " + v.name)
+                            # TODO: clean up string usage if possible
                         if str(var_to_set).strip("_").lower() in v.name.strip("_").lower():
                             setter = f
                             break
@@ -1623,7 +1734,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                          or (isinstance(var_to_set, LocalVariable) and var_to_set.location in inline)):
                                 setter = f
                                 break
-                        else:  # @webthethird: inline_asm not set for version >= 0.6.0
+                        else:  # @webthethird: inline_asm was not set for version >= 0.6.0, though it should be now
                             for e in f.all_expressions():
                                 if "sstore" in str(e) \
                                         and (str(var_to_set).strip("_").lower() in str(e).strip("_").lower()
@@ -1631,6 +1742,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             e))):
                                     setter = f
                                     break
+        if print_debug:
+            print("\nEnd self.find_setter_in_asm\n")
         return setter
 
     # endregion
