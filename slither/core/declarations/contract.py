@@ -1100,6 +1100,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         print_debug = True
+        if print_debug:
+            print("Begin " + self.name + ".is_upgradeable_proxy")
 
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
@@ -1327,39 +1329,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if inline_asm and "sload" in inline_asm and self._delegates_to.name in inline_asm:
                                 print(inline_asm)
                                 self._is_upgradeable_proxy = True
-                    # TODO: Generalize this method and move the logic below to an upgradeability check
-                    """
-                    This is related to the last corner case in self.find_delegatecall_in_asm - more specifically, 
-                    EIP 1822: UUPS, in which the storage slot is keccack256("PROXIABLE") and the implementation
-                    setter resides in the logic contract Proxiable. But it's probably too specific to be used here. 
-                    ex: /tests/proxies/EIP1822Token.sol
-                    """
-                    # if isinstance(self._delegates_to, LocalVariable) and self._delegates_to.location is not None:
-                    #     if "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" \
-                    #             in self._delegates_to.location:
-                    #         if print_debug:
-                    #             print(self.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
-                    #         proxiable = self.compilation_unit.get_contract_from_name("Proxiable")
-                    #         if proxiable is not None:
-                    #             self._proxy_impl_setter \
-                    #                 = proxiable.get_function_from_signature("updateCodeAddress(address)")
-                    #             if self._proxy_impl_setter is not None:
-                    #                 if print_debug:
-                    #                     print("Found implementation setter " + self._proxy_impl_setter.signature_str
-                    #                           + " in contract " + proxiable.name)
-                    #                 base = proxiable
-                    #                 for c in self.compilation_unit.contracts:
-                    #                     if c == base:
-                    #                         continue
-                    #                     if base in c.inheritance:
-                    #                         if print_debug:
-                    #                             print("Contract " + c.name + " inherits " + base.name)
-                    #                         base = c
-                    #                 self._is_upgradeable_proxy = True
-                    #                 return self._is_upgradeable_proxy
-                    #     else:
-                    #         if print_debug:
-                    #             print(self._delegates_to.location)
+        if print_debug:
+            print("\nEnd " + self.name + ".is_upgradeable_proxy\n")
         return self._is_upgradeable_proxy
 
     @property
@@ -1384,7 +1355,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self._delegates_to = None
             if self.fallback_function is not None:
                 if print_debug:
-                    print("\nBegin self.is_proxy\n" + self._name + " has fallback function\n")
+                    print("\nBegin " + self.name + ".is_proxy\n")
                 for node in self.fallback_function.all_nodes():
                     if print_debug:
                         print(str(node.type))
@@ -1453,11 +1424,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if len(expression.arguments) > 1:
                                     # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
                                     dest = expression.arguments[1]
+                                    if print_debug:
+                                        print("Destination is " + str(dest))
                                     if isinstance(dest, Identifier):
                                         print(dest.value.expression)
                                         self._delegates_to = dest.value
         if print_debug:
-            print("\nEnd self.is_proxy\n")
+            print("\nEnd " + self.name + ".is_proxy\n")
         return self._is_proxy
 
     @property
@@ -1495,6 +1468,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
         from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.call_expression import CallExpression
@@ -1507,7 +1481,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         delegates_to: Variable = None
 
         if print_debug:
-            print("\nBegin self.find_delegatecall_in_asm\n")
+            print("\nBegin " + self.name + ".find_delegatecall_in_asm\n")
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
             # see tests/proxies/ExampleYulAST.txt for an example
@@ -1525,11 +1499,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
                             for v in parent_func.variables_read:
-                                if print_debug:
-                                    print(str(v.expression))
-                                if v.name == dest["name"]:
-                                    delegates_to = v
-                                    break
+                                if isinstance(v, Variable):
+                                    if print_debug:
+                                        print(str(v.expression))
+                                    if v.name == dest["name"]:
+                                        delegates_to = v
+                                        break
                         break
         else:
             # TODO: break out corner cases to clean this mess up
@@ -1673,7 +1648,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 delegates_to.set_location(slot)
                                 break
         if print_debug:
-            print("\nEnd self.find_delegatecall_in_asm\n")
+            print("\nEnd " + self.name + ".find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
 
     @staticmethod
@@ -1689,14 +1664,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param var_to_set: the Variable to look for, or at least its name as a string
         :return: the function in contract which sets var_to_set, if found
         """
+        from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.expression_typed import ExpressionTyped
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
 
         print_debug = True
         setter = None
 
         if print_debug:
-            print("\nBegin self.find_setter_in_asm\n")
+            print("\nBegin " + contract.name + ".find_setter_in_asm\n")
         for f in contract.functions:
             if setter is not None:
                 break
@@ -1742,8 +1721,45 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             e))):
                                     setter = f
                                     break
+        if setter is None and "facet" in str(var_to_set):
+            """
+            Handle the corner case for EIP-2535 Diamond proxy
+            The function diamondCut is used to add/delete/modify logic contracts (it is the setter)
+            But, this function is implemented in a facet (logic) contract itself, i.e. DiamondCutFacet
+            This facet is added by the constructor, using LibDiamond.diamondCut, and subsequent calls
+            to diamondCut are handled by the fallback(), which delegates to the DiamondCutFacet
+            ex: /tests/proxies/DiamondFactory.sol
+            """
+            if print_debug:
+                print("\nBegin DiamondCut corner case handling\n")
+            constructor = contract.constructors_declared
+            for n in constructor.all_nodes():
+                if n.type == NodeType.EXPRESSION:
+                    exp = n.expression
+                    if print_debug:
+                        print(exp)
+                        if isinstance(exp, ExpressionTyped):
+                            print(exp.type)
+                    if isinstance(exp, CallExpression):
+                        print(exp.called)
+                        if "diamondCut" in str(exp.called):
+                            diamond_cut = exp.arguments[0]
+                            if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
+                                idiamond_cut = contract.compilation_unit.get_contract_from_name("IDiamondCut")
+                                cut_facet = idiamond_cut
+                                for c in contract.compilation_unit.contracts:
+                                    if c == idiamond_cut:
+                                        continue
+                                    if idiamond_cut in c.inheritance:
+                                        cut_facet = c
+                                for f in cut_facet.functions:
+                                    if f.name == "diamondCut":
+                                        setter = f
+                                        break
+            if print_debug:
+                print("\nEnd DiamondCut corner case handling\n")
         if print_debug:
-            print("\nEnd self.find_setter_in_asm\n")
+            print("\nEnd " + contract.name + ".find_setter_in_asm\n")
         return setter
 
     # endregion

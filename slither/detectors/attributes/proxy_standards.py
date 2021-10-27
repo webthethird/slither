@@ -78,7 +78,7 @@ or one of the proxy patterns developed by OpenZeppelin.
 
     def _detect(self):
         results = []
-
+        storage_inheritance_index = None    # Use to ensure
         for contract in self.contracts:
             if contract.is_upgradeable_proxy:
                 proxy = contract
@@ -99,15 +99,88 @@ or one of the proxy patterns developed by OpenZeppelin.
                     json = self.generate_result(info)
                     results.append(json)
                 elif isinstance(delegate, StateVariable):
-                    info = [
-                        proxy,
-                        " stores implementation as state variable: ",
-                        delegate,
-                        "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
-                        "EIP-1967, EIP-1822, Unstructured Storage, Eternal Storage or another well-audited pattern.\n"
-                    ]
-                    json = self.generate_result(info)
-                    results.append(json)
+                    if delegate.contract == proxy:
+                        info = [
+                            proxy,
+                            " stores implementation as state variable: ",
+                            delegate,
+                            "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
+                            "EIP-1967, EIP-1822, Unstructured Storage, Eternal Storage or another well-audited pattern.\n"
+                        ]
+                        json = self.generate_result(info)
+                        results.append(json)
+                    else:
+                        print("State variable " + delegate.name + " is in the inherited contract: "
+                              + delegate.contract.name)
+                        for idx, c in enumerate(proxy.inheritance_reverse):
+                            if idx == 0:
+                                suffix = "st"
+                            elif idx == 1:
+                                suffix = "nd"
+                            elif idx == 2:
+                                suffix = "rd"
+                            else:
+                                suffix = "th"
+                            if c == delegate.contract:
+                                info = [
+                                    proxy,
+                                    " stores implementation as state variable called ",
+                                    delegate,
+                                    " which is located in the inherited contract called ",
+                                    c,
+                                    "\nIf this is a storage contract which is shared with the logic contract, it is"
+                                    " essential that both have the same order of inheritance, i.e. the storage contract"
+                                    " must be the ",
+                                    str(idx + 1),
+                                    suffix,
+                                    " contract inherited, and any preceding inheritances must also be identical."
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                elif isinstance(delegate, LocalVariable) and delegate.location is not None \
+                        and "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" in delegate.location:
+                    print(proxy.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
+                    proxiable = proxy.compilation_unit.get_contract_from_name("Proxiable")
+                    if proxiable is not None:
+                        setter = proxiable.get_function_from_signature("updateCodeAddress(address)")
+                        if setter is not None:
+                            print("Found implementation setter " + setter.signature_str
+                                  + " in contract " + proxiable.name)
+                            for c in proxy.compilation_unit.contracts:
+                                if c == proxiable:
+                                    continue
+                                if proxiable in c.inheritance:
+                                    print("Contract " + c.name + " inherits " + proxiable.name)
+                                    proxiable = c
+                            info = [
+                                proxy,
+                                " appears to be an EIP-1822 Universal Upgradeable Proxy:\nThis proxy doesn't contain"
+                                " its own upgrade logic - it is in the logic contract which must inherit Proxiable.\n",
+                                proxiable,
+                                " appears to be the logic contract used by this proxy."
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        else:
+                            info = [
+                                proxy,
+                                " appears to be an EIP-1822 Universal Upgradeable Proxy:\nHowever, the Proxiable "
+                                "contract ",
+                                proxiable,
+                                " does not appear to contain the expected implementation setter, updateCodeAddress()."
+                                " If this is indeed an EIP-1822 logic contract, then it may no longer be upgradeable!"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                    else:
+                        info = [
+                            proxy,
+                            " appears to be an EIP-1822 Universal Upgradeable Proxy:\nThis proxy doesn't contain"
+                            " its own upgrade logic - it is in the logic contract which must inherit Proxiable.\n",
+                            "However, the Proxiable contract could not be found in the compilation unit."
+                        ]
+                        json = self.generate_result(info)
+                        results.append(json)
                 else:
                     constants = [variable for variable in proxy.variables if variable.is_constant]
                     setter = proxy.proxy_implementation_setter
