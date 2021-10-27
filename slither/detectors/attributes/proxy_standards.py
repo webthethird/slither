@@ -35,7 +35,7 @@ def find_slot_in_setter_asm(
     return slot
 
 
-class NonStandardProxy(AbstractDetector, ABC):
+class ProxyStandards(AbstractDetector, ABC):
     ARGUMENT = "proxy-standards"
     IMPACT = DetectorClassification.INFORMATIONAL
     CONFIDENCE = DetectorClassification.MEDIUM
