@@ -1109,11 +1109,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 ("\nChecking contract: " + self.name)
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
             if self.is_proxy and self._delegates_to is not None:
+                
+                # if the destination is a constant, return false
                 if self._delegates_to.is_constant:
                     if print_debug:
                         print("Call destination " + str(self._delegates_to) + " is constant\n")
                     self._is_upgradeable_proxy = False
                     return False
+                
+                # now find setter in the contract. If succeed, then the contract is upgradeable.
                 if print_debug:
                     print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setter\n")
                 self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to)
@@ -1124,80 +1128,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     self._is_upgradeable_proxy = True
                 elif print_debug:
                     print("\nCould not find implementation setter in " + self.name)
+                
+                # then find getter
                 if print_debug:
                     print("Looking for getter\n")
-                exp = self._delegates_to.expression
-                if exp is not None and isinstance(exp, CallExpression):
-                    print(exp)
-                    exp = exp.called
-                for f in self.functions:
-                    if self._proxy_impl_getter is not None:
-                        if print_debug:
-                            print("\n" + f.name + " appears to be the implementation getter\n")
-                        break
-                    if f.name is not None:
-                        if print_debug:
-                            print("Checking function: " + f.name)
-                        if exp is not None and f.name == str(exp) and len(f.all_nodes()) > 0:
-                            self._proxy_impl_getter = f
-                            if print_debug:
-                                print("\n" + f.name + " appears to be the implementation getter\n")
-                            break
-                    else:
-                        if print_debug:
-                            print("Unnamed function of type: " + str(f.function_type))
-                        continue
-                    if not f.name == "fallback" and "constructor" not in f.name.lower():
-                        if len(f.returns) > 0:
-                            for v in f.returns:
-                                if print_debug:
-                                    print(f.name + " returns " + str(v.type) + " variable " +
-                                          (("called " + v.name) if v.name != "" else ""))
-                                if str(v.type) == "address" and str(self._delegates_to).strip("_") in f.name:
-                                    if print_debug:
-                                        print("\n" + f.name + " appears to be the implementation getter\n")
-                                    self._proxy_impl_getter = f
-                                    break
+                self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to)
+                
+                # if both setter and getter can be found, then return true
                 if self._proxy_impl_getter is not None:
                     if self._proxy_impl_setter is not None:
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
                     else:
-                        """
-                        If we could only find the getter, but not the setter, make sure that the getter does not return
-                        a variable that can never be set (i.e. is practically constant, but not declared constant)
-                        Instead we would like to see if the getter returns the result of a call to another function,
-                        possibly a function in another contract.
-                        ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
-                            though AppProxyUpgradeable obviously should be
-                        """
-                        if print_debug:
-                            print("\nFound getter function but not setter\nChecking if getter calls any other function")
-                        for node in self._proxy_impl_getter.all_nodes():
-                            exp = node.expression
-                            if print_debug:
-                                print(str(node.type) + ": " + str(exp))
-                            if node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
-                                left = exp.expression_left
-                                right = exp.expression_right
-                                if isinstance(left, Identifier) and left.value == self._delegates_to:
-                                    print(right)
-                                    if isinstance(right, Identifier) and right.value.is_constant:
-                                        self._is_upgradeable_proxy = False
-                                        return self._is_upgradeable_proxy
-                                    elif isinstance(right, CallExpression):
-                                        print("Call Expression")
-                                        self._is_upgradeable_proxy = True
-                                        return self._is_upgradeable_proxy
-                                    elif isinstance(right, MemberAccess):
-                                        print("Member Access")
-                                        self._is_upgradeable_proxy = True
-                                        return self._is_upgradeable_proxy
-                            elif node.type == NodeType.RETURN:
-                                if isinstance(exp, CallExpression):
-                                    self._is_upgradeable_proxy = True
-                                    return self._is_upgradeable_proxy
-                                # elif isinstance(exp, Identifier) and isinstance(exp.value, StateVariable)
+                        return self.getter_return_non_constant()
+
+
                     # TODO: Generalize this method and move this logic to an upgradeability check
                     """
                     All of the commented out code below is for cross-contract analysis,
@@ -1350,6 +1295,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             print("\nEnd " + self.name + ".is_upgradeable_proxy\n")
         return self._is_upgradeable_proxy
 
+
+
     @property
     def is_proxy(self) -> bool:
         """
@@ -1471,8 +1418,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def find_delegatecall_in_asm(
             self,
             inline_asm: Union[str, Dict],
-            parent_func: Function
-    ) -> (bool, Optional["Variable"]):
+            parent_func: Function):
         """
         Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
         as well as the address Variable which the 'delegatecall' targets.
@@ -1684,6 +1630,98 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if print_debug:
             print("\nEnd " + self.name + ".find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
+
+
+    def getter_return_non_constant(self) -> bool:
+        """
+        If we could only find the getter, but not the setter, make sure that the getter does not return
+        a variable that can never be set (i.e. is practically constant, but not declared constant)
+        Instead we would like to see if the getter returns the result of a call to another function,
+        possibly a function in another contract.
+        ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
+            though AppProxyUpgradeable obviously should be
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+        
+        print_debug = True
+
+        if print_debug:
+            print("\nFound getter function but not setter\nChecking if getter calls any other function")
+        for node in self._proxy_impl_getter.all_nodes():
+            exp = node.expression
+            if print_debug:
+                print(str(node.type) + ": " + str(exp))
+            if node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
+                left = exp.expression_left
+                right = exp.expression_right
+                if isinstance(left, Identifier) and left.value == self._delegates_to:
+                    print(right)
+                    if isinstance(right, Identifier) and right.value.is_constant:
+                        self._is_upgradeable_proxy = False
+                        return self._is_upgradeable_proxy
+                    elif isinstance(right, CallExpression):
+                        print("Call Expression")
+                        self._is_upgradeable_proxy = True
+                        return self._is_upgradeable_proxy
+                    elif isinstance(right, MemberAccess):
+                        print("Member Access")
+                        self._is_upgradeable_proxy = True
+                        return self._is_upgradeable_proxy
+            elif node.type == NodeType.RETURN:
+                if isinstance(exp, CallExpression):
+                    self._is_upgradeable_proxy = True
+                    return self._is_upgradeable_proxy
+                # elif isinstance(exp, Identifier) and isinstance(exp.value, StateVariable)
+
+
+
+    @staticmethod
+    def find_getter_in_contract(contract: "Contract", var_to_set: Union[str, "Variable"]) -> Optional[Function]:
+        from slither.core.expressions.call_expression import CallExpression
+        print_debug = True
+        setter = None
+        
+        exp = var_to_set.expression
+        if exp is not None and isinstance(exp, CallExpression):
+            print(exp)
+            exp = exp.called
+        for f in contract.functions:
+            if contract._proxy_impl_getter is not None:
+                if print_debug:
+                    print("\n" + f.name + " appears to be the implementation getter\n")
+                break
+            if f.name is not None:
+                if print_debug:
+                    print("Checking function: " + f.name)
+                if exp is not None and f.name == str(exp) and len(f.all_nodes()) > 0:
+                    setter = f
+                    if print_debug:
+                        print("\n" + f.name + " appears to be the implementation getter\n")
+                    break
+            else:
+                if print_debug:
+                    print("Unnamed function of type: " + str(f.function_type))
+                continue
+            if not f.name == "fallback" and "constructor" not in f.name.lower():
+                if len(f.returns) > 0:
+                    for v in f.returns:
+                        if print_debug:
+                            print(f.name + " returns " + str(v.type) + " variable " +
+                                    (("called " + v.name) if v.name != "" else ""))
+                        if str(v.type) == "address" and str(var_to_set).strip("_") in f.name:
+                            if print_debug:
+                                print("\n" + f.name + " appears to be the implementation getter\n")
+                            setter = f
+                            break
+        return setter
+
+
+
+
 
     @staticmethod
     def find_setter_in_contract(
