@@ -1095,7 +1095,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
 
@@ -1132,6 +1132,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     exp = exp.called
                 for f in self.functions:
                     if self._proxy_impl_getter is not None:
+                        if print_debug:
+                            print("\n" + f.name + " appears to be the implementation getter\n")
                         break
                     if f.name is not None:
                         if print_debug:
@@ -1169,14 +1171,29 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
                             though AppProxyUpgradeable obviously should be
                         """
+                        if print_debug:
+                            print("\nFound getter function but not setter\nChecking if getter calls any other function")
                         for node in self._proxy_impl_getter.all_nodes():
+                            exp = node.expression
                             if print_debug:
-                                print(str(node.type) + ": " + str(node.expression))
-                            if node.type == NodeType.VARIABLE and node.variable_declaration == self._delegates_to:
-                                if print_debug:
-                                    print(node.expression)
+                                print(str(node.type) + ": " + str(exp))
+                            if node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
+                                left = exp.expression_left
+                                right = exp.expression_right
+                                if isinstance(left, Identifier) and left.value == self._delegates_to:
+                                    print(right)
+                                    if isinstance(right, Identifier) and right.value.is_constant:
+                                        self._is_upgradeable_proxy = False
+                                        return self._is_upgradeable_proxy
+                                    elif isinstance(right, CallExpression):
+                                        print("Call Expression")
+                                        self._is_upgradeable_proxy = True
+                                        return self._is_upgradeable_proxy
+                                    elif isinstance(right, MemberAccess):
+                                        print("Member Access")
+                                        self._is_upgradeable_proxy = True
+                                        return self._is_upgradeable_proxy
                             elif node.type == NodeType.RETURN:
-                                exp = node.expression
                                 if isinstance(exp, CallExpression):
                                     self._is_upgradeable_proxy = True
                                     return self._is_upgradeable_proxy
@@ -1474,7 +1491,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.identifier import Identifier
         from slither.core.solidity_types.elementary_type import ElementaryType
-        from slither.analyses.data_dependency import data_dependency
 
         print_debug = True
         is_proxy = False
@@ -1539,20 +1555,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             elif isinstance(v, LocalVariable):
                                 print(v.expression)
                     if delegates_to is None:
-                        for p in parent_func.parameters:
-                            """
-                            Testing out data_dependency here, using /tests/proxies/App.sol
-                            It seems that get_dependencies(p, self) and get_dependencies(p, parent_func), where 
-                            p is a function parameter, both return just one variable called 'TMP_89'.
-                            """
-                            if p.name == dest and str(p.type) == "address":
-                                if print_debug:
-                                    print("Found " + dest + ": it is a parameter of the function " + parent_func.name)
-                                    print("Checking data dependency")
-                                dependencies = data_dependency.get_dependencies(p, parent_func)
-                                for d in dependencies:
-                                    print(d.name)   # Do nothing but print debug info for now
-                        for f in self.functions:
+                        for idx, p in enumerate(parent_func.parameters):
                             """
                             Handles the common case in which fallback calls _delegate(_implementation()),
                             and where the signature for _delegate is _delegate(address implementation)
@@ -1560,20 +1563,51 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             that variable can't be found anywhere else and there's no other variable to trace it back to
                             ex: /tests/proxies/App.sol
                             """
-                            if dest in f.name.lower():
+                            if p.name == dest and str(p.type) == "address":
                                 if print_debug:
-                                    print("Found '" + dest + "' in function named " + f.name)
-                                if len(f.returns) > 0:
-                                    for ret in f.returns:
-                                        if str(ret.type) == "address":
-                                            if print_debug:
-                                                print("Which returns address " + str(ret))
-                                            delegates_to = ret
-                                            if ret.name == "":
-                                                delegates_to.name = f.name
-                                            break
-                                    if delegates_to is not None:
-                                        break
+                                    print("Found " + dest + ": it is a parameter of the function " + parent_func.name)
+                                for n in self.fallback_function.all_nodes():
+                                    if n.type == NodeType.EXPRESSION:
+                                        exp = n.expression
+                                        if isinstance(exp, CallExpression) and str(exp.called) == parent_func.name:
+                                            arg = exp.arguments[idx]
+                                            print(parent_func.name + " is passed in the argument " + str(arg))
+                                            if isinstance(arg, CallExpression):
+                                                called = arg.called
+                                                if isinstance(called, Identifier):
+                                                    val = called.value
+                                                    if isinstance(val, Function) and len(val.returns) > 0:
+                                                        delegates_to = val.returns[0]
+                                                        if delegates_to.name == "":
+                                                            delegates_to.name = dest
+                                                        self._proxy_impl_getter = val
+                                                        print("Found getter function which is the source of " + dest)
+                                                        break
+                                break
+                        """
+                        Do not rely on looking for dest in function names, which may be arbitrary.
+                        The code above accomplishes the same, but does not manipulate any strings before comparing.
+                        
+                        i.e. Rather than searching all of the functions and checking if dest in f.name.lower(),
+                             we instead follow the chain of CallExpressions back to find the source of the 
+                             address parameter used in the delegatecall expression. This has the added benefit that 
+                             this also reveals the implementation getter, self._proxy_impl_getter, ahead of time
+                        """
+                        # for f in self.functions:
+                        #     if dest in f.name.lower():
+                        #         if print_debug:
+                        #             print("Found '" + dest + "' in function named " + f.name)
+                        #         if len(f.returns) > 0:
+                        #             for ret in f.returns:
+                        #                 if str(ret.type) == "address":
+                        #                     if print_debug:
+                        #                         print("Which returns address " + str(ret))
+                        #                     delegates_to = ret
+                        #                     if ret.name == "":
+                        #                         delegates_to.name = f.name
+                        #                     break
+                        #             if delegates_to is not None:
+                        #                 break
                     break
             if is_proxy and delegates_to is None and dest is not None:
                 """
