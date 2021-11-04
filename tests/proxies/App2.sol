@@ -394,7 +394,7 @@ contract BaseUpgradeabilityProxy is Proxy {
   function _implementation() internal view override returns (address impl) {
     bytes32 slot = IMPLEMENTATION_SLOT;
     assembly {
-      impl := sload(slot)
+      impl := sload  (slot)
     }
   }
 

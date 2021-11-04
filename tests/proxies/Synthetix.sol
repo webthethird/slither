@@ -127,8 +127,7 @@ into the underlying contract as the state parameter, messageSender.
 */
 
 
-contract Proxy is Owned {
-
+contract Proxy {
     Proxyable public target;
     bool public useDELEGATECALL;
 
@@ -189,6 +188,7 @@ contract Proxy is Owned {
         payable
     {
         if (useDELEGATECALL) {
+            target_slot = 0
             assembly {
                 /* Copy call data into free memory region. */
                 let free_ptr := mload(0x40)

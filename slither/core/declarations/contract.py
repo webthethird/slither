@@ -1309,47 +1309,43 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.cfg.node import NodeType
 
         print_debug = True
-        self._is_proxy = False
 
-        if self._is_proxy is not None:
-            print("\nEnd " + self.name + ".is_proxy\n")
-            return self._is_proxy
+        if self._is_proxy is None:
+            self._is_proxy = False
 
-        self._is_proxy = False
-        if self.fallback_function is None:
-            print("\nEnd " + self.name + ".is_proxy\n")
-            return self._is_proxy
+            if self.fallback_function is None:
+                print("\nEnd " + self.name + ".is_proxy\n")
+                return self._is_proxy
 
-        
-        self._delegates_to = None
+            self._delegates_to = None
 
-        if print_debug:
-            print("\nBegin " + self.name + ".is_proxy\n")
-        for node in self.fallback_function.all_nodes():
             if print_debug:
-                print(str(node.type))
-            
-            # first try to find a delegetecall in non-assembly code region
-            self._is_proxy, self._delegates_to = self.find_delegatecall(node, print_debug)
-            if self._is_proxy and self._delegates_to is not None:
-                break
-
-            # then try to find delegatecall in assembly region
-            if node.type == NodeType.ASSEMBLY:
-                """
-                Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
-                That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
-                """
+                print("\nBegin " + self.name + ".is_proxy\n")
+            for node in self.fallback_function.all_nodes():
                 if print_debug:
-                    print("\nFound Assembly Node\n")
-                if node.inline_asm:
-                    # print("\nFound Inline ASM\n")
-                    (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm,
-                                                                                            node.function)
-                    if self._is_proxy and self._delegates_to is not None:
-                        break
-            elif node.type == NodeType.EXPRESSION:
-                self.is_proxy, self._delegates_to = self.handle_assembly_in_version_0_6_0_and_above(node, print_debug)
+                    print(str(node.type))
+
+                # first try to find a delegetecall in non-assembly code region
+                self._is_proxy, self._delegates_to = self.find_delegatecall(node, print_debug)
+                if self._is_proxy and self._delegates_to is not None:
+                    break
+
+                # then try to find delegatecall in assembly region
+                if node.type == NodeType.ASSEMBLY:
+                    """
+                    Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
+                    That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
+                    """
+                    if print_debug:
+                        print("\nFound Assembly Node\n")
+                    if node.inline_asm:
+                        # print("\nFound Inline ASM\n")
+                        self._is_proxy, self._delegates_to = self.find_delegatecall_in_asm(node.inline_asm,
+                                                                                                node.function)
+                        if self._is_proxy and self._delegates_to is not None:
+                            break
+                elif node.type == NodeType.EXPRESSION:
+                    self._is_proxy, self._delegates_to = self.handle_assembly_in_version_0_6_0_and_above(node, print_debug)
 
 
         if print_debug:
@@ -1358,7 +1354,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
 
 
-
+    """
+    Getters for attributes set by self.is_proxy and self.is_upgradeable_proxy
+    """
     @property
     def delegates_to(self) -> Optional["Variable"]:
         if self.is_proxy:
