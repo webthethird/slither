@@ -1120,7 +1120,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
                 if print_debug:
                     print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setter\n")
-                self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to)
+                self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to, print_debug)
                 if self._proxy_impl_setter is not None:
                     if print_debug:
                         print("\nImplementation set by function: " + self._proxy_impl_setter.name + " in contract: "
@@ -1132,15 +1132,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 # then find getter
                 if print_debug:
                     print("Looking for getter\n")
-                self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to)
+                self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to, print_debug)
                 
                 # if both setter and getter can be found, then return true
+                # Otherwise, at lest the getter's return is non-constant
                 if self._proxy_impl_getter is not None:
                     if self._proxy_impl_setter is not None:
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
                     else:
-                        return self.getter_return_non_constant()
+                        return self.getter_return_is_non_constant(print_debug)
 
 
                     # TODO: Generalize this method and move this logic to an upgradeability check
@@ -1306,96 +1307,57 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: True if 'delegatecall' is found in fallback function, otherwise False
         """
         from slither.core.cfg.node import NodeType
-        from slither.slithir.operations import LowLevelCall
-        from slither.core.expressions.expression_typed import ExpressionTyped
-        from slither.core.expressions.assignment_operation import AssignmentOperation
-        from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.identifier import Identifier
 
         print_debug = True
+        self._is_proxy = False
 
-        if self._is_proxy is None:
-            self._is_proxy = False
-            self._delegates_to = None
-            if self.fallback_function is not None:
+        if self._is_proxy is not None:
+            print("\nEnd " + self.name + ".is_proxy\n")
+            return self._is_proxy
+
+        self._is_proxy = False
+        if self.fallback_function is None:
+            print("\nEnd " + self.name + ".is_proxy\n")
+            return self._is_proxy
+
+        
+        self._delegates_to = None
+
+        if print_debug:
+            print("\nBegin " + self.name + ".is_proxy\n")
+        for node in self.fallback_function.all_nodes():
+            if print_debug:
+                print(str(node.type))
+            
+            # first try to find a delegetecall in non-assembly code region
+            self._is_proxy, self._delegates_to = self.find_delegatecall(node, print_debug)
+            if self._is_proxy and self._delegates_to is not None:
+                break
+
+            # then try to find delegatecall in assembly region
+            if node.type == NodeType.ASSEMBLY:
+                """
+                Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
+                That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
+                """
                 if print_debug:
-                    print("\nBegin " + self.name + ".is_proxy\n")
-                for node in self.fallback_function.all_nodes():
-                    if print_debug:
-                        print(str(node.type))
-                    for ir in node.irs:
-                        """
-                        Handles finding delegatecall outside of an assembly block, 
-                        i.e. delegate.delegatecall(msg.data)  
-                        ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability) 
-                        """
-                        if isinstance(ir, LowLevelCall):
-                            if print_debug:
-                                print("\nFound LowLevelCall\n")
-                            if ir.function_name == "delegatecall":
-                                if print_debug:
-                                    print("\nFound delegatecall in LowLevelCall\n")
-                                self._is_proxy = True
-                                self._delegates_to = ir.destination
+                    print("\nFound Assembly Node\n")
+                if node.inline_asm:
+                    # print("\nFound Inline ASM\n")
+                    (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm,
+                                                                                            node.function)
                     if self._is_proxy and self._delegates_to is not None:
                         break
-                    if node.type == NodeType.ASSEMBLY:
-                        """
-                        Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
-                        That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
-                        """
-                        if print_debug:
-                            print("\nFound Assembly Node\n")
-                        if node.inline_asm:
-                            # print("\nFound Inline ASM\n")
-                            (self._is_proxy, self._delegates_to) = self.find_delegatecall_in_asm(node.inline_asm,
-                                                                                                 node.function)
-                            if self._is_proxy and self._delegates_to is not None:
-                                break
-                    elif node.type == NodeType.EXPRESSION:
-                        """
-                        For versions >= 0.6.0, in addition to Assembly nodes as seen above, it seems that 
-                        Slither creates Expression nodes for expressions within an inline assembly block.
-                        This is convenient, because sometimes self.find_delegatecall_in_asm fails to find 
-                        the target Variable self._delegates_to, so this serves as a fallback for such cases.
-                        ex: /tests/proxies/App2.sol (for comparison, /tests/proxies/App.sol is an earlier version)
-                        """
-                        expression = node.expression
-                        if print_debug:
-                            print("Found Expression Node: " + str(expression))
-                        if isinstance(expression, ExpressionTyped):
-                            if print_debug:
-                                print("Expression Type: " + str(expression.type))
-                            if isinstance(expression, AssignmentOperation):
-                                """
-                                Handles the common case like this: 
-                                let result := delegatecall(gas, implementation, 0, calldatasize, 0, 0)
-                                """
-                                expression = expression.expression_right
-                                if print_debug:
-                                    print("Checking right side of assignment expression...")
-                        if isinstance(expression, CallExpression):
-                            if print_debug:
-                                print("Expression called: " + str(expression.called) + "\nType of call:"
-                                      + expression.type_call + "\nArgs:")
-                                if len(expression.arguments) > 0:
-                                    for arg in expression.arguments:
-                                        print(str(arg))
-                            if "delegatecall" in str(expression.called):
-                                self._is_proxy = True
-                                if print_debug:
-                                    print("\nFound delegatecall in expression:\n" + str(expression.called) + "\n")
-                                if len(expression.arguments) > 1:
-                                    # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
-                                    dest = expression.arguments[1]
-                                    if print_debug:
-                                        print("Destination is " + str(dest))
-                                    if isinstance(dest, Identifier):
-                                        print(dest.value.expression)
-                                        self._delegates_to = dest.value
+            elif node.type == NodeType.EXPRESSION:
+                self.is_proxy, self._delegates_to = self.handle_assembly_in_version_0_6_0_and_above(node, print_debug)
+
+
         if print_debug:
             print("\nEnd " + self.name + ".is_proxy\n")
         return self._is_proxy
+
+
+
 
     @property
     def delegates_to(self) -> Optional["Variable"]:
@@ -1632,7 +1594,81 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return is_proxy, delegates_to
 
 
-    def getter_return_non_constant(self) -> bool:
+    def find_delegatecall(self, node, print_debug):
+        """
+        Handles finding delegatecall outside of an assembly block, 
+        i.e. delegate.delegatecall(msg.data)  
+        ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability) 
+        """
+        from slither.slithir.operations import LowLevelCall
+    
+        for ir in node.irs:
+            if isinstance(ir, LowLevelCall):
+                if print_debug:
+                    print("\nFound LowLevelCall\n")
+                if ir.function_name == "delegatecall":
+                    if print_debug:
+                        print("\nFound delegatecall in LowLevelCall\n")
+                    return True, ir.destination
+        return False, None
+
+
+
+    def handle_assembly_in_version_0_6_0_and_above(self, node, print_debug):
+        """
+        For versions >= 0.6.0, in addition to Assembly nodes as seen above, it seems that 
+        Slither creates Expression nodes for expressions within an inline assembly block.
+        This is convenient, because sometimes self.find_delegatecall_in_asm fails to find 
+        the target Variable self._delegates_to, so this serves as a fallback for such cases.
+        ex: /tests/proxies/App2.sol (for comparison, /tests/proxies/App.sol is an earlier version)
+        """
+        from slither.core.expressions.expression_typed import ExpressionTyped
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+        is_proxy = False
+        delegate_to = None
+
+        expression = node.expression
+        if print_debug:
+            print("Found Expression Node: " + str(expression))
+        if isinstance(expression, ExpressionTyped):
+            if print_debug:
+                print("Expression Type: " + str(expression.type))
+            if isinstance(expression, AssignmentOperation):
+                """
+                Handles the common case like this: 
+                let result := delegatecall(gas, implementation, 0, calldatasize, 0, 0)
+                """
+                expression = expression.expression_right
+                if print_debug:
+                    print("Checking right side of assignment expression...")
+        if isinstance(expression, CallExpression):
+            if print_debug:
+                print("Expression called: " + str(expression.called) + "\nType of call:"
+                        + expression.type_call + "\nArgs:")
+                if len(expression.arguments) > 0:
+                    for arg in expression.arguments:
+                        print(str(arg))
+            if "delegatecall" in str(expression.called):
+                is_proxy = True
+                if print_debug:
+                    print("\nFound delegatecall in expression:\n" + str(expression.called) + "\n")
+                if len(expression.arguments) > 1:
+                    # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
+                    dest = expression.arguments[1]
+                    if print_debug:
+                        print("Destination is " + str(dest))
+                    if isinstance(dest, Identifier):
+                        print(dest.value.expression)
+                        delegate_to = dest.value
+
+
+        return is_proxy, delegate_to
+
+
+
+    def getter_return_is_non_constant(self, print_debug) -> bool:
         """
         If we could only find the getter, but not the setter, make sure that the getter does not return
         a variable that can never be set (i.e. is practically constant, but not declared constant)
@@ -1646,8 +1682,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
-        
-        print_debug = True
 
         if print_debug:
             print("\nFound getter function but not setter\nChecking if getter calls any other function")
@@ -1680,9 +1714,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
 
     @staticmethod
-    def find_getter_in_contract(contract: "Contract", var_to_set: Union[str, "Variable"]) -> Optional[Function]:
+    def find_getter_in_contract(contract: "Contract", var_to_set: Union[str, "Variable"], print_debug) -> Optional[Function]:
         from slither.core.expressions.call_expression import CallExpression
-        print_debug = True
         setter = None
         
         exp = var_to_set.expression
@@ -1726,7 +1759,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @staticmethod
     def find_setter_in_contract(
             contract: "Contract",
-            var_to_set: Union[str, "Variable"]
+            var_to_set: Union[str, "Variable"],
+            print_debug: "bool"
     ) -> Optional[Function]:
         """
         Tries to find the setter function for a given variable.
@@ -1743,7 +1777,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.identifier import Identifier
 
-        print_debug = True
         setter = None
 
         if print_debug:
