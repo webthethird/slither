@@ -102,6 +102,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     json = self.generate_result(info)
                     results.append(json)
                 elif isinstance(delegate, StateVariable):
+                    print("delegate.contract = " + str(delegate.contract) + "\nproxy = " + str(proxy))
                     if delegate.contract == proxy:
                         info = [
                             proxy,
@@ -136,7 +137,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     " must be the ",
                                     str(idx + 1),
                                     suffix,
-                                    " contract inherited, and any preceding inheritances must also be identical."
+                                    " contract inherited, and any preceding inheritances must also be identical.\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
@@ -171,7 +172,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 "contract ",
                                 proxiable,
                                 " does not appear to contain the expected implementation setter, updateCodeAddress()."
-                                " If this is indeed an EIP-1822 logic contract, then it may no longer be upgradeable!"
+                                " If this is indeed an EIP-1822 logic contract, then it may no longer be upgradeable!\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -180,7 +181,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             proxy,
                             " appears to be an EIP-1822 Universal Upgradeable Proxy:\nThis proxy doesn't contain"
                             " its own upgrade logic - it is in the logic contract which must inherit Proxiable.\n",
-                            "However, the Proxiable contract could not be found in the compilation unit."
+                            "However, the Proxiable contract could not be found in the compilation unit.\n"
                         ]
                         json = self.generate_result(info)
                         results.append(json)
@@ -235,7 +236,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     break
                                 elif isinstance(node.expression, Identifier):
                                     print("This return node is a variable Identifier")
-                                elif node.expression.type is not None:
+                                elif isinstance(node.expression, ExpressionTyped):
                                     print(node.expression.type)
                             elif node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
                                 left = exp.expression_left
@@ -263,10 +264,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     info = [
                                         "Implementation getter for proxy contract ",
                                         proxy,
-                                        " appears to make a call to a constant address variable:\n",
-                                        setter,
-                                        "\n"
+                                        " appears to make a call to a constant address variable: ",
+                                        val,
+                                        "\nWithout the Contract associated with this we cannot confirm upgradeability\n"
                                     ]
+                                    if "beacon" in val.name.lower():
+                                        info.append("However, it appears to be the address of an Upgrade Beacon\n")
                                     json = self.generate_result(info)
                                     results.append(json)
                             if call_type is not None:
