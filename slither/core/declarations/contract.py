@@ -1393,18 +1393,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param parent_func: The function associated with the assembly node (may be another function called by fallback)
         :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
-        from slither.core.cfg.node import NodeType
-        from slither.core.variables.variable import Variable
-        from slither.core.variables.state_variable import StateVariable
-        from slither.core.variables.local_variable import LocalVariable
-        from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.identifier import Identifier
-        from slither.core.expressions.assignment_operation import AssignmentOperation
-        from slither.core.solidity_types.elementary_type import ElementaryType
 
         print_debug = True
         is_proxy = False
         delegates_to: Variable = None
+        asm_split = None
+        dest = None
 
         if print_debug:
             print("\nBegin " + self.name + ".find_delegatecall_in_asm\n")
@@ -1424,16 +1418,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         args = statement["arguments"]
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
-                            for v in parent_func.variables_read:
-                                if isinstance(v, Variable):
-                                    if print_debug:
-                                        print(str(v.expression))
-                                    if v.name == dest["name"]:
-                                        delegates_to = v
-                                        break
+                            dest = dest["name"]
                         break
         else:
-            # TODO: break out corner cases to clean this mess up
             asm_split = inline_asm.split("\n")
             dest = None
             for asm in asm_split:
@@ -1452,192 +1439,248 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             dest = params[2]
                     if print_debug:
                         print("\nFound delegatecall in inline asm")
-                        print("Destination param is called '" + dest + "'\nChecking variables read\n")
+                        print("Destination param is called '" + dest + "'\nLooking for corresponding Variable\n")
                         print("Current function: " + parent_func.name)
-                    for v in parent_func.variables_read:
-                        if print_debug:
-                            print(str(v))
-                        if v.name == dest:
-                            if isinstance(v, StateVariable):
-                                delegates_to = v
-                                if print_debug:
-                                    print("Destination variable is " + str(v))
-                                    if delegates_to.type is not None:
-                                        print("which has type: " + str(v.type))
-                                break
-                            elif isinstance(v, LocalVariable):
-                                """
-                                Handle the case where a local variable is passed in as the delegatecall target param,
-                                but that local variable is declared earlier in the fallback function, by assigning it
-                                either the value of a state variable or the value returned by another function.
-                                ex: /tests/proxies/BASIC.sol
-                                function () payable external {
-                                    address impl = implementation;
-                                    assembly {
-                                        let result := delegatecall(gas, impl, ptr, calldatasize, 0, 0)
-                                    }
-                                }
-                                """
-                                if v.name == dest:
-                                    if print_debug:
-                                        print(dest + " is a local variable in the function " + parent_func.name)
-                                        print("Checking expression")
-                                    if v.expression is not None:
-                                        exp = v.expression
-                                        if print_debug:
-                                            print("Expression: " + str(exp))
-                                        if isinstance(exp, Identifier):
-                                            if isinstance(exp.value, StateVariable):
-                                                if print_debug:
-                                                    print("is a StateVariable")
-                                                delegates_to = exp.value
-                                                break
-                                        elif isinstance(exp, CallExpression):
-                                            if print_debug:
-                                                print("is a CallExpression")
-                                            called = exp.called
-                                            if isinstance(called, Identifier):
-                                                val = called.value
-                                                if isinstance(val, Function) and str(val.return_type) == "address":
-                                                    delegates_to = val.returns[0]
-                                                    break
-                    if delegates_to is None:
-                        for idx, p in enumerate(parent_func.parameters):
-                            """
-                            Handles the common case in which fallback calls _delegate(_implementation()),
-                            and where the signature for _delegate is _delegate(address implementation)
-                            i.e. the function parameter 'implementation' w/o underscore is passed to delegatecall, but 
-                            that variable can't be found anywhere else and there's no other variable to trace it back to
-                            ex: /tests/proxies/App.sol
-                            """
-                            if p.name == dest and str(p.type) == "address":
-                                if print_debug:
-                                    print("Found " + dest + ": it is a parameter of the function " + parent_func.name)
-                                for n in self.fallback_function.all_nodes():
-                                    if n.type == NodeType.EXPRESSION:
-                                        exp = n.expression
-                                        if isinstance(exp, CallExpression) and str(exp.called) == parent_func.name:
-                                            arg = exp.arguments[idx]
-                                            print(parent_func.name + " is passed in the argument " + str(arg))
-                                            if isinstance(arg, CallExpression):
-                                                called = arg.called
-                                                if isinstance(called, Identifier):
-                                                    val = called.value
-                                                    if isinstance(val, Function) and len(val.returns) > 0:
-                                                        delegates_to = val.returns[0]
-                                                        if delegates_to.name == "":
-                                                            delegates_to.name = dest
-                                                        self._proxy_impl_getter = val
-                                                        print("Found getter function which is the source of " + dest)
-                                                        break
-                                    #     elif isinstance(exp, AssignmentOperation):
-                                    #         right = exp.expression_right
-                                    #         left = exp.expression_left
-                                    #         if isinstance(left, Identifier) and left.value.name
-                                    # elif n.type == NodeType.VARIABLE and n.variable_declaration is not None:
-                                    #     var = n.variable_declaration
-                                    #
-                                break
-                        """
-                        Do not rely on looking for dest in function names, which may be arbitrary.
-                        The code above accomplishes the same, but does not manipulate any strings before comparing.
-                        
-                        i.e. Rather than searching all of the functions and checking if dest in f.name.lower(),
-                             we instead follow the chain of CallExpressions back to find the source of the 
-                             address parameter used in the delegatecall expression. This has the added benefit that 
-                             this also reveals the implementation getter, self._proxy_impl_getter, ahead of time
-                        """
-                        # for f in self.functions:
-                        #     if dest in f.name.lower():
-                        #         if print_debug:
-                        #             print("Found '" + dest + "' in function named " + f.name)
-                        #         if len(f.returns) > 0:
-                        #             for ret in f.returns:
-                        #                 if str(ret.type) == "address":
-                        #                     if print_debug:
-                        #                         print("Which returns address " + str(ret))
-                        #                     delegates_to = ret
-                        #                     if ret.name == "":
-                        #                         delegates_to.name = f.name
-                        #                     break
-                        #             if delegates_to is not None:
-                        #                 break
                     break
-            if is_proxy and delegates_to is None and dest is not None:
-                """
-                This means we extracted the name of the address variable passed as the second parameter
-                to delegatecall, but could not find a state variable or getter function that matches it.
-                ex: /tests/proxies/APMRegistry.sol, in which we find '_dst' but want 'target':
-                function () payable public {
-                    address target = getCode();
-                    delegatedFwd(target, msg.data);
-                }
-                function delegatedFwd(address _dst, bytes _calldata) internal {
-                    assembly {
-                        let result := delegatecall(sub(gas, 10000), _dst, add(_calldata, 0x20), mload(_calldata), 0, 0)
-                        ...
-                    }
-                }
-                """
-                if print_debug:
-                    print("Could not find state variable or getter function for " + dest)
-                for node in self.fallback_function.all_nodes():
-                    print(node.type)
-                    if node.type == NodeType.VARIABLE:
-                        print(node.expression)
-                        if node.variable_declaration is not None and node.variable_declaration.name == dest:
-                            print("Found variable declaration for " + dest + "!")
-                            delegates_to = node.variable_declaration
-                    elif node.type == NodeType.EXPRESSION:
-                        exp = node.expression
-                        print(exp)
-                        if isinstance(exp, CallExpression):
-                            print(exp.called)
-                            _dest = None
-                            for f in self.functions:
-                                if f.name == str(exp.called):
-                                    print("Found the function called " + f.name)
-                                    for idx, v in enumerate(f.parameters):
-                                        if v.name == dest and str(v.type) == "address":
-                                            print(dest + " is a parameter passed to " + f.name)
-                                            _dest = idx
-                                            break
-                                    if _dest is not None:
-                                        break
-                            if _dest is not None:
-                                arg = exp.arguments[_dest]
-                                if isinstance(arg, Identifier) and str(arg.value.type) == "address":
-                                    delegates_to = arg.value
-                                    print(arg.value.expression)
-                                    break
-                if delegates_to is None:
-                    """
-                    Finally, here I am trying to handle the case where there are no variables at all in the proxy,
-                    except for one defined within the assembly block itself and the slot hardcoded as seen below.
-                    In such an instance, there is literally no Variable object to assign to self._delegates_to,
-                    so we attempt to create a new one if appropriate
-                    ex: /tests/proxies/EIP1822Token.sol
-                    function() external payable {
-                        assembly { // solium-disable-line
-                            let logic := sload(0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7)
-                            calldatacopy(0x0, 0x0, calldatasize)
-                            let success := delegatecall(sub(gas, 10000), logic, 0x0, calldatasize, 0, 0)
-                            ...
-                        }
-                    }
-                    """
-                    for asm in asm_split:
-                        if dest in asm and "= sload(" in asm:
-                            slot = asm.split("(", 1)[1].strip(")")
-                            if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
-                                delegates_to = LocalVariable()
-                                delegates_to.set_type(ElementaryType("address"))
-                                delegates_to.name = dest
-                                delegates_to.set_location(slot)
-                                break
+        if is_proxy and delegates_to is None and dest is not None:
+            """
+            Now that we extracted the name of the address variable passed as the second parameter to delegatecall, 
+            we need to find the correct Variable object to ultimately assign to self._delegates_to.
+            """
+            delegates_to = self.find_delegate_in_variables_read(dest, parent_func, print_debug)
+            if delegates_to is None:
+                delegates_to = self.find_delegate_source_getter_passed_as_param(dest, parent_func, print_debug)
+            if delegates_to is None:
+                delegates_to = self.find_delegate_source_changed_name_from_dest(dest, print_debug)
+            if delegates_to is None and asm_split is not None:
+                delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest)
         if print_debug:
             print("\nEnd " + self.name + ".find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
+
+    def find_delegate_in_variables_read(
+            self,
+            dest: str,
+            parent_func: Function,
+            print_debug: bool
+    ) -> Optional["Variable"]:
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        delegates_to = None
+        if print_debug:
+            print("\nBegin " + self.name + ".find_delegate_in_variables_read\n")
+        for v in parent_func.variables_read:
+            if print_debug:
+                print(str(v))
+            if v is not None and v.name == dest:
+                if isinstance(v, StateVariable):
+                    delegates_to = v
+                    if print_debug:
+                        print("Destination variable is " + str(v))
+                        if delegates_to.type is not None:
+                            print("which has type: " + str(v.type))
+                    break
+                elif isinstance(v, LocalVariable):
+                    """
+                    Handle the case where a local variable is passed in as the delegatecall target param,
+                    but that local variable is declared earlier in the fallback function, by assigning it
+                    either the value of a state variable or the value returned by another function.
+                    ex: /tests/proxies/BASIC.sol
+                    function () payable external {
+                        address impl = implementation;
+                        assembly {
+                            let result := delegatecall(gas, impl, ptr, calldatasize, 0, 0)
+                        }
+                    }
+                    """
+                    if print_debug:
+                        print(dest + " is a local variable in the function " + parent_func.name)
+                        print("Checking expression")
+                    if v.expression is not None:
+                        exp = v.expression
+                        if print_debug:
+                            print("Expression: " + str(exp))
+                        if isinstance(exp, Identifier):
+                            if isinstance(exp.value, StateVariable):
+                                if print_debug:
+                                    print("is a StateVariable")
+                                delegates_to = exp.value
+                                break
+                        elif isinstance(exp, CallExpression):
+                            if print_debug:
+                                print("is a CallExpression")
+                            delegates_to = Contract.get_named_return_variable_from_call_exp(exp)
+                            if delegates_to is not None:
+                                break
+        if print_debug:
+            print("\nEnd " + self.name + ".find_delegate_in_variables_read\n")
+        return delegates_to
+
+    @staticmethod
+    def get_named_return_variable_from_call_exp(exp) -> Optional["Variable"]:
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        return_var = None
+        if isinstance(exp, CallExpression):
+            called = exp.called
+            if isinstance(called, Identifier):
+                val = called.value
+                if isinstance(val, Function):
+                    if val.returns[0].name is not None and val.returns[0].name != "":
+                        return_var = val.returns[0]
+                    else:
+                        for n in val.all_nodes():
+                            if n.type == NodeType.RETURN:
+                                ret = n.expression
+                                if isinstance(ret, Identifier) and ret.value.name is not None and ret.value.name != "":
+                                    if isinstance(ret.value, Variable):
+                                        return_var = ret.value
+                                        break
+        return return_var
+
+    def find_delegate_source_getter_passed_as_param(
+            self,
+            dest: str,
+            parent_func: Function,
+            print_debug: bool
+    ) -> Optional["Variable"]:
+        """
+        Handles the common case in which fallback calls _delegate(_implementation()),
+        and where the signature for _delegate is _delegate(address implementation)
+        i.e. the function parameter 'implementation' w/o underscore is passed to delegatecall, but
+        that variable can't be found anywhere else and there's no other variable to trace it back to
+        because the getter was passed in directly. Added benefit: we also find self._proxy_impl_getter
+        ex: /tests/proxies/App.sol
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        delegates_to = None
+        for idx, p in enumerate(parent_func.parameters):
+            if p.name == dest and str(p.type) == "address":
+                if print_debug:
+                    print("Found " + dest + ": it is a parameter of the function " + parent_func.name)
+                for n in self.fallback_function.all_nodes():
+                    if n.type == NodeType.EXPRESSION:
+                        exp = n.expression
+                        if isinstance(exp, CallExpression) and str(exp.called) == parent_func.name:
+                            arg = exp.arguments[idx]
+                            print(parent_func.name + " is passed in the argument " + str(arg))
+                            if isinstance(arg, CallExpression):
+                                delegates_to = Contract.get_named_return_variable_from_call_exp(arg)
+                                if delegates_to is not None:
+                                    break
+                    #     elif isinstance(exp, AssignmentOperation):
+                    #         right = exp.expression_right
+                    #         left = exp.expression_left
+                    #         if isinstance(left, Identifier) and left.value.name
+                    # elif n.type == NodeType.VARIABLE and n.variable_declaration is not None:
+                    #     var = n.variable_declaration
+                    #
+                break
+        return delegates_to
+
+    def find_delegate_source_changed_name_from_dest(self, dest: str, print_debug: bool) -> Optional["Variable"]:
+        """
+        Look for a variable declaration with a name other than dest in the fallback prior to a call to another function,
+        i.e. delegatedFwd, which has a parameter with the name dest which is the target of the delegatecall.
+        We extracted dest from the assembly, but the variable we want was passed in as a parameter, and hence re-named.
+        ex: /tests/proxies/APMRegistry.sol, in which we find '_dst' but want 'target':
+        function () payable public {
+            address target = getCode();
+            delegatedFwd(target, msg.data);
+        }
+        function delegatedFwd(address _dst, bytes _calldata) internal {
+            assembly {
+                let result := delegatecall(sub(gas, 10000), _dst, add(_calldata, 0x20), mload(_calldata), 0, 0)
+                ...
+            }
+        }
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        delegates_to = None
+        for node in self.fallback_function.all_nodes():
+            print(node.type)
+            if node.type == NodeType.VARIABLE:
+                print(node.expression)
+                if node.variable_declaration is not None and node.variable_declaration.name == dest:
+                    print("Found variable declaration for " + dest + "!")
+                    exp = node.variable_declaration.expression
+                    if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
+                        delegates_to = exp.value
+                        break
+                    elif isinstance(exp, CallExpression):
+                        delegates_to = Contract.get_named_return_variable_from_call_exp(exp)
+                        if delegates_to is not None:
+                            break
+            elif node.type == NodeType.EXPRESSION:
+                exp = node.expression
+                print(exp)
+                if isinstance(exp, CallExpression):
+                    print(exp.called)
+                    _dest = None
+                    for f in self.functions:
+                        if f.name == str(exp.called):
+                            print("Found the function called " + f.name)
+                            for idx, v in enumerate(f.parameters):
+                                if v.name == dest and str(v.type) == "address":
+                                    print(dest + " is a parameter passed to " + f.name)
+                                    _dest = idx
+                                    break
+                            if _dest is not None:
+                                break
+                    if _dest is not None:
+                        arg = exp.arguments[_dest]
+                        if isinstance(arg, Identifier) and str(arg.value.type) == "address":
+                            delegates_to = arg.value
+                            print(arg.value.expression)
+                            break
+        return delegates_to
+
+    @staticmethod
+    def find_delegate_sloaded_from_hardcoded_slot(
+            asm_split: List[str],
+            dest: str
+    ) -> Optional["Variable"]:
+        """
+        Finally, here I am trying to handle the case where there are no variables at all in the proxy,
+        except for one defined within the assembly block itself and the slot hardcoded as seen below.
+        In such an instance, there is literally no Variable object to assign to self._delegates_to,
+        so we attempt to create a new one if appropriate
+        ex: /tests/proxies/EIP1822Token.sol
+        function() external payable {
+            assembly { // solium-disable-line
+                let logic := sload(0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7)
+                calldatacopy(0x0, 0x0, calldatasize)
+                let success := delegatecall(sub(gas, 10000), logic, 0x0, calldatasize, 0, 0)
+                ...
+            }
+        }
+        """
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.solidity_types.elementary_type import ElementaryType
+
+        delegates_to = None
+        for asm in asm_split:
+            if dest in asm and "= sload(" in asm:
+                slot = asm.split("(", 1)[1].strip(")")
+                if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
+                    delegates_to = LocalVariable()
+                    delegates_to.set_type(ElementaryType("address"))
+                    delegates_to.name = dest
+                    delegates_to.set_location(slot)
+                    break
+        return delegates_to
 
     @staticmethod
     def find_delegatecall_in_ir(node, print_debug):
@@ -1776,9 +1819,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             exp = exp.called
         for f in contract.functions:
             if contract._proxy_impl_getter is not None:
-                if print_debug:
-                    print("\n" + f.name + " appears to be the implementation getter\n")
                 break
+            if len(f.all_nodes()) == 0:
+                continue
             if f.name is not None:
                 if print_debug:
                     print("Checking function: " + f.name)
@@ -1802,6 +1845,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print("\n" + f.name + " appears to be the implementation getter\n")
                             getter = f
                             break
+                    if getter is not None:
+                        break
         return getter
 
     @staticmethod
