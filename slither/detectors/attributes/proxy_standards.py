@@ -206,14 +206,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 print(exp)
                             else:
                                 for node in setter.all_nodes():
-                                    print(str(node.type))
+                                    # print(str(node.type))
                                     if node.type == NodeType.VARIABLE:
                                         exp = node.variable_declaration.expression
                                         if exp is not None and isinstance(exp, Identifier):
                                             slot = str(exp.value.expression)
                                             break
-                                    elif node.type == NodeType.EXPRESSION:
-                                        print(node.expression)
+                                    # elif node.type == NodeType.EXPRESSION:
+                                    #     print(node.expression)
                                     elif node.type == NodeType.ASSEMBLY:
                                         slot = find_slot_in_setter_asm(node.inline_asm, delegate)
                                         break
@@ -224,9 +224,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                         exp = None
                         ext_call = None
                         for node in getter.all_nodes():
-                            print(node.type)
+                            # print(node.type)
                             exp = node.expression
-                            print(exp)
+                            # print(exp)
                             # if node.expression is not None:
                             if node.type == NodeType.RETURN and isinstance(exp, CallExpression):
                                 print("This return node is a CallExpression")
@@ -310,7 +310,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                   + " from " + interface.name + ":")
                                         else:
                                             print("Looking for implementation setter in " + call_contract.name)
-                                            setter = proxy.find_setter_in_contract(call_contract, delegate)
+                                            setter = proxy.find_setter_in_contract(call_contract, delegate,
+                                                                                   proxy.proxy_impl_storage_offset,
+                                                                                   True)
                                             if setter is not None:
                                                 print("\nImplementation set by function: " + setter.name
                                                       + " in contract: " + call_contract.name)
@@ -344,7 +346,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                     break
                                         if contains_getter:
                                             print("Looking for implementation setter in " + call_contract.name)
-                                            setter = proxy.find_setter_in_contract(call_contract, delegate)
+                                            setter = proxy.find_setter_in_contract(call_contract, delegate,
+                                                                                   proxy.proxy_impl_storage_offset,
+                                                                                   True)
                                             if setter is not None:
                                                 print("Found implementation setter ")
                                                 info = [
