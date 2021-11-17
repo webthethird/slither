@@ -1348,6 +1348,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         If it's a state variable, our work is done here.
         But it may also be a local variable declared within the function, or a parameter declared in its signature.
         In which case, we need to track it further, but at that point we can stop using names.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
         """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
@@ -1926,7 +1928,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if isinstance(val, StateVariable):
                             delegate_to = val
                         elif isinstance(val, LocalVariable):
-                            delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
+                            exp = val.expression
+                            if exp is not None:
+                                if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
+                                    delegate_to = exp.value
+                                elif isinstance(exp, CallExpression):
+                                    delegate_to = self.find_delegate_from_call_exp(exp, print_debug)
+                            else:
+                                delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
         if print_debug:
             print("\nEnd Contract.handle_assembly_in_version_0_6_0_and_above\n")
         return is_proxy, delegate_to
