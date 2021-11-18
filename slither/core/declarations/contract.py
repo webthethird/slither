@@ -1679,8 +1679,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             print("\nBegin " + self.name + ".find_delegate_sloaded_from_hardcoded_slot\n")
         delegates_to = None
         for asm in asm_split:
-            if dest in asm and "= sload(" in asm:
-                slot = asm.split("(", 1)[1].strip(")")
+            if dest in asm and "sload(" in asm:
+                slot = asm.split("sload(", 1)[1].split(")")[0]
+                print(slot)
                 if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
                     delegates_to = LocalVariable()
                     delegates_to.set_type(ElementaryType("address"))
