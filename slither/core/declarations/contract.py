@@ -1352,6 +1352,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.identifier import Identifier
 
         delegate = None
@@ -1397,6 +1398,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug:
                             print("Call Expression")
                             print("\nEnd " + self.name + ".find_delegate_variable\n")
+                    elif isinstance(exp, IndexAccess):
+                        exp = exp.expression_left
+                        if isinstance(exp, Identifier):
+                            val = exp.value
+                            if isinstance(val, StateVariable):
+                                delegate = val
+                                if print_debug:
+                                    print(val.name + " is a State Variable in contract " + val.contract.name)
+                                    print("\nEnd " + self.name + ".find_delegate_variable\n")
+                                return delegate
                 else:
                     if print_debug:
                         print("No expression found for " + dest)
