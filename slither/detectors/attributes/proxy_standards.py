@@ -429,11 +429,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     if slot_string == "eip1967.proxy.implementation":
                                         info = [
                                             proxy,
-                                            " implements EIP-1967: Standard Proxy Storage Slots\n",
-                                            "The value of ",
-                                            slot,
-                                            " is validated in the constructor:\n",
-                                            str(assert_exp) + "\n"
+                                            " implements EIP-1967: Standard Proxy Storage Slots\n"
                                         ]
                                         json = self.generate_result(info)
                                         results.append(json)
