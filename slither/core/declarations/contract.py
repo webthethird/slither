@@ -1537,6 +1537,22 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         print("Encountered call to another contract: " + str(rex))
                             else:
                                 return self.find_delegate_from_call_exp(rex, print_debug)
+            else:
+                for n in func.all_nodes():
+                    if n.type == NodeType.EXPRESSION:
+                        e = n.expression
+                        if isinstance(e, AssignmentOperation):
+                            if print_debug:
+                                print("AssignmentOperation: " + str(e))
+                            l = e.expression_left
+                            r = e.expression_right
+                            if isinstance(l, Identifier) and l.value == ret:
+                                if isinstance(r, CallExpression):
+                                    if print_debug:
+                                        print("CallExpression")
+                                        print(r.called)
+                                    ret.expression = r
+                                    delegate = ret
             if print_debug:
                 print(func.name + " returns a variable of type " + str(ret.type)
                       + ((" called " + ret.name) if ret.name != "" else ""))
@@ -1604,6 +1620,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 if print_debug:
                                                     print("Found storage slot: " + e.value.name)
                                     break
+            elif isinstance(ret, LocalVariable):
+                if print_debug:
+                    print("Return value is LocalVariable: " + ret.name)
+                if ret.expression is not None:
+                    e = ret.expression
+                    if print_debug:
+                        print("Return expression: " + str(e))
+                    if isinstance(e, CallExpression):
+                        called = e.called
+                        if isinstance(called, Identifier):
+                            val = called.value
+                            if isinstance(val, FunctionContract):
+                                if print_debug:
+                                    print(val.contract.name + "." + val.full_name)
+                                if val.contract != self:
+                                    delegate = ret
+                    else:
+                        if print_debug:
+                            print("has no expression")
         if print_debug:
             print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
         return delegate
