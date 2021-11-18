@@ -1,5 +1,6 @@
 from abc import ABC
 
+import sha3
 from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
@@ -7,11 +8,13 @@ from slither.core.declarations.contract import Contract
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
 from slither.core.expressions.identifier import Identifier
+from slither.core.expressions.literal import Literal
 from slither.core.declarations.function_contract import FunctionContract
 from slither.core.expressions.expression_typed import ExpressionTyped
 from slither.core.expressions.call_expression import CallExpression
 from slither.core.expressions.type_conversion import TypeConversion
 from slither.core.expressions.assignment_operation import AssignmentOperation
+from slither.core.expressions.binary_operation import BinaryOperation
 from slither.core.expressions.member_access import MemberAccess
 
 def find_slot_in_setter_asm(
@@ -189,200 +192,291 @@ or one of the proxy patterns developed by OpenZeppelin.
                         json = self.generate_result(info)
                         results.append(json)
                 else:
-                    constants = [variable for variable in proxy.variables if variable.is_constant]
                     setter = proxy.proxy_implementation_setter
-                    slot = None
-                    if setter is not None:
-                        if isinstance(setter, FunctionContract) and setter.contract != proxy:
-                            info = [
-                                "Implementation setter for proxy contract ",
-                                proxy,
-                                " is located in another contract:\n",
-                                setter,
-                                "\n"
-                            ]
-                            json = self.generate_result(info)
-                            results.append(json)
-                        if isinstance(delegate, LocalVariable):
-                            exp = delegate.expression
-                            if exp is not None:
-                                print(exp)
-                            else:
-                                for node in setter.all_nodes():
-                                    # print(str(node.type))
-                                    if node.type == NodeType.VARIABLE:
-                                        exp = node.variable_declaration.expression
-                                        if exp is not None and isinstance(exp, Identifier):
-                                            slot = str(exp.value.expression)
-                                            break
-                                    # elif node.type == NodeType.EXPRESSION:
-                                    #     print(node.expression)
-                                    elif node.type == NodeType.ASSEMBLY:
-                                        slot = find_slot_in_setter_asm(node.inline_asm, delegate)
-                                        break
-                                if slot is not None:
-                                    print(slot)
-                    else:
-                        getter = proxy.proxy_implementation_getter
-                        exp = None
-                        ext_call = None
-                        for node in getter.all_nodes():
-                            # print(node.type)
-                            exp = node.expression
-                            # print(exp)
-                            # if node.expression is not None:
-                            if node.type == NodeType.RETURN and isinstance(exp, CallExpression):
-                                print("This return node is a CallExpression")
-                                if isinstance(exp.called, MemberAccess):
-                                    print("The CallExpression is for MemberAccess")
-                                    exp = exp.called
-                                    break
-                                elif isinstance(node.expression, Identifier):
-                                    print("This return node is a variable Identifier")
-                                elif isinstance(node.expression, ExpressionTyped):
-                                    print(node.expression.type)
-                            elif node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
-                                left = exp.expression_left
-                                right = exp.expression_right
-                                if isinstance(left, Identifier):
-                                    print("Left: Identifier " + str(left.type))
-                                if isinstance(right, CallExpression):
-                                    print("Right: " + str(right.called))
-                                    if "call" in str(right):
-                                        exp = right.called
-                                        break
-                        if isinstance(exp, MemberAccess):
-                            # Getter calls function of another contract in return expression
-                            call_exp = exp.expression
-                            print(call_exp)
-                            call_function = exp.member_name
-                            call_contract = None
-                            call_type = None
-                            if isinstance(call_exp, TypeConversion):
-                                print("The getter calls a function from a contract of type " + str(call_exp.type))
-                                call_type = call_exp.type
-                            elif isinstance(call_exp, Identifier):
-                                val = call_exp.value
-                                if str(val.type) == "address" and val.is_constant:
-                                    info = [
-                                        "Implementation getter for proxy contract ",
-                                        proxy,
-                                        " appears to make a call to a constant address variable: ",
-                                        val,
-                                        "\nWithout the Contract associated with this we cannot confirm upgradeability\n"
-                                    ]
-                                    if "beacon" in val.name.lower():
-                                        info.append("However, it appears to be the address of an Upgrade Beacon\n")
-                                    json = self.generate_result(info)
-                                    results.append(json)
-                            if call_type is not None:
-                                call_contract = proxy.compilation_unit.get_contract_from_name(str(call_type))
-                                if call_contract is not None:
-                                    print("\nFound contract called by proxy: " + call_contract.name)
-                                    interface = None
-                                    if call_contract.is_interface:
-                                        interface = call_contract
-                                        call_contract = None
-                                        print("It's an interface\nLooking for a contract that implements the interface "
-                                              + interface.name)
-                                        for c in proxy.compilation_unit.contracts:
-                                            if interface in c.inheritance:
-                                                print(c.name + " inherits the interface " + interface.name)
-                                                call_contract = c
+                    slot = proxy.proxy_impl_storage_offset
+                    if slot is None:
+                        if setter is not None:
+                            if isinstance(setter, FunctionContract) and setter.contract != proxy:
+                                info = [
+                                    "Implementation setter for proxy contract ",
+                                    proxy,
+                                    " is located in another contract:\n",
+                                    setter,
+                                    "\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                            if isinstance(delegate, LocalVariable):
+                                exp = delegate.expression
+                                if exp is not None:
+                                    print(exp)
+                                else:
+                                    for node in setter.all_nodes():
+                                        # print(str(node.type))
+                                        if node.type == NodeType.VARIABLE:
+                                            exp = node.variable_declaration.expression
+                                            if exp is not None and isinstance(exp, Identifier):
+                                                slot = str(exp.value.expression)
                                                 break
-                                        if call_contract is None:
-                                            print("Could not find a contract that inherits " + interface.name + "\n"
-                                                  + "Looking for a contract with " + call_function)
-                                            for c in self.compilation_unit.contracts:
-                                                has_called_func = False
-                                                if c == interface:
-                                                    continue
-                                                for f in interface.functions_signatures:
-                                                    if exp.member_name not in f:
-                                                        continue
-                                                    if f in c.functions_signatures:
-                                                        print(c.name + " has function " + f + " from interface")
-                                                        has_called_func = True
-                                                        break
-                                                if has_called_func:
-                                                    print(c.name + " contains the implementation getter")
+                                        # elif node.type == NodeType.EXPRESSION:
+                                        #     print(node.expression)
+                                        elif node.type == NodeType.ASSEMBLY:
+                                            slot = find_slot_in_setter_asm(node.inline_asm, delegate)
+                                            break
+                                    if slot is not None:
+                                        print(slot)
+                        else:
+                            getter = proxy.proxy_implementation_getter
+                            exp = None
+                            ext_call = None
+                            for node in getter.all_nodes():
+                                # print(node.type)
+                                exp = node.expression
+                                # print(exp)
+                                # if node.expression is not None:
+                                if node.type == NodeType.RETURN and isinstance(exp, CallExpression):
+                                    print("This return node is a CallExpression")
+                                    if isinstance(exp.called, MemberAccess):
+                                        print("The CallExpression is for MemberAccess")
+                                        exp = exp.called
+                                        break
+                                    elif isinstance(node.expression, Identifier):
+                                        print("This return node is a variable Identifier")
+                                    elif isinstance(node.expression, ExpressionTyped):
+                                        print(node.expression.type)
+                                elif node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
+                                    left = exp.expression_left
+                                    right = exp.expression_right
+                                    if isinstance(left, Identifier):
+                                        print("Left: Identifier " + str(left.type))
+                                    if isinstance(right, CallExpression):
+                                        print("Right: " + str(right.called))
+                                        if "call" in str(right):
+                                            exp = right.called
+                                            break
+                            if isinstance(exp, MemberAccess):
+                                # Getter calls function of another contract in return expression
+                                call_exp = exp.expression
+                                print(call_exp)
+                                call_function = exp.member_name
+                                call_contract = None
+                                call_type = None
+                                if isinstance(call_exp, TypeConversion):
+                                    print("The getter calls a function from a contract of type " + str(call_exp.type))
+                                    call_type = call_exp.type
+                                elif isinstance(call_exp, Identifier):
+                                    val = call_exp.value
+                                    if str(val.type) == "address" and val.is_constant:
+                                        info = [
+                                            "Implementation getter for proxy contract ",
+                                            proxy,
+                                            " appears to make a call to a constant address variable: ",
+                                            val,
+                                            "\nWithout the Contract associated with this we cannot confirm upgradeability\n"
+                                        ]
+                                        if "beacon" in val.name.lower():
+                                            info.append("However, it appears to be the address of an Upgrade Beacon\n")
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                if call_type is not None:
+                                    call_contract = proxy.compilation_unit.get_contract_from_name(str(call_type))
+                                    if call_contract is not None:
+                                        print("\nFound contract called by proxy: " + call_contract.name)
+                                        interface = None
+                                        if call_contract.is_interface:
+                                            interface = call_contract
+                                            call_contract = None
+                                            print("It's an interface\nLooking for a contract that implements the interface "
+                                                  + interface.name)
+                                            for c in proxy.compilation_unit.contracts:
+                                                if interface in c.inheritance:
+                                                    print(c.name + " inherits the interface " + interface.name)
                                                     call_contract = c
                                                     break
-                                        if call_contract is None:
-                                            print("Could not find a contract that implements " + exp.member_name
-                                                  + " from " + interface.name + ":")
-                                        else:
-                                            print("Looking for implementation setter in " + call_contract.name)
-                                            setter = proxy.find_setter_in_contract(call_contract, delegate,
-                                                                                   proxy.proxy_impl_storage_offset,
-                                                                                   True)
-                                            if setter is not None:
-                                                print("\nImplementation set by function: " + setter.name
-                                                      + " in contract: " + call_contract.name)
-                                                info = [
-                                                    "Implementation setter for proxy contract ",
-                                                    proxy,
-                                                    " is located in another contract:\n",
-                                                    setter,
-                                                    "\n"
-                                                ]
-                                                json = self.generate_result(info)
-                                                results.append(json)
-                                                break
-                                    if call_contract is not None and not call_contract.is_interface:
-                                        contains_getter = False
-                                        contains_setter = False
-                                        implementation = None
-                                        for f in call_contract.functions:
-                                            if f.name == exp.member_name:
-                                                for v in f.returns:
-                                                    if str(v.type) == "address":
-                                                        print("Found getter " + f.name + " in " + call_contract.name)
-                                                        contains_getter = True
-                                                        call_function = f
-                                                        break
-                                                if contains_getter:
-                                                    for v in f.variables_read:
-                                                        if isinstance(v, StateVariable):
-                                                            implementation = v
+                                            if call_contract is None:
+                                                print("Could not find a contract that inherits " + interface.name + "\n"
+                                                      + "Looking for a contract with " + call_function)
+                                                for c in self.compilation_unit.contracts:
+                                                    has_called_func = False
+                                                    if c == interface:
+                                                        continue
+                                                    for f in interface.functions_signatures:
+                                                        if exp.member_name not in f:
+                                                            continue
+                                                        if f in c.functions_signatures:
+                                                            print(c.name + " has function " + f + " from interface")
+                                                            has_called_func = True
                                                             break
-                                                    break
-                                        if contains_getter:
-                                            print("Looking for implementation setter in " + call_contract.name)
-                                            setter = proxy.find_setter_in_contract(call_contract, delegate,
-                                                                                   proxy.proxy_impl_storage_offset,
-                                                                                   True)
-                                            if setter is not None:
-                                                print("Found implementation setter ")
-                                                info = [
-                                                    "Implementation setter for proxy contract ",
-                                                    proxy,
-                                                    " is located in another contract:\n",
-                                                    setter,
-                                                    "\n"
-                                                ]
-                                                json = self.generate_result(info)
-                                                results.append(json)
-                                                break
+                                                    if has_called_func:
+                                                        print(c.name + " contains the implementation getter")
+                                                        call_contract = c
+                                                        break
+                                            if call_contract is None:
+                                                print("Could not find a contract that implements " + exp.member_name
+                                                      + " from " + interface.name + ":")
                                             else:
-                                                info = [
-                                                    "Could not find implementation setter for proxy contract ",
-                                                    proxy,
-                                                    " which should be located in another contract:\n",
-                                                    call_contract,
-                                                    "\n"
-                                                ]
-                                                json = self.generate_result(info)
-                                                results.append(json)
+                                                print("Looking for implementation setter in " + call_contract.name)
+                                                setter = proxy.find_setter_in_contract(call_contract, delegate,
+                                                                                       proxy.proxy_impl_storage_offset,
+                                                                                       True)
+                                                if setter is not None:
+                                                    print("\nImplementation set by function: " + setter.name
+                                                          + " in contract: " + call_contract.name)
+                                                    info = [
+                                                        "Implementation setter for proxy contract ",
+                                                        proxy,
+                                                        " is located in another contract:\n",
+                                                        setter,
+                                                        "\n"
+                                                    ]
+                                                    json = self.generate_result(info)
+                                                    results.append(json)
+                                                    break
+                                        if call_contract is not None and not call_contract.is_interface:
+                                            contains_getter = False
+                                            contains_setter = False
+                                            implementation = None
+                                            for f in call_contract.functions:
+                                                if f.name == exp.member_name:
+                                                    for v in f.returns:
+                                                        if str(v.type) == "address":
+                                                            print("Found getter " + f.name + " in " + call_contract.name)
+                                                            contains_getter = True
+                                                            call_function = f
+                                                            break
+                                                    if contains_getter:
+                                                        for v in f.variables_read:
+                                                            if isinstance(v, StateVariable):
+                                                                implementation = v
+                                                                break
+                                                        break
+                                            if contains_getter:
+                                                print("Looking for implementation setter in " + call_contract.name)
+                                                setter = proxy.find_setter_in_contract(call_contract, delegate,
+                                                                                       proxy.proxy_impl_storage_offset,
+                                                                                       True)
+                                                if setter is not None:
+                                                    print("Found implementation setter ")
+                                                    info = [
+                                                        "Implementation setter for proxy contract ",
+                                                        proxy,
+                                                        " is located in another contract:\n",
+                                                        setter,
+                                                        "\n"
+                                                    ]
+                                                    json = self.generate_result(info)
+                                                    results.append(json)
+                                                    break
+                                                else:
+                                                    info = [
+                                                        "Could not find implementation setter for proxy contract ",
+                                                        proxy,
+                                                        " which should be located in another contract:\n",
+                                                        call_contract,
+                                                        "\n"
+                                                    ]
+                                                    json = self.generate_result(info)
+                                                    results.append(json)
+                                    else:
+                                        print("Could not find a contract called " + str(call_type) + " in compilation unit")
+                            elif isinstance(exp, CallExpression):
+                                print("Not member access, just a CallExpression\n" + str(exp))
+                                exp = exp.called
+                                if isinstance(exp, MemberAccess):
+                                    print(exp.type)
+                                if "." in str(exp):
+                                    target = str(exp).split(".")[0]
+                    else:
+                        print("Implementation slot: " + slot.name + " = " + str(slot.expression))
+                        slot_string = None
+                        slot_value = str(slot.expression)
+                        assert_exp = None
+                        minus = 0
+                        if proxy.constructor is not None:
+                            for exp in proxy.constructor.all_expressions():
+                                if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)":
+                                    print("Found assert statement in constructor:\n" + str(exp))
+                                    assert_exp = exp
+                                    arg = exp.arguments[0]
+                                    if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
+                                        e = arg.expression_right
+                                        print("BinaryOperation ==")
+                                        if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
+                                            print("TypeConversion bytes32: " + str(e))
+                                            e = e.expression
+                                        if isinstance(e, BinaryOperation) and str(e.type) == "-":
+                                            print("BinaryOperation -: " + str(e))
+                                            if isinstance(e.expression_right, Literal):
+                                                print("Minus: " + str(e.expression_right.value))
+                                                minus = int(e.expression_right.value)
+                                                e = e.expression_left
+                                        if isinstance(e, TypeConversion) and str(e.type) == "uint256":
+                                            print("TypeConversion uint256: " + str(e))
+                                            e = e.expression
+                                        if isinstance(e, CallExpression) and str(e.called) == "keccak256(bytes)":
+                                            print("CallExpression keccak256: " + str(e))
+                                            arg = e.arguments[0]
+                                            if isinstance(arg, Literal):
+                                                if str(arg.type) == "string":
+                                                    slot_string = arg.value
+                                                    break
+                            if slot_string is not None:
+                                s = sha3.keccak_256()
+                                s.update(slot_string.encode("utf-8"))
+                                hashed = int("0x" + s.hexdigest(), 16) - minus
+                                if int(slot_value, 16) == hashed:
+                                    print(slot.name + " value matches keccak256('" + slot_string + "')")
+                                    if slot_string == "eip1967.proxy.implementation":
+                                        info = [
+                                            proxy,
+                                            " implements EIP-1967: Standard Proxy Storage Slots\n",
+                                            "The value of ",
+                                            slot,
+                                            " is validated in the constructor:\n",
+                                            str(assert_exp) + "\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                    else:
+                                        info = [
+                                            proxy,
+                                            " uses a proxy implementation storage slot called ",
+                                            slot,
+                                            " which equals keccack256('",
+                                            slot_string,
+                                            "')\nHowever it is recommended to use the standard set down by EIP-1967,\n",
+                                            " i.e. IMPLEMENTATION_SLOT = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) \n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
                                 else:
-                                    print("Could not find a contract called " + str(call_type) + " in compilation unit")
-                        elif isinstance(exp, CallExpression):
-                            print("Not member access, just a CallExpression\n" + str(exp))
-                            exp = exp.called
-                            if isinstance(exp, MemberAccess):
-                                print(exp.type)
-                            if "." in str(exp):
-                                target = str(exp).split(".")[0]
+                                    self.IMPACT = DetectorClassification.MEDIUM
+                                    info = [
+                                        "The value of ",
+                                        slot.name,
+                                        " does not appear to match keccak256('",
+                                        slot_string,
+                                        "') as required by the assert statement:\n",
+                                        str(assert_exp) + "\n"
+                                    ]
+                                    json = self.generate_result(info)
+                                    results.append(json)
+                                    self.IMPACT = DetectorClassification.INFORMATIONAL
+                            elif assert_exp is None:
+                                self.set_impact(DetectorClassification.MEDIUM)
+                                info = [
+                                    "The value of ",
+                                    slot.name,
+                                    " does not appear to be checked in the constructor.\n",
+                                    "When using a hardcoded storage slot, always include an assert statement ",
+                                    "in the first line of the constructor. For example:\n",
+                                    "assert(",
+                                    slot.name,
+                                    " == keccak256('some.well.defined.string'))"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                                # self.set_impact(DetectorClassification.INFORMATIONAL)
             elif contract.is_proxy:
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
