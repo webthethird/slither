@@ -57,12 +57,15 @@ Multi-Facet Proxy, etc.
     # region wiki_exploit_scenario
     WIKI_EXPLOIT_SCENARIO = """
 ```solidity
-contract V1{
-    uint variable1;
-    uint variable2;
+contract Proxy{
+    address logicAddress;
+    
+    function() payable {
+        logicAddress.delegatecall(msg.data)
+    }
 }
 
-contract V2{
+contract Logic{
     uint variable1;
 }
 ```
