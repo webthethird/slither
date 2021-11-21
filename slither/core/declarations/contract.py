@@ -1425,7 +1425,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         exp = n.expression
                         if isinstance(exp, CallExpression):
                             called = exp.called
-                            if isinstance(called, Identifier) and called.value.name == parent_func.name:
+                            if isinstance(called, Identifier) and called.value == parent_func:
                                 if print_debug:
                                     print("Found where " + parent_func.name + " is called: " + str(exp))
                                 arg = exp.arguments[idx]
@@ -1532,8 +1532,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(called, MemberAccess):
                                 if print_debug:
                                     print("Encountered member access expression: " + str(called))
-                                if called.member_name != self.name:
+                                if called.expression is not None:
                                     # TODO Cross-contract analysis
+                                    if print_debug:
+                                        print("Member of type: " + str(called.expression))
                                     delegate = LocalVariable()
                                     delegate.expression = rex
                                     if delegate.name is None:
@@ -1546,6 +1548,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 return self.find_delegate_from_call_exp(rex, print_debug)
             else:
+                # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
                 for n in func.all_nodes():
                     if n.type == NodeType.EXPRESSION:
                         e = n.expression
@@ -1561,6 +1564,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         print(r.called)
                                     ret.expression = r
                                     delegate = ret
+                                    if str(r.called) == "sload(uint256)":
+                                        arg = r.arguments[0]
+                                        if isinstance(arg, Identifier):
+                                            v = arg.value
+                                            if isinstance(v, Variable) and v.is_constant:
+                                                self._proxy_impl_slot = v
+                                                if print_debug:
+                                                    print("Found storage slot: " + v.name)
+                                            elif isinstance(v, LocalVariable) and v.expression is not None:
+                                                e = v.expression
+                                                if isinstance(e, Identifier) and e.value.is_constant:
+                                                    self._proxy_impl_slot = e.value
+                                                    if print_debug:
+                                                        print("Found storage slot: " + e.value.name)
             if print_debug:
                 print(func.name + " returns a variable of type " + str(ret.type)
                       + ((" called " + ret.name) if ret.name != "" else ""))
@@ -1644,9 +1661,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print(val.contract.name + "." + val.full_name)
                                 if val.contract != self:
                                     delegate = ret
-                    else:
-                        if print_debug:
-                            print("has no expression")
+                else:
+                    if print_debug:
+                        print("has no expression")
         if print_debug:
             print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
         return delegate
