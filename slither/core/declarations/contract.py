@@ -1094,6 +1094,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.declarations.function_contract import FunctionContract
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1122,12 +1123,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug:
                     print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setter\n")
                 if self._proxy_impl_setter is None:
-                    self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to,
-                                                                           self._proxy_impl_slot, print_debug)
+                    if isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self:
+                        self._proxy_impl_setter = self.find_setter_in_contract(self._delegates_to.contract,
+                                                                               self._delegates_to,
+                                                                               self._proxy_impl_slot, print_debug)
+                    else:
+                        self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to,
+                                                                               self._proxy_impl_slot, print_debug)
                 if self._proxy_impl_setter is not None:
-                    if print_debug:
+                    if print_debug and isinstance(self._proxy_impl_setter, FunctionContract):
                         print("\nImplementation set by function: " + self._proxy_impl_setter.name + " in contract: "
-                              + self.name)
+                              + self._proxy_impl_setter.contract.name)
                     self._is_upgradeable_proxy = True
                 elif print_debug:
                     print("\nCould not find implementation setter in " + self.name)
@@ -1136,7 +1142,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug:
                     print("Looking for getter\n")
                 if self._proxy_impl_getter is None:
-                    self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to, print_debug)
+                    if isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self:
+                        self._proxy_impl_getter = self.find_getter_in_contract(self._delegates_to.contract,
+                                                                               self._delegates_to, print_debug)
+                    else:
+                        self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to, print_debug)
                 
                 # if both setter and getter can be found, then return true
                 # Otherwise, at least the getter's return is non-constant
@@ -1532,15 +1542,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(called, MemberAccess):
                                 if print_debug:
                                     print("Encountered member access expression: " + str(called))
-                                if called.expression is not None:
-                                    # TODO Cross-contract analysis
-                                    if print_debug:
-                                        print("Member of type: " + str(called.expression))
+                                delegate = self.find_delegate_from_member_access(called, print_debug)
+                                if delegate is None:
                                     delegate = LocalVariable()
                                     delegate.expression = rex
                                     if delegate.name is None:
                                         delegate.name = str(called)
-                                    return delegate
+                                if print_debug:
+                                    print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
+                                return delegate
                             elif isinstance(called, Identifier):
                                 if isinstance(called.value, FunctionContract) and called.value.contract != self:
                                     if print_debug:
@@ -1666,6 +1676,87 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("has no expression")
         if print_debug:
             print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
+        return delegate
+
+    def find_delegate_from_member_access(self, exp, print_debug) -> Optional["Variable"]:
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.solidity_types.user_defined_type import UserDefinedType
+
+        if print_debug:
+            print("\nBegin " + self.name + ".find_delegate_from_member_access\n")
+            print("Expression: " + str(exp))
+        delegate: Variable = None
+        contract: Contract = None
+        member_name = None
+        if isinstance(exp, MemberAccess):
+            member_name = exp.member_name
+            exp = exp.expression
+            if isinstance(exp, TypeConversion):
+                ctype = exp.type
+                if isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Contract) and ctype.type != self:
+                    contract = ctype.type
+                    if print_debug:
+                        print(member_name + " is a member of the contract type: " + contract.name)
+                    if contract.is_interface:
+                        if print_debug:
+                            print("Which is an interface")
+                        for c in self.compilation_unit.contracts:
+                            if c == contract:
+                                continue
+                            if contract in c.inheritance:
+                                if print_debug:
+                                    print(c.name + " inherits " + contract.name)
+                                contract = c
+        if contract is not None:
+            if print_debug:
+                print("Looking for " + member_name + " in " + contract.name)
+            for f in contract.functions:
+                if f.name == member_name:
+                    if print_debug:
+                        print("Found the function called " + f.name)
+                    ret = f.returns[0]
+                    if ret.name is None or ret.name == "":
+                        for n in f.all_nodes():
+                            if n.type == NodeType.RETURN:
+                                e = n.expression
+                                if isinstance(e, Identifier):
+                                    ret = e.value
+                    if isinstance(ret, StateVariable):
+                        delegate = ret
+                        if print_debug:
+                            print("Found the return value from " + f.name)
+                            print("It's a state variable in " + contract.name + " called " + delegate.name)
+                    elif isinstance(ret, LocalVariable):
+                        if ret.expression is None:
+                            for n in f.all_nodes():
+                                if n.type == NodeType.EXPRESSION:
+                                    e = n.expression
+                                    if isinstance(e, AssignmentOperation):
+                                        l = e.expression_left
+                                        r = e.expression_right
+                                        if isinstance(l, Identifier) and l.value == ret:
+                                            ret.expression = r
+                        if ret.expression is not None:
+                            e = ret.expression
+                            if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
+                                delegate = e.value
+                                if print_debug:
+                                    print("Found the return value from " + f.name)
+                                    print("It's a state variable in " + contract.name + " called " + delegate.name)
+                            elif isinstance(e, CallExpression):
+                                if print_debug:
+                                    print("Found the return value from " + f.name)
+                                    print("But it comes from a call expression: " + str(e))
+                                delegate = contract.find_delegate_from_call_exp(e, print_debug)
+        if print_debug:
+            print("\nEnd " + self.name + ".find_delegate_from_member_access\n")
         return delegate
 
     def find_delegate_sloaded_from_hardcoded_slot(
@@ -1808,12 +1899,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     exp = exp.expression
                                     if isinstance(exp, IndexAccess):
                                         exp = exp.expression_left
-                                        print(exp)
                                         if isinstance(exp, Identifier):
                                             delegate_to = val
                                         elif isinstance(exp, MemberAccess):
                                             exp = exp.expression
-                                            print(exp)
                                             if isinstance(exp, Identifier):
                                                 delegate_to = val
                             else:
