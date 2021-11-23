@@ -119,7 +119,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         ]
                         json = self.generate_result(info)
                         results.append(json)
-                    else:
+                    elif delegate.contract in proxy.inheritance:
                         print("State variable " + delegate.name + " is in the inherited contract: "
                               + delegate.contract.name)
                         for idx, c in enumerate(proxy.inheritance_reverse):
@@ -147,6 +147,31 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
+                    else:
+                        print("State variable " + delegate.name + " is located in another contract: "
+                              + delegate.contract.name)
+                        setter = proxy.proxy_implementation_setter
+                        contract = delegate.contract
+                        for c in self.contracts:
+                            if contract in c.inheritance:
+                                contract = c
+                                if setter is not None and isinstance(setter, FunctionContract):
+                                    setter.set_contract(c)
+                        info = [
+                            "The implementation address for ",
+                            proxy.name,
+                            " is a state variable declared and stored in another contract:\n",
+                            delegate.contract
+                        ]
+                        if contract != delegate.contract:
+                            info.append(" which is inherited by ")
+                            info.append(contract)
+                        if setter is not None:
+                            info.append("\nThe implementation setter is: ")
+                            info.append(setter)
+                            info.append("\n")
+                        json = self.generate_result(info)
+                        results.append(json)
                 elif isinstance(delegate, LocalVariable) and delegate.location is not None \
                         and "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" in delegate.location:
                     print(proxy.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
