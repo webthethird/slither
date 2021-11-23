@@ -1231,7 +1231,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if self._is_proxy and self._delegates_to is not None:
                             break
                 elif node.type == NodeType.EXPRESSION:
-                    is_proxy, self._delegates_to = self.handle_assembly_in_version_0_6_0_and_above(node, print_debug)
+                    is_proxy, self._delegates_to = self.find_delegatecall_in_exp_node(node, print_debug)
                     if not self._is_proxy:
                         self._is_proxy = is_proxy
                     if self._is_proxy and self._delegates_to is not None:
@@ -1280,6 +1280,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param parent_func: The function associated with the assembly node (may be another function called by fallback)
         :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
+        from slither.core.expressions.identifier import Identifier
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
 
         print_debug = True
         is_proxy = False
@@ -1322,8 +1325,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     # Target should be 2nd parameter, but 1st param might have 2 params
                     # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
                     if dest.startswith("sload("):
-                        # TODO: find self._proxy_impl_slot from here
+                        # dest may not be correct, but we have found the storage slot
                         dest = dest.replace(")", "(").split("(")[1]
+                        for v in parent_func.variables_read_or_written:
+                            if v.name == dest:
+                                if isinstance(v, LocalVariable) and v.expression is not None:
+                                    e = v.expression
+                                    if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
+                                        v = e.value
+                                if isinstance(v, StateVariable):
+                                    self._proxy_impl_slot = v
                     if dest.endswith(")"):
                         dest = params[2]
                     if print_debug:
@@ -1357,6 +1368,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         In which case, we need to track it further, but at that point we can stop using names.
 
         :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
         """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
@@ -1487,6 +1501,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             2 - If it has no name, find the RETURN node at the end of the function's CFG, determine which Variable
                 object it is returning, then look for where it is assigned a value
         For expediency, check #2 first
+
+        :param exp: a CallExpression in which we want to find the source of the return value
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
         """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.variable import Variable
@@ -1709,6 +1727,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return delegate
 
     def find_delegate_from_member_access(self, exp, print_debug) -> Optional["Variable"]:
+        """
+        Called by self.find_delegate_from_call_exp
+        Tries to find the correct delegate variable object, i.e. self._delegates_to, given
+        a Member Access expression. A Member Access expression may represent a call to a
+        function in another contract, so this method tries to find the associated contract
+        in the compilation unit, and if found, tracks down the function that was called.
+
+        :param exp: either a MemberAccess expression or a CallExpression containing a MemberAccess
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
+        """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
@@ -1835,6 +1864,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 ...
             }
         }
+
+        :param asm_split: a List of strings representing each line of assembly code
+        :param dest: the name of the delegatecall destination variable extracted from the assembly string
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
         """
         from slither.core.variables.local_variable import LocalVariable, Variable
         from slither.core.solidity_types.elementary_type import ElementaryType
@@ -1864,9 +1898,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @staticmethod
     def find_delegatecall_in_ir(node, print_debug):     # General enough to keep as is
         """
-        Handles finding delegatecall outside of an assembly block, 
+        Handles finding delegatecall outside of an assembly block, as a LowLevelCall
         i.e. delegate.delegatecall(msg.data)  
-        ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability) 
+        ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability)
+
+        :param node: a CFG Node object
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
         """
         from slither.slithir.operations import LowLevelCall
         b = False
@@ -1887,13 +1925,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             print("\nEnd Contract.find_delegatecall_in_ir\n")
         return b, d
 
-    def handle_assembly_in_version_0_6_0_and_above(self, node, print_debug):
+    def find_delegatecall_in_exp_node(self, node, print_debug):
         """
         For versions >= 0.6.0, in addition to Assembly nodes as seen above, it seems that 
         Slither creates Expression nodes for expressions within an inline assembly block.
         This is convenient, because sometimes self.find_delegatecall_in_asm fails to find 
         the target Variable self._delegates_to, so this serves as a fallback for such cases.
         ex: /tests/proxies/App2.sol (for comparison, /tests/proxies/App.sol is an earlier version)
+
+        :param node: a CFG Node object
+        :param print_debug: if True, print debugging information
+        :return: the corresponding Variable object, if found
         """
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1975,6 +2017,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         possibly a function in another contract.
         ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
             though AppProxyUpgradeable obviously should be
+
+        :param print_debug: if True, print debugging information
         """
         from slither.core.cfg.node import NodeType
         from slither.core.expressions.call_expression import CallExpression
