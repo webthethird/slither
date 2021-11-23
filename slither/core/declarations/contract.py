@@ -1492,6 +1492,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.variable import Variable
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.tuple_expression import TupleExpression
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1573,8 +1574,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         print("CallExpression")
                                         print(r.called)
                                     ret.expression = r
-                                    delegate = ret
                                     if str(r.called) == "sload(uint256)":
+                                        delegate = ret
                                         arg = r.arguments[0]
                                         if isinstance(arg, Identifier):
                                             v = arg.value
@@ -1596,7 +1597,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             elif func.contains_assembly:
                 if print_debug:
                     print(func.name + " contains assembly - looking for sload")
-                slot = None
                 for n in func.all_nodes():
                     if delegate is not None:
                         break
@@ -1664,13 +1664,43 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("Return expression: " + str(e))
                     if isinstance(e, CallExpression):
                         called = e.called
+                        print("CallExpression: " + str(called))
                         if isinstance(called, Identifier):
                             val = called.value
+                            print("Identifier: " + str(val))
                             if isinstance(val, FunctionContract):
                                 if print_debug:
                                     print(val.contract.name + "." + val.full_name)
                                 if val.contract != self:
                                     delegate = ret
+                        elif isinstance(called, MemberAccess):
+                            print("MemberAccess: " + str(called))
+                            if str(called) == "abi.decode":
+                                arg = e.arguments[0]
+                                if isinstance(arg, Identifier):
+                                    val = arg.value
+                                    print(val)
+                                    for n in func.all_nodes():
+                                        if n.type == NodeType.EXPRESSION:
+                                            e = n.expression
+                                            if isinstance(e, AssignmentOperation):
+                                                if print_debug:
+                                                    print("AssignmentOperation: " + str(e))
+                                                l = e.expression_left
+                                                r = e.expression_right
+                                                if isinstance(l, Identifier) and l.value == val:
+                                                    ret.expression = r
+                                                    break
+                                                elif isinstance(l, TupleExpression):
+                                                    for v in l.expressions:
+                                                        if isinstance(v, Identifier) and v.value == val:
+                                                            ret.expression = r
+                                                            break
+                                    e = ret.expression
+                                    if isinstance(e, CallExpression) and isinstance(e.called, MemberAccess):
+                                        delegate = self.find_delegate_from_member_access(e, print_debug)
+                            else:
+                                delegate = self.find_delegate_from_member_access(called, print_debug)
                 else:
                     if print_debug:
                         print("has no expression")
@@ -1688,6 +1718,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.solidity_types.user_defined_type import UserDefinedType
+        from slither.core.solidity_types.elementary_type import ElementaryType
 
         if print_debug:
             print("\nBegin " + self.name + ".find_delegate_from_member_access\n")
@@ -1695,11 +1726,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         delegate: Variable = None
         contract: Contract = None
         member_name = None
+        args = None
+        if isinstance(exp, CallExpression) and isinstance(exp.called, MemberAccess):
+            args = exp.arguments
+            exp = exp.called
         if isinstance(exp, MemberAccess):
             member_name = exp.member_name
-            exp = exp.expression
-            if isinstance(exp, TypeConversion):
-                ctype = exp.type
+            e = exp.expression
+            if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+                ctype = e.type
+                if isinstance(e, Identifier):
+                    ctype = e.value.type
                 if isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Contract) and ctype.type != self:
                     contract = ctype.type
                     if print_debug:
@@ -1714,6 +1751,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if print_debug:
                                     print(c.name + " inherits " + contract.name)
                                 contract = c
+                        if contract.is_interface:
+                            for c in self.compilation_unit.contracts:
+                                if c == contract:
+                                    continue
+                                for f in c.functions:
+                                    if f.name == member_name and str(f.return_type) == "address":
+                                        contract = c
+                                for v in c.state_variables:
+                                    if v.name == member_name and "public" in v.visibility and "address" in str(v.type):
+                                        contract = c
+                # elif isinstance(ctype, ElementaryType) and str(ctype) == "address":
+                #     print(str(e) + " is an address variable: " + str(e.value.expression))
+                #     if member_name == "staticcall" and isinstance(args, List) and len(args) == 0:
+                #         print("staticcall with no arguments - must be calling fallback in " + str(e))
         if contract is not None:
             if print_debug:
                 print("Looking for " + member_name + " in " + contract.name)
@@ -1755,6 +1806,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print("Found the return value from " + f.name)
                                     print("But it comes from a call expression: " + str(e))
                                 delegate = contract.find_delegate_from_call_exp(e, print_debug)
+            if delegate is None:
+                for v in contract.state_variables:
+                    if v.name == member_name and "public" in v.visibility and "address" in str(v.type):
+                        delegate = v
+                        break
         if print_debug:
             print("\nEnd " + self.name + ".find_delegate_from_member_access\n")
         return delegate
