@@ -151,6 +151,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         print("State variable " + delegate.name + " is located in another contract: "
                               + delegate.contract.name)
                         setter = proxy.proxy_implementation_setter
+                        getter = proxy.proxy_implementation_getter
                         contract = delegate.contract
                         for c in self.contracts:
                             if contract in c.inheritance:
@@ -169,7 +170,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                         if setter is not None:
                             info.append("\nThe implementation setter is: ")
                             info.append(setter)
-                            info.append("\n")
+                        if getter is not None:
+                            info.append("\nThe implementation getter is: ")
+                            info.append(getter)
+                            if delegate.expression is not None:
+                                info.append("\nwhich calls " + str(delegate.expression))
+                        info.append("\n")
                         json = self.generate_result(info)
                         results.append(json)
                 elif isinstance(delegate, LocalVariable) and delegate.location is not None \
