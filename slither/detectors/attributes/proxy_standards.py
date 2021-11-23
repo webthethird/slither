@@ -17,6 +17,7 @@ from slither.core.expressions.assignment_operation import AssignmentOperation
 from slither.core.expressions.binary_operation import BinaryOperation
 from slither.core.expressions.member_access import MemberAccess
 
+
 def find_slot_in_setter_asm(
         inline_asm: Union[str, Dict],
         delegate: LocalVariable
@@ -39,6 +40,44 @@ def find_slot_in_setter_asm(
                 params = asm.split("(")[1].strip(")").split(", ")
                 slot = params[0]
     return slot
+
+
+def find_slot_string_from_assert(
+        proxy: Contract,
+        slot: StateVariable
+):
+    slot_string = None
+    assert_exp = None
+    minus = 0
+    if proxy.constructor is not None:
+        for exp in proxy.constructor.all_expressions():
+            if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)":
+                print("Found assert statement in constructor:\n" + str(exp))
+                assert_exp = exp
+                arg = exp.arguments[0]
+                if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
+                    e = arg.expression_right
+                    print("BinaryOperation ==")
+                    if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
+                        print("TypeConversion bytes32: " + str(e))
+                        e = e.expression
+                    if isinstance(e, BinaryOperation) and str(e.type) == "-":
+                        print("BinaryOperation -: " + str(e))
+                        if isinstance(e.expression_right, Literal):
+                            print("Minus: " + str(e.expression_right.value))
+                            minus = int(e.expression_right.value)
+                            e = e.expression_left
+                    if isinstance(e, TypeConversion) and str(e.type) == "uint256":
+                        print("TypeConversion uint256: " + str(e))
+                        e = e.expression
+                    if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
+                        print("CallExpression keccak256: " + str(e))
+                        arg = e.arguments[0]
+                        if isinstance(arg, Literal):
+                            if str(arg.type) == "string":
+                                slot_string = arg.value
+                                break
+    return slot_string, assert_exp, minus
 
 
 class ProxyStandards(AbstractDetector, ABC):
@@ -419,91 +458,78 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     target = str(exp).split(".")[0]
                     else:
                         print("Implementation slot: " + slot.name + " = " + str(slot.expression))
-                        slot_string = None
                         slot_value = str(slot.expression)
-                        assert_exp = None
-                        minus = 0
-                        if proxy.constructor is not None:
-                            for exp in proxy.constructor.all_expressions():
-                                if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)":
-                                    print("Found assert statement in constructor:\n" + str(exp))
-                                    assert_exp = exp
-                                    arg = exp.arguments[0]
-                                    if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
-                                        e = arg.expression_right
-                                        print("BinaryOperation ==")
-                                        if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
-                                            print("TypeConversion bytes32: " + str(e))
-                                            e = e.expression
-                                        if isinstance(e, BinaryOperation) and str(e.type) == "-":
-                                            print("BinaryOperation -: " + str(e))
-                                            if isinstance(e.expression_right, Literal):
-                                                print("Minus: " + str(e.expression_right.value))
-                                                minus = int(e.expression_right.value)
-                                                e = e.expression_left
-                                        if isinstance(e, TypeConversion) and str(e.type) == "uint256":
-                                            print("TypeConversion uint256: " + str(e))
-                                            e = e.expression
-                                        if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
-                                            print("CallExpression keccak256: " + str(e))
-                                            arg = e.arguments[0]
-                                            if isinstance(arg, Literal):
-                                                if str(arg.type) == "string":
-                                                    slot_string = arg.value
-                                                    break
-                            if slot_string is not None:
-                                s = sha3.keccak_256()
-                                s.update(slot_string.encode("utf-8"))
-                                hashed = int("0x" + s.hexdigest(), 16) - minus
-                                if int(slot_value, 16) == hashed:
-                                    print(slot.name + " value matches keccak256('" + slot_string + "')")
-                                    if slot_string == "eip1967.proxy.implementation":
-                                        info = [
-                                            proxy,
-                                            " implements EIP-1967: Standard Proxy Storage Slots\n"
-                                        ]
-                                        json = self.generate_result(info)
-                                        results.append(json)
-                                    else:
-                                        info = [
-                                            proxy,
-                                            " uses a proxy implementation storage slot called ",
-                                            slot,
-                                            " which equals keccack256('",
-                                            slot_string,
-                                            "')\nHowever it is recommended to use the standard set down by EIP-1967,\n",
-                                            " i.e. IMPLEMENTATION_SLOT = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) \n"
-                                        ]
-                                        json = self.generate_result(info)
-                                        results.append(json)
-                                else:
-                                    self.IMPACT = DetectorClassification.MEDIUM
+                        slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, slot)
+                        if slot_string is not None:
+                            s = sha3.keccak_256()
+                            s.update(slot_string.encode("utf-8"))
+                            hashed = int("0x" + s.hexdigest(), 16) - minus
+                            if int(slot_value, 16) == hashed:
+                                print(slot.name + " value matches keccak256('" + slot_string + "')")
+                                if slot_string == "eip1967.proxy.implementation":
                                     info = [
-                                        "The value of ",
-                                        slot.name,
-                                        " does not appear to match keccak256('",
-                                        slot_string,
-                                        "') as required by the assert statement:\n",
-                                        str(assert_exp) + "\n"
+                                        proxy,
+                                        " implements EIP-1967: Standard Proxy Storage Slots\n"
                                     ]
                                     json = self.generate_result(info)
                                     results.append(json)
-                                    self.IMPACT = DetectorClassification.INFORMATIONAL
-                            elif assert_exp is None:
-                                self.set_impact(DetectorClassification.MEDIUM)
+                                else:
+                                    info = [
+                                        proxy,
+                                        " uses a proxy implementation storage slot called ",
+                                        slot,
+                                        " which equals keccack256('",
+                                        slot_string,
+                                        "')\nHowever it is recommended to use the standard set down by EIP-1967,\ni.e.",
+                                        " IMPLEMENTATION_SLOT = bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) \n"
+                                    ]
+                                    json = self.generate_result(info)
+                                    results.append(json)
+                            else:
                                 info = [
                                     "The value of ",
                                     slot.name,
-                                    " does not appear to be checked in the constructor.\n",
-                                    "When using a hardcoded storage slot, always include an assert statement ",
-                                    "in the first line of the constructor. For example:\n",
-                                    "assert(",
-                                    slot.name,
-                                    " == keccak256('some.well.defined.string'))"
+                                    " does not appear to match keccak256('",
+                                    slot_string,
+                                    "') as required by the assert statement:\n",
+                                    str(assert_exp) + "\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
-                                # self.set_impact(DetectorClassification.INFORMATIONAL)
+                        elif assert_exp is None:
+                            info = [
+                                "The value of ",
+                                slot.name,
+                                " does not appear to be checked in the constructor.\n",
+                                "When using a hardcoded storage slot, always include an assert statement ",
+                                "in the first line of the constructor. For example:\n",
+                                "assert(",
+                                slot.name,
+                                " == keccak256('some.well.defined.string'))\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                    slots = [var for var in proxy.state_variables if var.is_constant and str(var.type) == "bytes32"]
+                    if len(slots) > 1 or (slot is None and len(slots) > 0):
+                        info = [
+                            proxy,
+                            " also uses the following storage slots:\n"
+                        ]
+                        for s in slots:
+                            if s == slot:
+                                continue
+                            slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, s)
+                            if assert_exp is not None:
+                                assert_str = str(assert_exp).replace("assert(bool)(", "").replace("))", "')")\
+                                    .replace("()(", "('").replace("(bytes)(", "('").replace("==", "=")
+                                print(assert_str)
+                                info.append(assert_str + "\n")
+                            else:
+                                info.append(s.name)
+                                info.append(((" = " + str(s.expression)) if s.expression is not None else ""))
+                                info.append(" (not validated in the constructor!)\n")
+                        json = self.generate_result(info)
+                        results.append(json)
             elif contract.is_proxy:
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
