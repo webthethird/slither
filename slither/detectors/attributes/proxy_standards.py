@@ -444,7 +444,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                         if isinstance(e, TypeConversion) and str(e.type) == "uint256":
                                             print("TypeConversion uint256: " + str(e))
                                             e = e.expression
-                                        if isinstance(e, CallExpression) and str(e.called) == "keccak256(bytes)":
+                                        if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
                                             print("CallExpression keccak256: " + str(e))
                                             arg = e.arguments[0]
                                             if isinstance(arg, Literal):
