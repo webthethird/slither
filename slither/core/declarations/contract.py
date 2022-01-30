@@ -1127,7 +1127,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._proxy_impl_setter = self.find_setter_in_contract(self._delegates_to.contract,
                                                                                self._delegates_to,
                                                                                self._proxy_impl_slot, print_debug)
-                    else:
+                    if self._proxy_impl_setter is None:
                         self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegates_to,
                                                                                self._proxy_impl_slot, print_debug)
                 if self._proxy_impl_setter is not None:
@@ -1530,6 +1530,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 val = called.value
                 if isinstance(val, Function):   # Identifier.value is usually a Variable but here it's always a Function
                     func = val
+            elif isinstance(called, MemberAccess):
+                val = called.expression
+                print(val)
         if func is not None:
             if len(func.all_nodes()) == 0:
                 # Sometimes Slither connects a CallExpression to an abstract function, missing the overriding function
@@ -1950,7 +1953,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         delegate_to = None
         expression = node.expression
         if print_debug:
-            print("\nBegin Contract.handle_assembly_in_version_0_6_0_and_above\n")
+            print("\nBegin Contract.find_delegatecall_in_exp_node\n")
             print("Found Expression Node: " + str(expression))
         if isinstance(expression, ExpressionTyped):
             if print_debug:
@@ -2006,7 +2009,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
         if print_debug:
-            print("\nEnd Contract.handle_assembly_in_version_0_6_0_and_above\n")
+            print("\nEnd Contract.find_delegatecall_in_exp_node\n")
         return is_proxy, delegate_to
 
     def getter_return_is_non_constant(self, print_debug) -> bool:
