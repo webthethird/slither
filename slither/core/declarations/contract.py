@@ -1484,7 +1484,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         Having found a LocalVariable matching the destination name extracted from the delegatecall,
         we know that the value of the local variable is gotten by the given CallExpression.
         Therefore, we are interested in tracking the origin of the value returned by the Function being called.
-        There are 2 ways to return values from a function in Solidity:
+        There are 2 ways to return values from a function in Solidity (though they may be mixed, leading to case 3):
             1 - explicitly assigning values to named return variables, i.e.
                 function _implementation() internal view returns (address impl) {
                     bytes32 slot = IMPLEMENTATION_SLOT;
@@ -1496,9 +1496,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 function implementation() public view returns (address) {
                     return getAppBase(appId());
                 }
+            3 - return variable is given a name, but is not assigned a value, instead using a return statement, i.e.
+                function _implementation() internal view virtual override returns (address impl) {
+                    return ERC1967Upgrade._getImplementation();
+                }
         Given this fact, without knowing anything about the pattern, we know that we must approach this in 1 of 2 ways:
-            1 - If the return value is named, then take that Variable object and look for where it is assigned a value
-            2 - If it has no name, find the RETURN node at the end of the function's CFG, determine which Variable
+            1 - If the function has no RETURN node, then take the named return Variable object and look for where it is
+                assigned a value
+            2 - Otherwise, find the RETURN node at the end of the function's CFG, determine which Variable
                 object it is returning, then look for where it is assigned a value
         For expediency, check #2 first
 
@@ -1526,13 +1531,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         ret: Variable = None
         if isinstance(exp, CallExpression):     # Guaranteed but type checking never hurts and helps IDE w autocomplete
             called = exp.called
-            if isinstance(called, Identifier):  # Always the case, kind of annoying extra layer
+            if print_debug:
+                print("called = {}".format(str(called)))
+            if isinstance(called, Identifier):
                 val = called.value
                 if isinstance(val, Function):   # Identifier.value is usually a Variable but here it's always a Function
                     func = val
             elif isinstance(called, MemberAccess):
                 val = called.expression
                 print(val)
+                return self.find_delegate_from_member_access(exp, print_debug)
         if func is not None:
             if len(func.all_nodes()) == 0:
                 # Sometimes Slither connects a CallExpression to an abstract function, missing the overriding function
@@ -1547,39 +1555,47 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         print("Failure")
 
             ret = func.returns[0]
-            if ret.name is None or ret.name == "":
-                # Case #2 - need to find RETURN node and the variable returned first
-                for n in func.all_nodes():
-                    if n.type == NodeType.RETURN:
-                        rex = n.expression
-                        if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
+            # if ret.name is None or ret.name == "":
+            # Case #2/3 - need to find RETURN node and the variable returned first
+            ret_node = self.find_return_node(func)
+            if print_debug:
+                print(ret_node)
+            if ret_node is not None:
+                rex = ret_node.expression
+                if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
+                    if print_debug:
+                        print(rex)
+                    ret = rex.value
+                elif isinstance(rex, CallExpression):
+                    if print_debug:
+                        print("Encountered call expression at RETURN node: " + str(rex))
+                    called = rex.called
+                    if isinstance(called, MemberAccess):
+                        if print_debug:
+                            print("Encountered member access expression: " + str(called))
+                        delegate = self.find_delegate_from_member_access(called, print_debug)
+                        if delegate is None:
                             if print_debug:
-                                print(rex)
-                            ret = rex.value
-                            break
-                        elif isinstance(rex, CallExpression):
-                            if print_debug:
-                                print("Encountered call expression at RETURN node: " + str(rex))
-                            called = rex.called
-                            if isinstance(called, MemberAccess):
-                                if print_debug:
-                                    print("Encountered member access expression: " + str(called))
-                                delegate = self.find_delegate_from_member_access(called, print_debug)
-                                if delegate is None:
-                                    delegate = LocalVariable()
-                                    delegate.expression = rex
-                                    if delegate.name is None:
-                                        delegate.name = str(called)
-                                if print_debug:
-                                    print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
-                                return delegate
-                            elif isinstance(called, Identifier):
-                                if isinstance(called.value, FunctionContract) and called.value.contract != self:
-                                    if print_debug:
-                                        print("Encountered call to another contract: " + str(rex))
+                                print("find_delegate_from_member_access returned None")
+                            delegate = LocalVariable()
+                            delegate.expression = rex
+                        if delegate.name is None:
+                            if ret.name is None:
+                                delegate.name = str(called)
                             else:
-                                return self.find_delegate_from_call_exp(rex, print_debug)
-            else:
+                                delegate.name = ret.name
+                        if delegate.type is None:
+                            delegate.type = ret.type
+                        if print_debug:
+                            print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
+                        return delegate
+                    elif isinstance(called, Identifier):
+                        if isinstance(called.value, FunctionContract) and called.value.contract != self:
+                            if print_debug:
+                                print("Encountered call to another contract: " + str(rex))
+                    else:
+                        return self.find_delegate_from_call_exp(rex, print_debug)
+            if ret.name is not None and ret_node is None:
                 # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
                 for n in func.all_nodes():
                     if n.type == NodeType.EXPRESSION:
@@ -1765,10 +1781,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if isinstance(exp, MemberAccess):
             member_name = exp.member_name
             e = exp.expression
+            print(e)
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 ctype = e.type
                 if isinstance(e, Identifier):
-                    ctype = e.value.type
+                    if isinstance(e.value, Contract):
+                        ctype = UserDefinedType(e.value)
+                    else:
+                        ctype = e.value.type
                 if isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Contract) and ctype.type != self:
                     contract = ctype.type
                     if print_debug:
@@ -1805,12 +1825,32 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug:
                         print("Found the function called " + f.name)
                     ret = f.returns[0]
-                    if ret.name is None or ret.name == "":
-                        for n in f.all_nodes():
-                            if n.type == NodeType.RETURN:
-                                e = n.expression
-                                if isinstance(e, Identifier):
-                                    ret = e.value
+                    if print_debug:
+                        if ret.name is None or ret.name == "":
+                            print("Returns a variable of type {} with no name".format(str(ret.type)))
+                        else:
+                            print("Returns a variable of type {} called {}".format(str(ret.type), ret.name))
+                    if isinstance(ret.type, UserDefinedType):
+                        if print_debug:
+                            print("Which is a UserDefinedType of type {}".format(ret.type.type))
+                    ret_node = self.find_return_node(f)
+                    if ret_node is not None:
+                        e = ret_node.expression
+                        if print_debug:
+                            print("Found RETURN node: {}".format(str(e)))
+                        if isinstance(e, Identifier):
+                            print("Returns an Identifier")
+                            ret = e.value
+                        elif isinstance(e, MemberAccess):
+                            if print_debug:
+                                print("Found another MemberAccess\nMember name: {}\nExpression: {}"
+                                      .format(e.member_name, e.expression))
+                            if isinstance(e.expression, CallExpression):
+                                if print_debug:
+                                    print("MemberAccess after CallExpression")
+                                member = self.find_delegate_from_call_exp(e.expression, print_debug)
+                                if print_debug:
+                                    print("member = {}".format(str(member)))
                     if isinstance(ret, StateVariable):
                         delegate = ret
                         if print_debug:
@@ -1826,6 +1866,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         r = e.expression_right
                                         if isinstance(l, Identifier) and l.value == ret:
                                             ret.expression = r
+                                elif n.type == NodeType.ASSEMBLY:
+                                    # TODO: check for assignment inside of assembly
+                                    print("TODO")
                         if ret.expression is not None:
                             e = ret.expression
                             if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
@@ -2095,6 +2138,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if print_debug:
             print("\nEnd " + self.name + ".getter_return_is_non_constant\n")
         return self._is_upgradeable_proxy
+
+    @staticmethod
+    def find_return_node(func: "Function"):
+        from slither.core.cfg.node import NodeType
+
+        n = None
+        for node in func.all_nodes():
+            if node.type == NodeType.RETURN and node.function == func:
+                n = node
+        return n
 
     @staticmethod
     def find_getter_in_contract(

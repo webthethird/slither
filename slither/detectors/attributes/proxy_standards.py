@@ -5,6 +5,7 @@ from slither.detectors.abstract_detector import AbstractDetector, DetectorClassi
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
+from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
 from slither.core.expressions.identifier import Identifier
@@ -336,7 +337,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     call_type = call_exp.type
                                 elif isinstance(call_exp, Identifier):
                                     val = call_exp.value
-                                    if str(val.type) == "address" and val.is_constant:
+                                    if isinstance(val, Variable) and str(val.type) == "address" and val.is_constant:
                                         info = [
                                             "Implementation getter for proxy contract ",
                                             proxy,
