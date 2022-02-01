@@ -1557,7 +1557,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             ret = func.returns[0]
             # if ret.name is None or ret.name == "":
             # Case #2/3 - need to find RETURN node and the variable returned first
-            ret_node = self.find_return_node(func)
+            ret_node = func.return_node()
             if print_debug:
                 print(ret_node)
             if ret_node is not None:
@@ -1580,10 +1580,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             delegate = LocalVariable()
                             delegate.expression = rex
                         if delegate.name is None:
-                            if ret.name is None:
-                                delegate.name = str(called)
-                            else:
-                                delegate.name = ret.name
+                            delegate.name = str(called)
                         if delegate.type is None:
                             delegate.type = ret.type
                         if print_debug:
@@ -1758,6 +1755,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: the corresponding Variable object, if found
         """
         from slither.core.cfg.node import NodeType
+        from slither.core.declarations.structure import Structure
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.identifier import Identifier
@@ -1775,6 +1773,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         contract: Contract = None
         member_name = None
         args = None
+        orig_exp = exp
         if isinstance(exp, CallExpression) and isinstance(exp.called, MemberAccess):
             args = exp.arguments
             exp = exp.called
@@ -1833,7 +1832,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(ret.type, UserDefinedType):
                         if print_debug:
                             print("Which is a UserDefinedType of type {}".format(ret.type.type))
-                    ret_node = self.find_return_node(f)
+                        if isinstance(ret.type.type, Structure):
+                            for v in ret.type.type.elems:
+                                print(v)
+                    ret_node = f.return_node()
                     if ret_node is not None:
                         e = ret_node.expression
                         if print_debug:
@@ -1848,9 +1850,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(e.expression, CallExpression):
                                 if print_debug:
                                     print("MemberAccess after CallExpression")
-                                member = self.find_delegate_from_call_exp(e.expression, print_debug)
-                                if print_debug:
-                                    print("member = {}".format(str(member)))
+                                if isinstance(e.expression.called, MemberAccess):
+                                    if print_debug:
+                                        print("Too many MemberAccesses: returning")
+                                    if delegate is None:
+                                        if print_debug:
+                                            print("find_delegate_from_member_access returned None")
+                                        delegate = LocalVariable()
+                                        delegate.expression = e
+                                    if delegate.name is None:
+                                        delegate.name = str(e)
+                                    if delegate.type is None:
+                                        delegate.type = ret.type
                     if isinstance(ret, StateVariable):
                         delegate = ret
                         if print_debug:
@@ -1868,7 +1879,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             ret.expression = r
                                 elif n.type == NodeType.ASSEMBLY:
                                     # TODO: check for assignment inside of assembly
-                                    print("TODO")
+                                    asm = n.inline_asm
+
                         if ret.expression is not None:
                             e = ret.expression
                             if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
@@ -2140,16 +2152,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable_proxy
 
     @staticmethod
-    def find_return_node(func: "Function"):
-        from slither.core.cfg.node import NodeType
-
-        n = None
-        for node in func.all_nodes():
-            if node.type == NodeType.RETURN and node.function == func:
-                n = node
-        return n
-
-    @staticmethod
     def find_getter_in_contract(
             contract: "Contract", 
             var_to_get: Union[str, "Variable"],
@@ -2270,6 +2272,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.expression_typed import ExpressionTyped
+        from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.identifier import Identifier
 
@@ -2303,47 +2306,56 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if f.contains_assembly:
                     if print_debug:
                         print(f.name + " contains assembly")
-                    for node in f.all_nodes():
-                        if setter is not None:
-                            break
-                        if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
-                            inline = node.inline_asm
-                            for asm in inline.split("\n"):
-                                if "sstore" in asm:
-                                    if print_debug:
-                                        print(asm)
-                                    slotname = asm.split("sstore(")[1].split(",")[0]
-                                    for v in f.variables_read_or_written:
-                                        if v.name == slotname:
-                                            if v in [storage_slot, var_to_set]:
-                                                setter = f
-                                                break
-                                            elif isinstance(v, LocalVariable):
-                                                exp = v.expression
-                                                if isinstance(exp, Identifier) and exp.value in [storage_slot,
-                                                                                                 var_to_set]:
-                                                    setter = f
-                                                    break
-                                    if setter is not None:
-                                        break
-                        elif node.type == NodeType.EXPRESSION:
-                            exp = node.expression
-                            if print_debug:
-                                print(exp)
-                            if isinstance(exp, CallExpression) and "sstore" in str(exp.called):
+                for node in f.all_nodes():
+                    if setter is not None:
+                        break
+                    if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
+                        inline = node.inline_asm
+                        for asm in inline.split("\n"):
+                            if "sstore" in asm:
                                 if print_debug:
-                                    print(exp.called)
-                                arg = exp.arguments[0]
-                                if isinstance(arg, Identifier):
-                                    v = arg.value
-                                    if v in [storage_slot, var_to_set]:
-                                        setter = f
-                                        break
-                                    elif isinstance(v, LocalVariable):
-                                        exp = v.expression
-                                        if isinstance(exp, Identifier) and exp.value in [storage_slot, var_to_set]:
+                                    print(asm)
+                                slotname = asm.split("sstore(")[1].split(",")[0]
+                                for v in f.variables_read_or_written:
+                                    if v.name == slotname:
+                                        if v in [storage_slot, var_to_set]:
                                             setter = f
                                             break
+                                        elif isinstance(v, LocalVariable):
+                                            exp = v.expression
+                                            if isinstance(exp, Identifier) and exp.value in [storage_slot,
+                                                                                             var_to_set]:
+                                                setter = f
+                                                break
+                                if setter is not None:
+                                    break
+                    elif node.type == NodeType.EXPRESSION:
+                        exp = node.expression
+                        if print_debug:
+                            print(exp)
+                        if isinstance(exp, CallExpression) and "sstore" in str(exp.called):
+                            if print_debug:
+                                print(exp.called)
+                            arg = exp.arguments[0]
+                            if isinstance(arg, Identifier):
+                                v = arg.value
+                                if v in [storage_slot, var_to_set]:
+                                    setter = f
+                                    break
+                                elif isinstance(v, LocalVariable):
+                                    exp = v.expression
+                                    if isinstance(exp, Identifier) and exp.value in [storage_slot, var_to_set]:
+                                        setter = f
+                                        break
+                        elif isinstance(exp, AssignmentOperation):
+                            r = exp.expression_right
+                            l = exp.expression_left
+                            if var_to_set.expression is not None and var_to_set.expression == l:
+                                setter = f
+                                break
+                            elif str(l) == var_to_set.name:
+                                setter = f
+                                break
         # if setter is None and "facet" in str(var_to_set):
         #     """
         #     Handle the corner case for EIP-2535 Diamond proxy

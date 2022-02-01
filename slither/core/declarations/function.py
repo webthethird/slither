@@ -626,6 +626,15 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
     def add_return_ssa(self, var: "LocalIRVariable"):
         self._returns_ssa.append(var)
 
+    def return_node(self) -> Optional["Node"]:
+        from slither.core.cfg.node import NodeType
+        n = None
+        for node in self.all_nodes():
+            if node.type == NodeType.RETURN and node.function == self:
+                n = node
+                break
+        return n
+
     # endregion
     ###################################################################################
     ###################################################################################
