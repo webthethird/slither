@@ -1102,7 +1102,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         print_debug = True
-        if print_debug: print(f"Begin {self.name}.is_upgradeable_proxy")
+        if print_debug: print(f"\nBegin {self.name}.is_upgradeable_proxy")
 
         if self._is_upgradeable_proxy is None:
             if print_debug: print(f"\nChecking contract: {self.name}")
@@ -1139,7 +1139,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self:
                         self._proxy_impl_getter = self.find_getter_in_contract(self._delegates_to.contract,
                                                                                self._delegates_to, print_debug)
-                    else:
+                    if self._proxy_impl_getter is None:
                         self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegates_to, print_debug)
                 
                 # if both setter and getter can be found, then return true
@@ -1160,19 +1160,35 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     located in another contract. The assumption is only necessary if we do not search cross-contracts.
                     """
                     if print_debug:
-                        print("Could not find implementation getter")
-                    for n in self.fallback_function.all_nodes():
-                        print(n.type)
-                        if n.type == NodeType.VARIABLE: # and n.variable_declaration == self._delegates_to:
-                            print(n.variable_declaration)
-                            print(n.expression)
-                        elif n.type == NodeType.EXPRESSION:
-                            print(n.expression)
-                        elif n.type == NodeType.ASSEMBLY:
-                            inline_asm = n.inline_asm
-                            if inline_asm and "sload" in inline_asm and self._delegates_to.name in inline_asm:
-                                print(inline_asm)
-                                self._is_upgradeable_proxy = True
+                        print(f"Could not find implementation getter in {self.name}")
+                    if (isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self)\
+                            or (isinstance(self._delegates_to, LocalVariable) and
+                                isinstance(self._delegates_to.function, FunctionContract) and
+                                self._delegates_to.function.contract != self):
+                        if print_debug: print(f"or in {self._delegates_to.contract.name}")
+                        for c in self.compilation_unit.contracts:
+                            if self._delegates_to.contract in c.inheritance:
+                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegates_to, print_debug)
+                                self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegates_to,
+                                                                                       None, print_debug)
+                                if self._proxy_impl_setter is not None:
+                                    self._is_upgradeable_proxy = True
+                                    return self._is_upgradeable_proxy
+                                elif self._proxy_impl_getter is not None:
+                                    return c.getter_return_is_non_constant(print_debug)
+                    else:
+                        for n in self.fallback_function.all_nodes():
+                            print(n.type)
+                            if n.type == NodeType.VARIABLE: # and n.variable_declaration == self._delegates_to:
+                                print(n.variable_declaration)
+                                print(n.expression)
+                            elif n.type == NodeType.EXPRESSION:
+                                print(n.expression)
+                            elif n.type == NodeType.ASSEMBLY:
+                                inline_asm = n.inline_asm
+                                if inline_asm and "sload" in inline_asm and self._delegates_to.name in inline_asm:
+                                    print(inline_asm)
+                                    self._is_upgradeable_proxy = True
         if print_debug:
             print(f"\nEnd {self.name}.is_upgradeable_proxy\n")
         return self._is_upgradeable_proxy
@@ -1430,8 +1446,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(called, Identifier) and called.value == parent_func:
                                 if print_debug: print(f"Found where {parent_func.name} is called: {exp}")
                                 arg = exp.arguments[idx]
+                                if print_debug: print(f"The value passed to parameter #{idx} is {arg}")
                                 if isinstance(arg, Identifier):
                                     v = arg.value
+                                    if print_debug: print(f"which is an Identifier with value {v}")
                                     if isinstance(v, StateVariable):
                                         if print_debug: print(f"{v.name} is a State Variable")
                                         delegate = v
@@ -1449,6 +1467,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if _delegate is not None:
                                         delegate = _delegate
                                         break
+                                elif isinstance(arg, IndexAccess):
+                                    if print_debug: print("which is an IndexAccess")
+                                    if isinstance(arg.expression_left, Identifier):
+                                        delegate = arg.expression_left.value
+                                        delegate.expression = arg
+                                    break
                 break
         if print_debug:
             print(f"\nEnd {self.name}.find_delegate_variable_from_name\n")
@@ -2091,14 +2115,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.variable import Variable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.call_expression import CallExpression
 
         getter = None
         exp = (var_to_get.expression if isinstance(var_to_get, Variable) else None)
         if print_debug:
             print(f"\nBegin {contract.name}.find_getter_in_contract\n")
-            if exp is not None and isinstance(exp, CallExpression):
-                print(exp)
+        if exp is not None and print_debug: print(exp)
         for f in contract.functions:
             if contract._proxy_impl_getter is not None:
                 getter = contract._proxy_impl_getter
@@ -2130,9 +2154,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             break
                         if n.type == NodeType.RETURN:
                             e = n.expression
+
                             if isinstance(e, Identifier) and e.value == var_to_get:
                                 getter = f
                                 break
+                            elif isinstance(e, IndexAccess) and isinstance(exp, IndexAccess):
+                                if print_debug: print(f"e.expression_left = {e.expression_left}\n"
+                                                      f"exp.expression_left = {exp.expression_left}")
+                                if isinstance(e.expression_left, Identifier) and isinstance(exp.expression_left, Identifier):
+                                    if e.expression_left.value == exp.expression_left.value:
+                                        getter = f
+                                        break
                         if contract.proxy_impl_storage_offset is not None and f.contains_assembly:
                             slot = contract.proxy_impl_storage_offset
                             if print_debug: print(f"{f.name} contains assembly")
@@ -2185,17 +2217,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: the function in contract which sets var_to_set, if found
         """
         from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.identifier import Identifier
 
         setter = None
-
+        exp = (var_to_set.expression if isinstance(var_to_set, Variable) else None)
         if print_debug:
             print(f"\nBegin {contract.name}.find_setter_in_contract\n")
+            if exp is not None:
+                print(exp)
         for f in contract.functions:
             if setter is not None:
                 break
@@ -2258,9 +2294,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         elif isinstance(exp, AssignmentOperation):
                             r = exp.expression_right
                             l = exp.expression_left
-                            if var_to_set.expression is not None and var_to_set.expression == l:
-                                setter = f
-                                break
+                            if var_to_set.expression is not None:
+                                vexp = var_to_set.expression
+                                if vexp == l:
+                                    setter = f
+                                    break
+                                elif isinstance(l, IndexAccess) and isinstance(vexp, IndexAccess):
+                                    if l.expression_left == vexp.expression_left:
+                                        setter = f
+                                        break
                             elif str(l) == var_to_set.name:
                                 setter = f
                                 break
