@@ -1550,10 +1550,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug:
                             print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
                         return delegate
-                    elif isinstance(called, Identifier):
-                        if isinstance(called.value, FunctionContract) and called.value.contract != self:
-                            if print_debug: print(f"Encountered call to another contract: {rex}")
+                    elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract) \
+                            and called.value.contract != self:
+                        if print_debug: print(f"Encountered call to another contract: {rex}")
+                        return called.value.contract.find_delegate_from_call_exp(rex, print_debug)
                     else:
+                        if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp")
                         return self.find_delegate_from_call_exp(rex, print_debug)
             if ret.name is not None and ret_node is None:
                 # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
