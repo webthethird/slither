@@ -53,26 +53,26 @@ def find_slot_string_from_assert(
     if proxy.constructor is not None:
         for exp in proxy.constructor.all_expressions():
             if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)":
-                print("Found assert statement in constructor:\n" + str(exp))
+                print(f"Found assert statement in constructor:\n{str(exp)}")
                 assert_exp = exp
                 arg = exp.arguments[0]
                 if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
                     e = arg.expression_right
                     print("BinaryOperation ==")
                     if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
-                        print("TypeConversion bytes32: " + str(e))
+                        print(f"TypeConversion bytes32: {str(e)}")
                         e = e.expression
                     if isinstance(e, BinaryOperation) and str(e.type) == "-":
-                        print("BinaryOperation -: " + str(e))
+                        print(f"BinaryOperation -: {str(e)}")
                         if isinstance(e.expression_right, Literal):
-                            print("Minus: " + str(e.expression_right.value))
+                            print(f"Minus: {str(e.expression_right.value)}")
                             minus = int(e.expression_right.value)
                             e = e.expression_left
                     if isinstance(e, TypeConversion) and str(e.type) == "uint256":
-                        print("TypeConversion uint256: " + str(e))
+                        print(f"TypeConversion uint256: {str(e)}")
                         e = e.expression
                     if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
-                        print("CallExpression keccak256: " + str(e))
+                        print(f"CallExpression keccak256: {str(e)}")
                         arg = e.arguments[0]
                         if isinstance(arg, Literal):
                             if str(arg.type) == "string":
@@ -135,7 +135,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 json = self.generate_result(info)
                 results.append(json)
                 delegate = proxy.delegates_to
-                print(proxy.name + " delegates to variable of type " + str(delegate.type) + " called " + delegate.name)
+                print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
                 lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
                 ierc_1538 = proxy.compilation_unit.get_contract_from_name("IERC1538")
                 if lib_diamond is not None and lib_diamond.get_structure_from_name("DiamondStorage") is not None:
@@ -148,7 +148,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     json = self.generate_result(info)
                     results.append(json)
                 elif isinstance(delegate, StateVariable):
-                    print("delegate.contract = " + str(delegate.contract) + "\nproxy = " + str(proxy))
+                    print(f"delegate.contract = {delegate.contract}\nproxy = {proxy}")
                     if delegate.contract == proxy:
                         info = [
                             proxy,
@@ -160,8 +160,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         json = self.generate_result(info)
                         results.append(json)
                     elif delegate.contract in proxy.inheritance:
-                        print("State variable " + delegate.name + " is in the inherited contract: "
-                              + delegate.contract.name)
+                        print(f"State variable {delegate.name} is in the inherited contract: {delegate.contract.name}")
                         for idx, c in enumerate(proxy.inheritance_reverse):
                             if idx == 0:
                                 suffix = "st"
@@ -188,8 +187,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 json = self.generate_result(info)
                                 results.append(json)
                     else:
-                        print("State variable " + delegate.name + " is located in another contract: "
-                              + delegate.contract.name)
+                        print(f"State variable {delegate.name} is defined in another contract: "
+                              f"{delegate.contract.name}")
                         setter = proxy.proxy_implementation_setter
                         getter = proxy.proxy_implementation_getter
                         contract = delegate.contract
@@ -225,13 +224,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                     if proxiable is not None:
                         setter = proxiable.get_function_from_signature("updateCodeAddress(address)")
                         if setter is not None:
-                            print("Found implementation setter " + setter.signature_str
-                                  + " in contract " + proxiable.name)
+                            print(f"Found implementation setter {setter.signature_str}"
+                                  f" in contract {proxiable.name}")
                             for c in proxy.compilation_unit.contracts:
                                 if c == proxiable:
                                     continue
                                 if proxiable in c.inheritance:
-                                    print("Contract " + c.name + " inherits " + proxiable.name)
+                                    print(f"Contract {c.name} inherits {proxiable.name}")
                                     proxiable = c
                             info = [
                                 proxy,
@@ -319,9 +318,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     left = exp.expression_left
                                     right = exp.expression_right
                                     if isinstance(left, Identifier):
-                                        print("Left: Identifier " + str(left.type))
+                                        print(f"Left: Identifier {left.type}")
                                     if isinstance(right, CallExpression):
-                                        print("Right: " + str(right.called))
+                                        print(f"Right: {right.called}")
                                         if "call" in str(right):
                                             exp = right.called
                                             break
@@ -333,7 +332,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 call_contract = None
                                 call_type = None
                                 if isinstance(call_exp, TypeConversion):
-                                    print("The getter calls a function from a contract of type " + str(call_exp.type))
+                                    print(f"The getter calls a function from a contract of type {call_exp.type}")
                                     call_type = call_exp.type
                                 elif isinstance(call_exp, Identifier):
                                     val = call_exp.value
@@ -352,21 +351,21 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 if call_type is not None:
                                     call_contract = proxy.compilation_unit.get_contract_from_name(str(call_type))
                                     if call_contract is not None:
-                                        print("\nFound contract called by proxy: " + call_contract.name)
+                                        print(f"\nFound contract called by proxy: {call_contract.name}")
                                         interface = None
                                         if call_contract.is_interface:
                                             interface = call_contract
                                             call_contract = None
-                                            print("It's an interface\nLooking for a contract that implements the interface "
-                                                  + interface.name)
+                                            print(f"It's an interface\nLooking for a contract that implements "
+                                                  f"the interface {interface.name}")
                                             for c in proxy.compilation_unit.contracts:
                                                 if interface in c.inheritance:
-                                                    print(c.name + " inherits the interface " + interface.name)
+                                                    print(f"{c.name} inherits the interface {interface.name}")
                                                     call_contract = c
                                                     break
                                             if call_contract is None:
-                                                print("Could not find a contract that inherits " + interface.name + "\n"
-                                                      + "Looking for a contract with " + call_function)
+                                                print(f"Could not find a contract that inherits {interface.name}\n"
+                                                      f"Looking for a contract with {call_function}")
                                                 for c in self.compilation_unit.contracts:
                                                     has_called_func = False
                                                     if c == interface:
@@ -375,24 +374,24 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                         if exp.member_name not in f:
                                                             continue
                                                         if f in c.functions_signatures:
-                                                            print(c.name + " has function " + f + " from interface")
+                                                            print(f"{c.name} has function {f} from interface")
                                                             has_called_func = True
                                                             break
                                                     if has_called_func:
-                                                        print(c.name + " contains the implementation getter")
+                                                        print(f"{c.name} contains the implementation getter")
                                                         call_contract = c
                                                         break
                                             if call_contract is None:
-                                                print("Could not find a contract that implements " + exp.member_name
-                                                      + " from " + interface.name + ":")
+                                                print(f"Could not find a contract that implements {exp.member_name}"
+                                                      f" from {interface.name}:")
                                             else:
-                                                print("Looking for implementation setter in " + call_contract.name)
+                                                print(f"Looking for implementation setter in {call_contract.name}")
                                                 setter = proxy.find_setter_in_contract(call_contract, delegate,
                                                                                        proxy.proxy_impl_storage_offset,
                                                                                        True)
                                                 if setter is not None:
-                                                    print("\nImplementation set by function: " + setter.name
-                                                          + " in contract: " + call_contract.name)
+                                                    print(f"\nImplementation set by function: {setter.name}"
+                                                          f" in contract: {call_contract.name}")
                                                     info = [
                                                         "Implementation setter for proxy contract ",
                                                         proxy,
@@ -411,7 +410,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                 if f.name == exp.member_name:
                                                     for v in f.returns:
                                                         if str(v.type) == "address":
-                                                            print("Found getter " + f.name + " in " + call_contract.name)
+                                                            print(f"Found getter {f.name} in {call_contract.name}")
                                                             contains_getter = True
                                                             call_function = f
                                                             break
@@ -422,7 +421,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                                 break
                                                         break
                                             if contains_getter:
-                                                print("Looking for implementation setter in " + call_contract.name)
+                                                print(f"Looking for implementation setter in {call_contract.name}")
                                                 setter = proxy.find_setter_in_contract(call_contract, delegate,
                                                                                        proxy.proxy_impl_storage_offset,
                                                                                        True)
@@ -449,16 +448,16 @@ or one of the proxy patterns developed by OpenZeppelin.
                                                     json = self.generate_result(info)
                                                     results.append(json)
                                     else:
-                                        print("Could not find a contract called " + str(call_type) + " in compilation unit")
+                                        print(f"Could not find a contract called {call_type} in compilation unit")
                             elif isinstance(exp, CallExpression):
-                                print("Not member access, just a CallExpression\n" + str(exp))
+                                print(f"Not member access, just a CallExpression\n{exp}")
                                 exp = exp.called
                                 if isinstance(exp, MemberAccess):
                                     print(exp.type)
                                 if "." in str(exp):
                                     target = str(exp).split(".")[0]
                     else:
-                        print("Implementation slot: " + slot.name + " = " + str(slot.expression))
+                        print(f"Implementation slot: {slot.name} = {slot.expression}")
                         slot_value = str(slot.expression)
                         slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, slot)
                         if slot_string is not None:
@@ -466,7 +465,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             s.update(slot_string.encode("utf-8"))
                             hashed = int("0x" + s.hexdigest(), 16) - minus
                             if int(slot_value, 16) == hashed:
-                                print(slot.name + " value matches keccak256('" + slot_string + "')")
+                                print(f"{slot.name} value matches keccak256('{slot_string}')")
                                 if slot_string == "eip1967.proxy.implementation":
                                     info = [
                                         proxy,

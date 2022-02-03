@@ -1102,26 +1102,22 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         print_debug = True
-        if print_debug:
-            print("Begin " + self.name + ".is_upgradeable_proxy")
+        if print_debug: print(f"Begin {self.name}.is_upgradeable_proxy")
 
         if self._is_upgradeable_proxy is None:
-            if print_debug:
-                print("\nChecking contract: " + self.name)
+            if print_debug: print(f"\nChecking contract: {self.name}")
             self._is_upgradeable_proxy = False
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
             if self.is_proxy and self._delegates_to is not None:
                 
                 # if the destination is a constant, return false
                 if self._delegates_to.is_constant:
-                    if print_debug:
-                        print("Call destination " + str(self._delegates_to) + " is constant\n")
+                    if print_debug: print(f"Call destination {self._delegates_to} is constant\n")
                     self._is_upgradeable_proxy = False
                     return False
                 
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
-                if print_debug:
-                    print(self.name + " is delegating to " + str(self._delegates_to) + "\nLooking for setter\n")
+                if print_debug: print(f"{self.name} is delegating to {self._delegates_to}\nLooking for setter\n")
                 if self._proxy_impl_setter is None:
                     if isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self:
                         self._proxy_impl_setter = self.find_setter_in_contract(self._delegates_to.contract,
@@ -1132,15 +1128,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                self._proxy_impl_slot, print_debug)
                 if self._proxy_impl_setter is not None:
                     if print_debug and isinstance(self._proxy_impl_setter, FunctionContract):
-                        print("\nImplementation set by function: " + self._proxy_impl_setter.name + " in contract: "
+                        print(f"\nImplementation set by function: {self._proxy_impl_setter.name} in contract: "
                               + self._proxy_impl_setter.contract.name)
                     self._is_upgradeable_proxy = True
-                elif print_debug:
-                    print("\nCould not find implementation setter in " + self.name)
+                elif print_debug: print(f"\nCould not find implementation setter in {self.name}")
                 
                 # then find getter
-                if print_debug:
-                    print("Looking for getter\n")
+                if print_debug: print("Looking for getter\n")
                 if self._proxy_impl_getter is None:
                     if isinstance(self._delegates_to, StateVariable) and self._delegates_to.contract != self:
                         self._proxy_impl_getter = self.find_getter_in_contract(self._delegates_to.contract,
@@ -1180,7 +1174,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print(inline_asm)
                                 self._is_upgradeable_proxy = True
         if print_debug:
-            print("\nEnd " + self.name + ".is_upgradeable_proxy\n")
+            print(f"\nEnd {self.name}.is_upgradeable_proxy\n")
         return self._is_upgradeable_proxy
 
     @property
@@ -1195,19 +1189,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         print_debug = True
         if print_debug:
-            print("\nBegin " + self.name + ".is_proxy\n")
+            print(f"\nBegin {self.name}.is_proxy\n")
 
         if self._is_proxy is None:
             self._is_proxy = False
 
             if self.fallback_function is None:
-                print("\nEnd " + self.name + ".is_proxy\n")
+                print(f"\nEnd {self.name}.is_proxy\n")
                 return self._is_proxy
 
             self._delegates_to = None
             for node in self.fallback_function.all_nodes():
-                if print_debug:
-                    print(str(node.type))
+                if print_debug: print(str(node.type))
                 # first try to find a delegetecall in non-assembly code region
                 is_proxy, self._delegates_to = self.find_delegatecall_in_ir(node, print_debug)
                 if not self._is_proxy:
@@ -1221,8 +1214,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
                     That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
                     """
-                    if print_debug:
-                        print("\nFound Assembly Node\n")
+                    if print_debug: print("\nFound Assembly Node\n")
                     if node.inline_asm:
                         # print("\nFound Inline ASM\n")
                         is_proxy, self._delegates_to = self.find_delegatecall_in_asm(node.inline_asm, node.function)
@@ -1237,7 +1229,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if self._is_proxy and self._delegates_to is not None:
                         break
         if print_debug:
-            print("\nEnd " + self.name + ".is_proxy\n")
+            print(f"\nEnd {self.name}.is_proxy\n")
         return self._is_proxy
 
     """
@@ -1290,8 +1282,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         asm_split = None
         dest = None
 
-        if print_debug:
-            print("\nBegin " + self.name + ".find_delegatecall_in_asm\n")
+        if print_debug: print(f"\nBegin {self.name}.find_delegatecall_in_asm\n")
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
             # see tests/proxies/ExampleYulAST.txt for an example
@@ -1309,8 +1300,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             dest = dest["name"]
                         if print_debug:
                             print("\nFound delegatecall in YulFunctionCall\n")
-                            print("Destination param is called '" + dest + "'\nLooking for corresponding Variable\n")
-                            print("Current function: " + parent_func.name)
+                            print(f"Destination param is called '{dest}'\nLooking for corresponding Variable\n")
+                            print(f"Current function: {parent_func.name}")
                         break
         else:
             asm_split = inline_asm.split("\n")
@@ -1339,8 +1330,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = params[2]
                     if print_debug:
                         print("\nFound delegatecall in inline asm")
-                        print("Destination param is called '" + dest + "'\nLooking for corresponding Variable\n")
-                        print("Current function: " + parent_func.name)
+                        print(f"Destination param is called '{dest}'\nLooking for corresponding Variable\n")
+                        print(f"Current function: {parent_func.name}")
                     break
         if is_proxy and delegates_to is None and dest is not None:
             """
@@ -1350,8 +1341,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             delegates_to = self.find_delegate_variable_from_name(dest, parent_func, print_debug)
             if delegates_to is None and asm_split is not None:
                 delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, print_debug)
-        if print_debug:
-            print("\nEnd " + self.name + ".find_delegatecall_in_asm\n")
+        if print_debug: print(f"\nEnd {self.name}.find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
 
     def find_delegate_variable_from_name(
@@ -1380,48 +1370,39 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         delegate = None
-        if print_debug:
-            print("\nBegin " + self.name + ".find_delegate_variable_from_name\n")
-            print("Searching State Variables")
+        if print_debug: print(f"\nBegin {self.name}.find_delegate_variable_from_name\nSearching State Variables")
         for sv in self.state_variables:
-            if print_debug:
-                print("Checking " + sv.name)
+            if print_debug: print(f"Checking {sv.name}")
             if sv.name == dest:
                 delegate = sv
                 if print_debug:
-                    print(dest + " is a State Variable in contract " + sv.contract.name)
-                    print("\nEnd " + self.name + ".find_delegate_variable\n")
+                    print(f"{dest} is a State Variable in contract {sv.contract.name}")
+                    print(f"\nEnd {self.name}.find_delegate_variable\n")
                 return delegate
         if print_debug:
             print("\nSearching Local Variables")
         for lv in parent_func.local_variables:
-            if print_debug:
-                print("Checking " + lv.name)
+            if print_debug: print(f"Checking {lv.name}")
             if lv.name == dest:
-                if print_debug:
-                    print(dest + " is a Local Variable in " + self.name + "." + parent_func.name)
+                if print_debug: print(f"{dest} is a Local Variable in {self.name}.{parent_func.name}")
                 if lv.expression is not None:
                     exp = lv.expression
-                    if print_debug:
-                        print("Expression: " + str(exp))
+                    if print_debug: print(f"Expression: {exp}")
                     if isinstance(exp, Identifier):
                         val = exp.value
-                        if print_debug:
-                            print("Identifier value: " + str(val))
+                        if print_debug: print(f"Identifier value: {val}")
                         if isinstance(val, StateVariable):
                             delegate = val
                             if print_debug:
-                                print(val.name + " is a State Variable in contract " + val.contract.name)
-                                print("\nEnd " + self.name + ".find_delegate_variable\n")
+                                print(f"{val.name} is a State Variable in contract {val.contract.name}")
+                                print(f"\nEnd {self.name}.find_delegate_variable\n")
                             return delegate
                     elif isinstance(exp, CallExpression):
                         """
                         Must be the getter, but we still need a variable
                         """
                         delegate = self.find_delegate_from_call_exp(exp, print_debug)
-                        if print_debug:
-                            print("Call Expression")
-                            print("\nEnd " + self.name + ".find_delegate_variable\n")
+                        if print_debug: print(f"Call Expression\nEnd {self.name}.find_delegate_variable\n")
                     elif isinstance(exp, IndexAccess):
                         exp = exp.expression_left
                         if isinstance(exp, Identifier):
@@ -1429,41 +1410,36 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(val, StateVariable):
                                 delegate = val
                                 if print_debug:
-                                    print(val.name + " is a State Variable in contract " + val.contract.name)
-                                    print("\nEnd " + self.name + ".find_delegate_variable\n")
+                                    print(f"{val.name} is a State Variable in contract {val.contract.name}")
+                                    print(f"\nEnd {self.name}.find_delegate_variable\n")
                                 return delegate
                 else:
-                    if print_debug:
-                        print("No expression found for " + dest)
+                    if print_debug: print(f"No expression found for {dest}")
         if print_debug:
             print("\nSearching Parameter Variables")
         for idx, pv in enumerate(parent_func.parameters):
-            if print_debug:
-                print("Checking " + pv.name)
+            if print_debug: print(f"Checking {pv.name}")
             if pv.name == dest:
                 delegate = pv
-                if print_debug:
-                    print(dest + " is a Parameter in " + self.name + "." + parent_func.name)
+                if print_debug: print(f"{dest} is a Parameter in {self.name}.{parent_func.name}")
                 for n in self.fallback_function.all_nodes():
                     if n.type == NodeType.EXPRESSION:
                         exp = n.expression
                         if isinstance(exp, CallExpression):
                             called = exp.called
                             if isinstance(called, Identifier) and called.value == parent_func:
-                                if print_debug:
-                                    print("Found where " + parent_func.name + " is called: " + str(exp))
+                                if print_debug: print(f"Found where {parent_func.name} is called: {exp}")
                                 arg = exp.arguments[idx]
                                 if isinstance(arg, Identifier):
                                     v = arg.value
                                     if isinstance(v, StateVariable):
-                                        if print_debug:
-                                            print(v.name + " is a State Variable")
+                                        if print_debug: print(f"{v.name} is a State Variable")
                                         delegate = v
                                         break
                                     elif isinstance(v, LocalVariable) and v.expression is not None:
                                         exp = v.expression
                                         if print_debug:
-                                            print(v.name + " is a Local Variable with the expression: " + str(exp))
+                                            print(f"{v.name} is a Local Variable with the expression: {exp}")
                                         if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                             delegate = exp.value
                                         elif isinstance(exp, CallExpression):
@@ -1475,7 +1451,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         break
                 break
         if print_debug:
-            print("\nEnd " + self.name + ".find_delegate_variable_from_name\n")
+            print(f"\nEnd {self.name}.find_delegate_variable_from_name\n")
         return delegate
 
     def find_delegate_from_call_exp(self, exp, print_debug) -> Optional["Variable"]:
@@ -1523,60 +1499,48 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.declarations.function_contract import FunctionContract
         from slither.analyses.data_dependency import data_dependency
 
-        if print_debug:
-            print("\nBegin " + self.name + ".find_delegate_from_call_exp\n")
-            print(exp)
+        if print_debug: print(f"\nBegin {self.name}.find_delegate_from_call_exp\n\n{exp}")
         delegate: Variable = None
         func: Function = None
         ret: Variable = None
         if isinstance(exp, CallExpression):     # Guaranteed but type checking never hurts and helps IDE w autocomplete
             called = exp.called
-            if print_debug:
-                print("called = {}".format(str(called)))
+            if print_debug: print(f"called = {called}")
             if isinstance(called, Identifier):
                 val = called.value
                 if isinstance(val, Function):   # Identifier.value is usually a Variable but here it's always a Function
                     func = val
             elif isinstance(called, MemberAccess):
                 val = called.expression
-                print(val)
+                if print_debug: print(f"Called member of {val}")
                 return self.find_delegate_from_member_access(exp, print_debug)
         if func is not None:
             if len(func.all_nodes()) == 0:
                 # Sometimes Slither connects a CallExpression to an abstract function, missing the overriding function
-                if print_debug:
-                    print("Got abstract function, looking for overriding function")
+                if print_debug: print("Got abstract function, looking for overriding function")
                 func = self.get_function_from_signature(func.full_name)
                 if len(func.all_nodes()) > 0:
-                    if print_debug:
-                        print("Success")
-                else:
-                    if print_debug:
-                        print("Failure")
+                    if print_debug: print("Success")
+                elif print_debug: print("Failure")
 
             ret = func.returns[0]
             # if ret.name is None or ret.name == "":
             # Case #2/3 - need to find RETURN node and the variable returned first
             ret_node = func.return_node()
-            if print_debug:
-                print(ret_node)
+            if print_debug: print(f"Return node of function {func.name}: {ret_node}")
             if ret_node is not None:
                 rex = ret_node.expression
                 if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
-                    if print_debug:
-                        print(rex)
+                    if print_debug: print(rex)
                     ret = rex.value
                 elif isinstance(rex, CallExpression):
-                    if print_debug:
-                        print("Encountered call expression at RETURN node: " + str(rex))
+                    if print_debug: print(f"Encountered call expression at RETURN node: {rex}")
                     called = rex.called
                     if isinstance(called, MemberAccess):
-                        if print_debug:
-                            print("Encountered member access expression: " + str(called))
+                        if print_debug: print(f"Encountered member access expression: {called}")
                         delegate = self.find_delegate_from_member_access(called, print_debug)
                         if delegate is None:
-                            if print_debug:
-                                print("find_delegate_from_member_access returned None")
+                            if print_debug: print("find_delegate_from_member_access returned None")
                             delegate = LocalVariable()
                             delegate.expression = rex
                         if delegate.name is None:
@@ -1584,12 +1548,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if delegate.type is None:
                             delegate.type = ret.type
                         if print_debug:
-                            print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
+                            print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
                         return delegate
                     elif isinstance(called, Identifier):
                         if isinstance(called.value, FunctionContract) and called.value.contract != self:
-                            if print_debug:
-                                print("Encountered call to another contract: " + str(rex))
+                            if print_debug: print(f"Encountered call to another contract: {rex}")
                     else:
                         return self.find_delegate_from_call_exp(rex, print_debug)
             if ret.name is not None and ret_node is None:
@@ -1598,15 +1561,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if n.type == NodeType.EXPRESSION:
                         e = n.expression
                         if isinstance(e, AssignmentOperation):
-                            if print_debug:
-                                print("AssignmentOperation: " + str(e))
+                            if print_debug: print(f"AssignmentOperation: {e}")
                             l = e.expression_left
                             r = e.expression_right
                             if isinstance(l, Identifier) and l.value == ret:
                                 if isinstance(r, CallExpression):
-                                    if print_debug:
-                                        print("CallExpression")
-                                        print(r.called)
+                                    if print_debug: print(f"CallExpression\n{r.called}")
                                     ret.expression = r
                                     if str(r.called) == "sload(uint256)":
                                         delegate = ret
@@ -1615,64 +1575,53 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             v = arg.value
                                             if isinstance(v, Variable) and v.is_constant:
                                                 self._proxy_impl_slot = v
-                                                if print_debug:
-                                                    print("Found storage slot: " + v.name)
+                                                if print_debug: print(f"Found storage slot: {v.name}")
                                             elif isinstance(v, LocalVariable) and v.expression is not None:
                                                 e = v.expression
                                                 if isinstance(e, Identifier) and e.value.is_constant:
                                                     self._proxy_impl_slot = e.value
-                                                    if print_debug:
-                                                        print("Found storage slot: " + e.value.name)
+                                                    if print_debug: print(f"Found storage slot: {e.value.name}")
             if print_debug:
-                print(func.name + " returns a variable of type " + str(ret.type)
-                      + ((" called " + ret.name) if ret.name != "" else ""))
+                print(f"{func.name} returns a variable of type {ret.type} "
+                      f" {(' called ' + ret.name) if ret.name != '' else '' }")
             if isinstance(ret, StateVariable):
                 delegate = ret
             elif func.contains_assembly:
-                if print_debug:
-                    print(func.name + " contains assembly - looking for sload")
+                if print_debug: print(f"{func.name} contains assembly - looking for sload")
                 for n in func.all_nodes():
                     if delegate is not None:
                         break
                     if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str):
                         # only handle versions < 0.6.0 here - otherwise use EXPRESSION nodes
-                        if print_debug:
-                            print("Looking in ASSEMBLY node")
+                        if print_debug: print("Looking in ASSEMBLY node")
                         asm_split = n.inline_asm.split("\n")
                         for asm in asm_split:
-                            if print_debug:
-                                print(asm)
+                            if print_debug: print(asm)
                             if ret.name + " := sload(" in asm:
-                                if print_debug:
-                                    print("Return value set by sload in asm")
+                                if print_debug: print("Return value set by sload in asm")
                                 delegate = ret
                                 slotname = asm.split("sload(")[1].strip(")")
                                 for v in func.variables_read_or_written:
                                     if v.name == slotname:
                                         if isinstance(v, StateVariable) and v.is_constant:
                                             self._proxy_impl_slot = v
-                                            if print_debug:
-                                                print("Found storage slot: " + v.name)
+                                            if print_debug: print(f"Found storage slot: {v.name}")
                                         elif isinstance(v, LocalVariable) and v.expression is not None:
                                             e = v.expression
                                             if isinstance(e, Identifier) and e.value.is_constant:
                                                 self._proxy_impl_slot = e.value
-                                                if print_debug:
-                                                    print("Found storage slot: " + e.value.name)
+                                                if print_debug: print(f"Found storage slot: {e.value.name}")
                                 break
                     elif n.type == NodeType.EXPRESSION and ret.name in str(n.expression):
                         # handle versions >= 0.6.0
-                        if print_debug:
-                            print("Looking in EXPRESSION node")
+                        if print_debug: print("Looking in EXPRESSION node")
                         e = n.expression
                         if isinstance(e, AssignmentOperation):
-                            if print_debug:
-                                print("Assignment operation: " + str(e))
+                            if print_debug: print(f"Assignment operation: {e}")
                             l = e.expression_left
                             r = e.expression_right
                             if isinstance(l, Identifier) and l.value == ret:
-                                if print_debug:
-                                    print("Found " + ret.name + " on left side of assignment")
+                                if print_debug: print(f"Found {ret.name} on left side of assignment")
                                 if isinstance(r, CallExpression) and "sload" in str(r):
                                     delegate = ret
                                     arg = r.arguments[0]
@@ -1680,35 +1629,30 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         v = arg.value
                                         if isinstance(v, StateVariable) and v.is_constant:
                                             self._proxy_impl_slot = v
-                                            if print_debug:
-                                                print("Found storage slot: " + v.name)
+                                            if print_debug: print(f"Found storage slot: {v.name}")
                                         elif isinstance(v, LocalVariable) and v.expression is not None:
                                             e = v.expression
                                             if isinstance(e, Identifier) and e.value.is_constant:
                                                 self._proxy_impl_slot = e.value
-                                                if print_debug:
-                                                    print("Found storage slot: " + e.value.name)
+                                                if print_debug: print(f"Found storage slot: {e.value.name}")
                                     break
             elif isinstance(ret, LocalVariable):
-                if print_debug:
-                    print("Return value is LocalVariable: " + ret.name)
+                if print_debug: print(f"Return value is LocalVariable: {ret.name}")
                 if ret.expression is not None:
                     e = ret.expression
-                    if print_debug:
-                        print("Return expression: " + str(e))
+                    if print_debug: print(f"Return expression: {e}")
                     if isinstance(e, CallExpression):
                         called = e.called
-                        print("CallExpression: " + str(called))
+                        if print_debug: print(f"CallExpression: {called}")
                         if isinstance(called, Identifier):
                             val = called.value
-                            print("Identifier: " + str(val))
+                            if print_debug: print(f"Identifier: {val}")
                             if isinstance(val, FunctionContract):
-                                if print_debug:
-                                    print(val.contract.name + "." + val.full_name)
+                                if print_debug: print(f"{val.contract.name}.{val.full_name}")
                                 if val.contract != self:
                                     delegate = ret
                         elif isinstance(called, MemberAccess):
-                            print("MemberAccess: " + str(called))
+                            if print_debug: print(f"MemberAccess: {called}")
                             if str(called) == "abi.decode":
                                 arg = e.arguments[0]
                                 if isinstance(arg, Identifier):
@@ -1718,8 +1662,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if n.type == NodeType.EXPRESSION:
                                             e = n.expression
                                             if isinstance(e, AssignmentOperation):
-                                                if print_debug:
-                                                    print("AssignmentOperation: " + str(e))
+                                                if print_debug: print(f"AssignmentOperation: {e}")
                                                 l = e.expression_left
                                                 r = e.expression_right
                                                 if isinstance(l, Identifier) and l.value == val:
@@ -1736,10 +1679,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 delegate = self.find_delegate_from_member_access(called, print_debug)
                 else:
-                    if print_debug:
-                        print("has no expression")
+                    if print_debug: print("has no expression")
         if print_debug:
-            print("\nEnd " + self.name + ".find_delegate_from_call_exp\n")
+            print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
         return delegate
 
     def find_delegate_from_member_access(self, exp, print_debug) -> Optional["Variable"]:
@@ -1767,8 +1709,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
 
         if print_debug:
-            print("\nBegin " + self.name + ".find_delegate_from_member_access\n")
-            print("Expression: " + str(exp))
+            print(f"\nBegin {self.name}.find_delegate_from_member_access\n\nExpression: {exp}")
         delegate: Variable = None
         contract: Contract = None
         member_name = None
@@ -1780,7 +1721,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if isinstance(exp, MemberAccess):
             member_name = exp.member_name
             e = exp.expression
-            print(e)
+            if print_debug: print(e)
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 ctype = e.type
                 if isinstance(e, Identifier):
@@ -1790,17 +1731,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         ctype = e.value.type
                 if isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Contract) and ctype.type != self:
                     contract = ctype.type
-                    if print_debug:
-                        print(member_name + " is a member of the contract type: " + contract.name)
+                    if print_debug: print(f"{member_name} is a member of the contract type: {contract.name}")
                     if contract.is_interface:
-                        if print_debug:
-                            print("Which is an interface")
+                        if print_debug: print("Which is an interface")
                         for c in self.compilation_unit.contracts:
                             if c == contract:
                                 continue
                             if contract in c.inheritance:
-                                if print_debug:
-                                    print(c.name + " inherits " + contract.name)
+                                if print_debug: print(f"{c.name} inherits {contract.name}")
                                 contract = c
                         if contract.is_interface:
                             for c in self.compilation_unit.contracts:
@@ -1817,45 +1755,38 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 #     if member_name == "staticcall" and isinstance(args, List) and len(args) == 0:
                 #         print("staticcall with no arguments - must be calling fallback in " + str(e))
         if contract is not None:
-            if print_debug:
-                print("Looking for " + member_name + " in " + contract.name)
+            if print_debug: print(f"Looking for {member_name} in {contract.name}")
             for f in contract.functions:
                 if f.name == member_name:
-                    if print_debug:
-                        print("Found the function called " + f.name)
+                    if print_debug: print(f"Found the function called {f.name}")
                     ret = f.returns[0]
                     if print_debug:
                         if ret.name is None or ret.name == "":
-                            print("Returns a variable of type {} with no name".format(str(ret.type)))
+                            print(f"Returns a variable of type {ret.type} with no name")
                         else:
-                            print("Returns a variable of type {} called {}".format(str(ret.type), ret.name))
+                            print(f"Returns a variable of type {ret.type} called {ret.name}")
                     if isinstance(ret.type, UserDefinedType):
-                        if print_debug:
-                            print("Which is a UserDefinedType of type {}".format(ret.type.type))
+                        if print_debug: print(f"Which is a UserDefinedType of type {ret.type.type}")
                         if isinstance(ret.type.type, Structure):
                             for v in ret.type.type.elems:
-                                print(v)
+                                if print_debug: print(v)
                     ret_node = f.return_node()
                     if ret_node is not None:
                         e = ret_node.expression
-                        if print_debug:
-                            print("Found RETURN node: {}".format(str(e)))
+                        if print_debug: print(f"Found RETURN node: {e}")
                         if isinstance(e, Identifier):
-                            print("Returns an Identifier")
+                            if print_debug: print("Returns an Identifier")
                             ret = e.value
                         elif isinstance(e, MemberAccess):
                             if print_debug:
                                 print("Found another MemberAccess\nMember name: {}\nExpression: {}"
                                       .format(e.member_name, e.expression))
                             if isinstance(e.expression, CallExpression):
-                                if print_debug:
-                                    print("MemberAccess after CallExpression")
+                                if print_debug: print("MemberAccess after CallExpression")
                                 if isinstance(e.expression.called, MemberAccess):
-                                    if print_debug:
-                                        print("Too many MemberAccesses: returning")
+                                    if print_debug: print("Too many MemberAccesses: returning")
                                     if delegate is None:
-                                        if print_debug:
-                                            print("find_delegate_from_member_access returned None")
+                                        if print_debug: print("find_delegate_from_member_access returned None")
                                         delegate = LocalVariable()
                                         delegate.expression = e
                                     if delegate.name is None:
@@ -1865,8 +1796,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(ret, StateVariable):
                         delegate = ret
                         if print_debug:
-                            print("Found the return value from " + f.name)
-                            print("It's a state variable in " + contract.name + " called " + delegate.name)
+                            print(f"Found the return value from {f.name}\n"
+                                  f"It's a state variable in {contract.name} called {delegate.name}")
                     elif isinstance(ret, LocalVariable):
                         if ret.expression is None:
                             for n in f.all_nodes():
@@ -1886,12 +1817,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
                                 delegate = e.value
                                 if print_debug:
-                                    print("Found the return value from " + f.name)
-                                    print("It's a state variable in " + contract.name + " called " + delegate.name)
+                                    print(f"Found the return value from {f.name}\n"
+                                          f"It's a state variable in {contract.name} called {delegate.name}")
                             elif isinstance(e, CallExpression):
                                 if print_debug:
-                                    print("Found the return value from " + f.name)
-                                    print("But it comes from a call expression: " + str(e))
+                                    print(f"Found the return value from {f.name}\n"
+                                          f"But it comes from a call expression: {e}")
                                 delegate = contract.find_delegate_from_call_exp(e, print_debug)
             if delegate is None:
                 for v in contract.state_variables:
@@ -1899,7 +1830,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         delegate = v
                         break
         if print_debug:
-            print("\nEnd " + self.name + ".find_delegate_from_member_access\n")
+            print(f"\nEnd {self.name}.find_delegate_from_member_access\n")
         return delegate
 
     def find_delegate_sloaded_from_hardcoded_slot(
@@ -1932,7 +1863,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
 
         if print_debug:
-            print("\nBegin " + self.name + ".find_delegate_sloaded_from_hardcoded_slot\n")
+            print(f"\nBegin {self.name}.find_delegate_sloaded_from_hardcoded_slot\n")
         delegates_to = None
         for asm in asm_split:
             if dest in asm and "sload(" in asm:
@@ -1950,7 +1881,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     self._proxy_impl_slot = impl_slot
                     break
         if print_debug:
-            print("\nEnd " + self.name + ".find_delegate_sloaded_from_hardcoded_slot\n")
+            print(f"\nEnd {self.name}.find_delegate_sloaded_from_hardcoded_slot\n")
         return delegates_to
 
     @staticmethod
@@ -1971,11 +1902,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             print("\nBegin Contract.find_delegatecall_in_ir\n")
         for ir in node.irs:
             if isinstance(ir, LowLevelCall):
-                if print_debug:
-                    print("\nFound LowLevelCall\n")
+                if print_debug: print("\nFound LowLevelCall\n")
                 if ir.function_name == "delegatecall":
-                    if print_debug:
-                        print("\nFound delegatecall in LowLevelCall\n")
+                    if print_debug: print("\nFound delegatecall in LowLevelCall\n")
                     b = True
                     d = ir.destination
                     break
@@ -2008,44 +1937,37 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         delegate_to = None
         expression = node.expression
         if print_debug:
-            print("\nBegin Contract.find_delegatecall_in_exp_node\n")
-            print("Found Expression Node: " + str(expression))
+            print(f"\nBegin Contract.find_delegatecall_in_exp_node\n\n"
+                  f"Found Expression Node: {expression}")
         if isinstance(expression, ExpressionTyped):
-            if print_debug:
-                print("Expression Type: " + str(expression.type))
+            if print_debug: print(f"Expression Type: {expression.type}")
             if isinstance(expression, AssignmentOperation):
                 """
                 Handles the common case like this: 
                 let result := delegatecall(gas, implementation, 0, calldatasize, 0, 0)
                 """
                 expression = expression.expression_right
-                if print_debug:
-                    print("Checking right side of assignment expression...")
+                if print_debug: print("Checking right side of assignment expression...")
         if isinstance(expression, CallExpression):
             if print_debug:
-                print("Expression called: " + str(expression.called) + "\nType of call:"
-                        + expression.type_call + "\nArgs:")
+                print(f"Expression called: {expression.called}\nType of call: {expression.type_call}\nArgs:")
                 if len(expression.arguments) > 0:
                     for arg in expression.arguments:
                         print(str(arg))
             if "delegatecall" in str(expression.called):
                 is_proxy = True
-                if print_debug:
-                    print("\nFound delegatecall in expression:\n" + str(expression.called) + "\n")
+                if print_debug: print(f"\nFound delegatecall in expression:\n{expression.called}\n")
                 if len(expression.arguments) > 1:
-                    # @webthethird: if there's no second arg, likely a LowLevelCall, should catch above
                     dest = expression.arguments[1]
-                    if print_debug:
-                        print("Destination is " + str(dest))
+                    if print_debug: print(f"Destination is {dest}")
                     if isinstance(dest, Identifier):
                         val = dest.value
-                        print("dest.value: " + str(val))
+                        if print_debug: print(f"dest.value: {val}")
                         if isinstance(val, StateVariable):
                             delegate_to = val
                         elif isinstance(val, LocalVariable):
                             exp = val.expression
-                            if print_debug:
-                                print("Expression: " + str(exp))
+                            if print_debug: print(f"Expression: {exp}")
                             if exp is not None:
                                 if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                     delegate_to = exp.value
@@ -2088,23 +2010,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.analyses.data_dependency import data_dependency
 
         if print_debug:
-            print("\nBegin " + self.name + ".getter_return_is_non_constant\n")
+            print(f"\nBegin {self.name}.getter_return_is_non_constant\n")
             print("Found getter function but not setter\nChecking if getter calls any other function")
         for node in self._proxy_impl_getter.all_nodes():
             exp = node.expression
-            if print_debug:
-                print(str(node.type) + ": " + str(exp))
+            if print_debug: print(f"{node.type}: {exp}")
             if node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
                 left = exp.expression_left
                 right = exp.expression_right
                 if isinstance(left, Identifier) and left.value == self._delegates_to:
-                    if print_debug:
-                        print(right)
+                    if print_debug: print(right)
                     if isinstance(right, Identifier) and right.value.is_constant:
                         self._is_upgradeable_proxy = False
                         return self._is_upgradeable_proxy
                     elif isinstance(right, CallExpression):
-                        print("Call Expression")
+                        if print_debug: print("Call Expression")
                         if "sload" in str(right):
                             slot = right.arguments[0]
                             if isinstance(slot, Identifier):
@@ -2123,8 +2043,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     for n in f.all_nodes():
                                         if n.type == NodeType.EXPRESSION:
                                             e = n.expression
-                                            if print_debug:
-                                                print(e)
+                                            if print_debug: print(e)
                                             if isinstance(e, AssignmentOperation):
                                                 l = e.expression_left
                                                 r = e.expression_right
@@ -2140,7 +2059,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
                     elif isinstance(right, MemberAccess):
-                        print("Member Access")
+                        if print_debug: print("Member Access")
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
             elif node.type == NodeType.RETURN:
@@ -2148,7 +2067,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     self._is_upgradeable_proxy = True
                     return self._is_upgradeable_proxy
         if print_debug:
-            print("\nEnd " + self.name + ".getter_return_is_non_constant\n")
+            print(f"\nEnd {self.name}.getter_return_is_non_constant\n")
         return self._is_upgradeable_proxy
 
     @staticmethod
@@ -2175,9 +2094,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         getter = None
         exp = (var_to_get.expression if isinstance(var_to_get, Variable) else None)
         if print_debug:
-            print("\nBegin " + contract.name + ".find_getter_in_contract\n")
-        if exp is not None and isinstance(exp, CallExpression):
-            print(exp)
+            print(f"\nBegin {contract.name}.find_getter_in_contract\n")
+            if exp is not None and isinstance(exp, CallExpression):
+                print(exp)
         for f in contract.functions:
             if contract._proxy_impl_getter is not None:
                 getter = contract._proxy_impl_getter
@@ -2185,27 +2104,23 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if len(f.all_nodes()) == 0:
                 continue
             if f.name is not None:
-                if print_debug:
-                    print("Checking function: " + f.name)
+                if print_debug: print(f"Checking function: {f.name}")
                 if isinstance(exp, CallExpression) and len(f.all_nodes()) > 0:
                     if f.name == str(exp.called) or exp in f.expressions:
                         getter = f
-                        if print_debug:
-                            print("\n" + f.name + " appears to be the implementation getter\n")
+                        if print_debug: print(f"\n{f.name} appears to be the implementation getter\n")
                         break
             else:
-                if print_debug:
-                    print("Unnamed function of type: " + str(f.function_type))
+                if print_debug: print(f"Unnamed function of type: {f.function_type}")
                 continue
             if not f.name == "fallback" and "constructor" not in f.name.lower():
                 if len(f.returns) > 0:
                     for v in f.returns:
                         if print_debug:
-                            print(f.name + " returns " + str(v.type) + " variable " +
-                                  (("called " + v.name) if v.name != "" else ""))
+                            print(f"{f.name} returns {v.type} variable"
+                                  f" {('called ' + v.name) if v.name != '' else ''}")
                         if v == var_to_get:
-                            if print_debug:
-                                print("\n" + f.name + " appears to be the implementation getter\n")
+                            if print_debug: print(f"\n{f.name} appears to be the implementation getter\n")
                             getter = f
                             break
                     for n in f.all_nodes():
@@ -2218,8 +2133,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 break
                         if contract.proxy_impl_storage_offset is not None and f.contains_assembly:
                             slot = contract.proxy_impl_storage_offset
-                            if print_debug:
-                                print(f.name + " contains assembly")
+                            if print_debug: print(f"{f.name} contains assembly")
                             if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str) and "sloa" in n.inline_asm:
                                 slotname = n.inline_asm.split("sload(")[1].split(")")[0]
                                 if slotname == slot.name:
@@ -2248,7 +2162,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if getter is not None:
                         break
         if print_debug:
-            print("\nEnd " + contract.name + ".find_getter_in_contract\n")
+            print(f"\nEnd {contract.name}.find_getter_in_contract\n")
         return getter
 
     @staticmethod
@@ -2279,33 +2193,28 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         setter = None
 
         if print_debug:
-            print("\nBegin " + contract.name + ".find_setter_in_contract\n")
+            print(f"\nBegin {contract.name}.find_setter_in_contract\n")
         for f in contract.functions:
             if setter is not None:
                 break
             if f.name is not None:
-                if print_debug:
-                    print("Checking function: " + f.name)
+                if print_debug: print(f"Checking function: {f.name}")
             else:   # I don't know why but I occasionally run into unnamed functions that would crash an unchecked print
-                if print_debug:
-                    print("Unnamed function of type: " + str(f.function_type))
+                if print_debug: print(f"Unnamed function of type: {f.function_type}")
                 continue
             if not f.name == "fallback" and "constructor" not in f.name.lower() and "init" not in f.name.lower() \
                     and f.name != contract.name:
                 for v in f.variables_written:
                     if isinstance(v, LocalVariable) and v in f.returns:
-                        if print_debug:
-                            print(f.name + " returns local variable: " + v.name)
+                        if print_debug: print(f"{f.name} returns local variable: {v.name}")
                         continue
                     elif isinstance(v, StateVariable):
-                        if print_debug:
-                            print(f.name + " writes to state variable: " + v.name)
+                        if print_debug: print(f"{f.name} writes to state variable: {v.name}")
                         if str(var_to_set) == v.name:
                             setter = f
                             break
                 if f.contains_assembly:
-                    if print_debug:
-                        print(f.name + " contains assembly")
+                    if print_debug: print(f"{f.name} contains assembly")
                 for node in f.all_nodes():
                     if setter is not None:
                         break
@@ -2313,8 +2222,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         inline = node.inline_asm
                         for asm in inline.split("\n"):
                             if "sstore" in asm:
-                                if print_debug:
-                                    print(asm)
+                                if print_debug: print(asm)
                                 slotname = asm.split("sstore(")[1].split(",")[0]
                                 for v in f.variables_read_or_written:
                                     if v.name == slotname:
@@ -2331,11 +2239,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
-                        if print_debug:
-                            print(exp)
+                        if print_debug: print(exp)
                         if isinstance(exp, CallExpression) and "sstore" in str(exp.called):
-                            if print_debug:
-                                print(exp.called)
+                            if print_debug: print(exp.called)
                             arg = exp.arguments[0]
                             if isinstance(arg, Identifier):
                                 v = arg.value
@@ -2394,7 +2300,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         #     if print_debug:
         #         print("\nEnd DiamondCut corner case handling\n")
         if print_debug:
-            print("\nEnd " + contract.name + ".find_setter_in_contract\n")
+            print(f"\nEnd {contract.name}.find_setter_in_contract\n")
         return setter
 
     # endregion
