@@ -509,7 +509,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                    slots = [var for var in proxy.state_variables if var.is_constant and str(var.type) == "bytes32"]
+                    slots = [var for var in proxy.state_variables if var.is_constant and str(var.type) == "bytes32"
+                             and "slot" in var.name.lower()]
                     if len(slots) > 1 or (slot is None and len(slots) > 0):
                         info = [
                             proxy,
