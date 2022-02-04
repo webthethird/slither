@@ -1167,7 +1167,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 self._delegates_to.function.contract != self):
                         if print_debug: print(f"or in {self._delegates_to.contract.name}")
                         for c in self.compilation_unit.contracts:
-                            if self._delegates_to.contract in c.inheritance:
+                            if self._delegates_to.contract in c.inheritance and c != self:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegates_to, print_debug)
                                 self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegates_to,
                                                                                        None, print_debug)
