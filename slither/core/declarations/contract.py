@@ -1411,7 +1411,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             delegate = val
                             if print_debug:
                                 print(f"{val.name} is a State Variable in contract {val.contract.name}")
-                                print(f"\nEnd {self.name}.find_delegate_variable\n")
+                                print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                             return delegate
                     elif isinstance(exp, CallExpression):
                         """
@@ -1427,7 +1427,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 delegate = val
                                 if print_debug:
                                     print(f"{val.name} is a State Variable in contract {val.contract.name}")
-                                    print(f"\nEnd {self.name}.find_delegate_variable\n")
+                                    print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                                 return delegate
                 else:
                     if print_debug: print(f"No expression found for {dest}")
@@ -1564,23 +1564,32 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug: print(f"Encountered member access expression: {called}")
                         delegate = self.find_delegate_from_member_access(called, print_debug)
                         if delegate is None:
-                            if print_debug: print("find_delegate_from_member_access returned None")
-                            delegate = LocalVariable()
-                            delegate.expression = rex
-                        if delegate.name is None:
-                            delegate.name = str(called)
-                        if delegate.type is None:
-                            delegate.type = ret.type
-                        if print_debug:
-                            print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
-                        return delegate
+                            if print_debug: print(f"{self.name}.find_delegate_from_member_access returned None")
                     elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract) \
                             and called.value.contract != self:
                         if print_debug: print(f"Encountered call to another contract: {rex}")
-                        return called.value.contract.find_delegate_from_call_exp(rex, print_debug)
+                        delegate = called.value.contract.find_delegate_from_call_exp(rex, print_debug)
+                        if delegate is None:
+                            if print_debug: print(f"{called.value.contract.name}"
+                                                  f".find_delegate_from_member_access returned None")
                     else:
                         if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp")
-                        return self.find_delegate_from_call_exp(rex, print_debug)
+                        delegate = self.find_delegate_from_call_exp(rex, print_debug)
+                        if delegate is None:
+                            if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned None")
+                    if delegate is None:
+                        delegate = LocalVariable()
+                        delegate.expression = rex
+                    if delegate.name is None:
+                        delegate.name = str(called)
+                    if delegate.type is None:
+                        delegate.type = ret.type
+                    for a in exp.arguments:
+                        if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
+                            self._proxy_impl_slot = a
+                            break
+                    if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
+                    return delegate
             if ret.name is not None and ret_node is None:
                 # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
                 for n in func.all_nodes():
