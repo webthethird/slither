@@ -1807,9 +1807,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if print_debug:
                                 print("Found another MemberAccess\nMember name: {}\nExpression: {}"
                                       .format(e.member_name, e.expression))
-                            if isinstance(e.expression, CallExpression):
-                                if print_debug: print("MemberAccess after CallExpression")
-                                if isinstance(e.expression.called, MemberAccess):
+                            ex = e.expression
+                            if isinstance(ex, CallExpression):
+                                if print_debug: print(f"MemberAccess after CallExpression: {e.expression.called}")
+                                called = ex.called
+                                if isinstance(called, MemberAccess):
                                     if print_debug: print("Too many MemberAccesses: returning")
                                     if delegate is None:
                                         if print_debug: print("find_delegate_from_member_access returned None")
@@ -1819,6 +1821,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.name = str(e)
                                     if delegate.type is None:
                                         delegate.type = ret.type
+                                    for a in ex.arguments:
+                                        if isinstance(a, Identifier) and str(a.value.type) == "bytes32" \
+                                                and a.value.is_constant:
+                                            self._proxy_impl_slot = a.value
+                                            break
                     if isinstance(ret, StateVariable):
                         delegate = ret
                         if print_debug:
@@ -2294,9 +2301,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         elif isinstance(exp, AssignmentOperation):
                             r = exp.expression_right
                             l = exp.expression_left
+                            if print_debug: print("is an Assignment Operation")
                             if var_to_set.expression is not None:
                                 vexp = var_to_set.expression
-                                if vexp == l:
+                                if print_debug: print(vexp)
+                                if vexp == l or str(vexp) == str(l):    # Expression.__eq__() not implemented
                                     setter = f
                                     break
                                 elif isinstance(l, IndexAccess) and isinstance(vexp, IndexAccess):
