@@ -52,7 +52,7 @@ def find_slot_string_from_assert(
     minus = 0
     if proxy.constructor is not None:
         for exp in proxy.constructor.all_expressions():
-            if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)":
+            if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)" and slot.name in str(exp):
                 print(f"Found assert statement in constructor:\n{str(exp)}")
                 assert_exp = exp
                 arg = exp.arguments[0]
@@ -511,13 +511,15 @@ or one of the proxy patterns developed by OpenZeppelin.
                             results.append(json)
                     slots = [var for var in proxy.state_variables if var.is_constant and str(var.type) == "bytes32"
                              and "slot" in var.name.lower()]
+                    print(f"slots = {slots}")
                     if len(slots) > 1 or (slot is None and len(slots) > 0):
                         info = [
                             proxy,
                             " also uses the following storage slots:\n"
                         ]
                         for s in slots:
-                            if s == slot:
+                            print(s.name)
+                            if s == slot or (slot is not None and s.name == slot.name):
                                 continue
                             slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, s)
                             if assert_exp is not None:
