@@ -1194,7 +1194,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable_proxy
 
     @property
-    def is_proxy(self) -> bool:
+    def is_proxy(self,) -> bool:
         """
         Checks for 'delegatecall' in the fallback function CFG, setting self._is_proxy = True if found.
         Also tries to set self._delegates_to: Variable in the process.
@@ -1233,7 +1233,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print("\nFound Assembly Node\n")
                     if node.inline_asm:
                         # print("\nFound Inline ASM\n")
-                        is_proxy, self._delegates_to = self.find_delegatecall_in_asm(node.inline_asm, node.function)
+                        is_proxy, self._delegates_to = self.find_delegatecall_in_asm(node.inline_asm,
+                                                                                     node.function,
+                                                                                     print_debug)
                         if not self._is_proxy:
                             self._is_proxy = is_proxy
                         if self._is_proxy and self._delegates_to is not None:
@@ -1276,7 +1278,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def find_delegatecall_in_asm(
             self,
             inline_asm: Union[str, Dict],
-            parent_func: Function):
+            parent_func: Function,
+            print_debug=False):
         """
         Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
         as well as the address Variable which the 'delegatecall' targets.
@@ -1292,7 +1295,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
 
-        print_debug = True
         is_proxy = False
         delegates_to: Variable = None
         asm_split = None
@@ -1635,7 +1637,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if ret.name + " := sload(" in asm:
                                 if print_debug: print("Return value set by sload in asm")
                                 delegate = ret
-                                slotname = asm.split("sload(")[1].strip(")")
+                                slotname = asm.split("sload(")[1].split(")")[0]
                                 for v in func.variables_read_or_written:
                                     if v.name == slotname:
                                         if isinstance(v, StateVariable) and v.is_constant:
