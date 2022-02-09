@@ -1110,8 +1110,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
             if self.is_proxy and self._delegates_to is not None:
                 
-                # if the destination is a constant, return false
-                if self._delegates_to.is_constant:
+                # if the destination is a constant or immutable, return false
+                if self._delegates_to.is_constant or self._delegates_to.is_immutable:
                     if print_debug: print(f"Call destination {self._delegates_to} is constant\n")
                     self._is_upgradeable_proxy = False
                     return False
@@ -2326,43 +2326,43 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             elif str(l) == var_to_set.name:
                                 setter = f
                                 break
-        # if setter is None and "facet" in str(var_to_set):
-        #     """
-        #     Handle the corner case for EIP-2535 Diamond proxy
-        #     The function diamondCut is used to add/delete/modify logic contracts (it is the setter)
-        #     But, this function is implemented in a facet (logic) contract itself, i.e. DiamondCutFacet
-        #     This facet is added by the constructor, using LibDiamond.diamondCut, and subsequent calls
-        #     to diamondCut are handled by the fallback(), which delegates to the DiamondCutFacet
-        #     ex: /tests/proxies/DiamondFactory.sol
-        #     """
-        #     if print_debug:
-        #         print("\nBegin DiamondCut corner case handling\n")
-        #     constructor = contract.constructors_declared
-        #     for n in constructor.all_nodes():
-        #         if n.type == NodeType.EXPRESSION:
-        #             exp = n.expression
-        #             if print_debug:
-        #                 print(exp)
-        #                 if isinstance(exp, ExpressionTyped):
-        #                     print(exp.type)
-        #             if isinstance(exp, CallExpression):
-        #                 print(exp.called)
-        #                 if "diamondCut" in str(exp.called):
-        #                     diamond_cut = exp.arguments[0]
-        #                     if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
-        #                         idiamond_cut = contract.compilation_unit.get_contract_from_name("IDiamondCut")
-        #                         cut_facet = idiamond_cut
-        #                         for c in contract.compilation_unit.contracts:
-        #                             if c == idiamond_cut:
-        #                                 continue
-        #                             if idiamond_cut in c.inheritance:
-        #                                 cut_facet = c
-        #                         for f in cut_facet.functions:
-        #                             if f.name == "diamondCut":
-        #                                 setter = f
-        #                                 break
-        #     if print_debug:
-        #         print("\nEnd DiamondCut corner case handling\n")
+        if setter is None and "facet" in str(var_to_set):
+            """
+            Handle the corner case for EIP-2535 Diamond proxy
+            The function diamondCut is used to add/delete/modify logic contracts (it is the setter)
+            But, this function is implemented in a facet (logic) contract itself, i.e. DiamondCutFacet
+            This facet is added by the constructor, using LibDiamond.diamondCut, and subsequent calls
+            to diamondCut are handled by the fallback(), which delegates to the DiamondCutFacet
+            ex: /tests/proxies/DiamondFactory.sol
+            """
+            if print_debug:
+                print("\nBegin DiamondCut corner case handling\n")
+            constructor = contract.constructors_declared
+            for n in constructor.all_nodes():
+                if n.type == NodeType.EXPRESSION:
+                    exp = n.expression
+                    if print_debug:
+                        print(exp)
+                        if isinstance(exp, ExpressionTyped):
+                            print(exp.type)
+                    if isinstance(exp, CallExpression):
+                        print(exp.called)
+                        if "diamondCut" in str(exp.called):
+                            diamond_cut = exp.arguments[0]
+                            if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
+                                idiamond_cut = contract.compilation_unit.get_contract_from_name("IDiamondCut")
+                                cut_facet = idiamond_cut
+                                for c in contract.compilation_unit.contracts:
+                                    if c == idiamond_cut:
+                                        continue
+                                    if idiamond_cut in c.inheritance:
+                                        cut_facet = c
+                                for f in cut_facet.functions:
+                                    if f.name == "diamondCut":
+                                        setter = f
+                                        break
+            if print_debug:
+                print("\nEnd DiamondCut corner case handling\n")
         if print_debug:
             print(f"\nEnd {contract.name}.find_setter_in_contract\n")
         return setter
