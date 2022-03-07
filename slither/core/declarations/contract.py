@@ -1383,8 +1383,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.cfg.node import NodeType
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.children.child_contract import ChildContract
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
 
         delegate = None
@@ -1402,7 +1405,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         for lv in parent_func.local_variables:
             if print_debug: print(f"Checking {lv.name}")
             if lv.name == dest:
-                if print_debug: print(f"{dest} is a Local Variable in {self.name}.{parent_func.name}")
+                if isinstance(parent_func, ChildContract):
+                    if print_debug:
+                        print(f"{dest} is a Local Variable in {parent_func.contract.name}.{parent_func.name}")
                 if lv.expression is not None:
                     exp = lv.expression
                     if print_debug: print(f"Expression: {exp}")
@@ -1439,12 +1444,29 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if print_debug: print(f"Checking {pv.name}")
             if pv.name == dest:
                 delegate = pv
-                if print_debug: print(f"{dest} is a Parameter in {self.name}.{parent_func.name}")
+                if isinstance(parent_func, ChildContract):
+                    if print_debug:
+                        print(f"{dest} is a Parameter in {parent_func.contract.name}.{parent_func.name}")
                 for n in self.fallback_function.all_nodes():
-                    if n.type == NodeType.EXPRESSION:
+                    if n.type == NodeType.EXPRESSION or n.type == NodeType.VARIABLE:
                         exp = n.expression
+                        if isinstance(exp, AssignmentOperation):
+                            print(f"AssignmentOperation: {exp.expression_right}")
+                            exp = exp.expression_right
+                        if isinstance(exp, MemberAccess):
+                            print(f"exp is a MemberAccess: {exp}\n exp.expression = {exp.expression}")
+                            exp = exp.expression
                         if isinstance(exp, CallExpression):
+                            print(f"CallExpression: {exp}")
                             called = exp.called
+                            if isinstance(called, MemberAccess):
+                                print(f"called is a MemberAccess: {called}\ncalled.expression = {called.expression}")
+                                if str(called) == f"{parent_func.contract.name}.{parent_func.name}":
+                                    var = exp.arguments[idx]
+                                    print(f"argument #{idx} = {var}")
+                                    if isinstance(var, Identifier) and isinstance(var.value, StateVariable):
+                                        delegate = var.value
+                                        break
                             if isinstance(called, Identifier) and called.value == parent_func:
                                 if print_debug: print(f"Found where {parent_func.name} is called: {exp}")
                                 arg = exp.arguments[idx]
@@ -1739,6 +1761,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.identifier import Identifier
         from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1837,6 +1860,23 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 and a.value.is_constant:
                                             self._proxy_impl_slot = a.value
                                             break
+                        elif isinstance(e, IndexAccess):
+                            left = e.expression_left
+                            if print_debug:
+                                print(f"Return expression is an IndexAccess on variable {left}")
+                            if isinstance(left, Identifier):
+                                if isinstance(left.value, StateVariable):
+                                    delegate = left.value
+                                    if print_debug: print(f"{left.value} is a StateVariable")
+                                    break
+                                elif isinstance(left.value, LocalVariable):
+                                    if print_debug: print(f"{left.value} is a LocalVariable")
+                                    delegate = self.find_delegate_variable_from_name(left.value.name,
+                                                                                     ret_node.function,
+                                                                                     print_debug)
+                                    if delegate is not None:
+                                        if print_debug: print(f"Found the source of {left.value}'s value: {delegate}")
+                                        break
                     if isinstance(ret, StateVariable):
                         delegate = ret
                         if print_debug:
