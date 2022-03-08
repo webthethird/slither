@@ -1501,7 +1501,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 break
         if parent_func.contains_assembly:
             for n in parent_func.all_nodes():
-                if n.type == NodeType.ASSEMBLY:
+                if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str):
                     asm = n.inline_asm.split("\n")
                     for s in asm:
                         if f"let {dest}" in s:
