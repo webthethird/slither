@@ -1381,8 +1381,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: the corresponding Variable object, if found
         """
         from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.solidity_types.elementary_type import ElementaryType
         from slither.core.children.child_contract import ChildContract
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -1501,13 +1503,33 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 break
         if parent_func.contains_assembly:
             for n in parent_func.all_nodes():
-                if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str):
-                    asm = n.inline_asm.split("\n")
-                    for s in asm:
-                        if f"let {dest}" in s:
-                            if "sload" in s:
-                                dest = s.replace(")", "(").split("(")[1]
-                                break
+                if n.type == NodeType.ASSEMBLY:
+                    if isinstance(n.inline_asm, str):
+                        asm = n.inline_asm.split("\n")
+                        for s in asm:
+                            if f"let {dest}" in s:
+                                if "sload" in s:
+                                    dest = s.replace(")", "(").split("(")[1]
+                                    break
+                    else:
+                        asm = n.inline_asm
+                        for statement in asm["AST"]["statements"]:
+                            if statement["nodeType"] == "YulVariableDeclaration" \
+                                    and statement["variables"][0]["name"] == dest:
+                                if statement["value"]["nodeType"] == "YulFunctionCall" \
+                                        and statement["value"]["functionName"]["name"] == "sload":
+                                    slot = statement["value"]["arguments"][0]["value"]
+                                    if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
+                                        delegate = LocalVariable()
+                                        delegate.set_type(ElementaryType("address"))
+                                        delegate.name = dest
+                                        delegate.set_location(slot)
+                                        impl_slot = Variable()
+                                        impl_slot.name = slot
+                                        impl_slot.is_constant = True
+                                        impl_slot.set_type(ElementaryType("bytes32"))
+                                        self._proxy_impl_slot = impl_slot
+                                        break
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
         if print_debug:
@@ -2329,25 +2351,26 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 for node in f.all_nodes():
                     if setter is not None:
                         break
-                    if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
+                    if node.type == NodeType.ASSEMBLY:
                         inline = node.inline_asm
-                        for asm in inline.split("\n"):
-                            if "sstore" in asm:
-                                if print_debug: print(asm)
-                                slotname = asm.split("sstore(")[1].split(",")[0]
-                                for v in f.variables_read_or_written:
-                                    if v.name == slotname:
-                                        if v in [storage_slot, var_to_set]:
-                                            setter = f
-                                            break
-                                        elif isinstance(v, LocalVariable):
-                                            exp = v.expression
-                                            if isinstance(exp, Identifier) and exp.value in [storage_slot,
-                                                                                             var_to_set]:
+                        if isinstance(inline, str):
+                            for asm in inline.split("\n"):
+                                if "sstore" in asm:
+                                    if print_debug: print(asm)
+                                    slotname = asm.split("sstore(")[1].split(",")[0]
+                                    for v in f.variables_read_or_written:
+                                        if v.name == slotname:
+                                            if v in [storage_slot, var_to_set]:
                                                 setter = f
                                                 break
-                                if setter is not None:
-                                    break
+                                            elif isinstance(v, LocalVariable):
+                                                exp = v.expression
+                                                if isinstance(exp, Identifier) and exp.value in [storage_slot,
+                                                                                                 var_to_set]:
+                                                    setter = f
+                                                    break
+                                    if setter is not None:
+                                        break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
                         if print_debug: print(exp)
@@ -2364,6 +2387,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if isinstance(exp, Identifier) and exp.value in [storage_slot, var_to_set]:
                                         setter = f
                                         break
+                            elif str(arg) == storage_slot.name:
+                                setter = f
+                                break
                         elif isinstance(exp, AssignmentOperation):
                             r = exp.expression_right
                             l = exp.expression_left
