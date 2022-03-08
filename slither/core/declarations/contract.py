@@ -1358,7 +1358,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             """
             delegates_to = self.find_delegate_variable_from_name(dest, parent_func, print_debug)
             if delegates_to is None and asm_split is not None:
-                delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, print_debug)
+                delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, parent_func, print_debug)
         if print_debug: print(f"\nEnd {self.name}.find_delegatecall_in_asm\n")
         return is_proxy, delegates_to
 
@@ -1392,6 +1392,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         delegate = None
         if print_debug: print(f"\nBegin {self.name}.find_delegate_variable_from_name\nSearching State Variables")
+        print(dest)
         for sv in self.state_variables:
             if print_debug: print(f"Checking {sv.name}")
             if sv.name == dest:
@@ -1508,7 +1509,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 dest = s.replace(")", "(").split("(")[1]
                                 break
         if delegate is None and dest.endswith("_slot"):
-            delegate = self.find_delegate_variable_from_name(dest.strip("_slot"), parent_func, print_debug)
+            delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
         if print_debug:
             print(f"\nEnd {self.name}.find_delegate_variable_from_name\n")
         return delegate
@@ -1932,6 +1933,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self,
             asm_split: List[str],
             dest: str,
+            parent_func: Function,
             print_debug: bool
     ) -> Optional["Variable"]:
         """
@@ -1975,6 +1977,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     impl_slot.set_type(ElementaryType("bytes32"))
                     self._proxy_impl_slot = impl_slot
                     break
+                else:
+                    delegates_to = self.find_delegate_variable_from_name(slot.strip("_slot"), parent_func, print_debug)
         if print_debug:
             print(f"\nEnd {self.name}.find_delegate_sloaded_from_hardcoded_slot\n")
         return delegates_to
