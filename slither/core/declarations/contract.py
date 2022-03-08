@@ -1498,6 +1498,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.expression = arg
                                     break
                 break
+        if parent_func.contains_assembly:
+            for n in parent_func.all_nodes():
+                if n.type == NodeType.ASSEMBLY:
+                    asm = n.inline_asm.split("\n")
+                    for s in asm:
+                        if f"let {dest}" in s:
+                            if "sload" in s:
+                                dest = s.replace(")", "(").split("(")[1]
+                                break
+        if delegate is None and dest.endswith("_slot"):
+            delegate = self.find_delegate_variable_from_name(dest.strip("_slot"), parent_func, print_debug)
         if print_debug:
             print(f"\nEnd {self.name}.find_delegate_variable_from_name\n")
         return delegate
