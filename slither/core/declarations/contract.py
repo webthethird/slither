@@ -1440,7 +1440,34 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                                 return delegate
                 else:
-                    if print_debug: print(f"No expression found for {dest}")
+                    if print_debug: print(f"No expression found for {dest}\nLooking for assignment operation")
+                    for n in parent_func.all_nodes():
+                        if n.type == NodeType.EXPRESSION or n.type == NodeType.VARIABLE:
+                            exp = n.expression
+                            if isinstance(exp, AssignmentOperation):
+                                print(f"AssignmentOperation: {exp.expression_right}")
+                                exp = exp.expression_right
+                            if isinstance(exp, MemberAccess):
+                                print(f"exp is a MemberAccess: {exp}\n exp.expression = {exp.expression}")
+                                exp = exp.expression
+                            if isinstance(exp, CallExpression):
+                                print(f"CallExpression: {exp}")
+                                called = exp.called
+                                if str(called) == "sload(uint256)":
+                                    delegate = lv
+                                    arg = exp.arguments[0]
+                                    if isinstance(arg, Identifier):
+                                        v = arg.value
+                                        if isinstance(v, Variable) and v.is_constant:
+                                            self._proxy_impl_slot = v
+                                            if print_debug: print(f"Found storage slot: {v.name}")
+                                        elif isinstance(v, LocalVariable) and v.expression is not None:
+                                            e = v.expression
+                                            if isinstance(e, Identifier) and e.value.is_constant:
+                                                self._proxy_impl_slot = e.value
+                                                if print_debug: print(f"Found storage slot: {e.value.name}")
+                                else:
+                                    delegate = self.find_delegate_from_call_exp(exp, print_debug)
         if print_debug:
             print("\nSearching Parameter Variables")
         for idx, pv in enumerate(parent_func.parameters):
@@ -1513,23 +1540,26 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     break
                     else:
                         asm = n.inline_asm
+                        # print(asm)
                         for statement in asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulVariableDeclaration" \
                                     and statement["variables"][0]["name"] == dest:
                                 if statement["value"]["nodeType"] == "YulFunctionCall" \
                                         and statement["value"]["functionName"]["name"] == "sload":
-                                    slot = statement["value"]["arguments"][0]["value"]
-                                    if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
-                                        delegate = LocalVariable()
-                                        delegate.set_type(ElementaryType("address"))
-                                        delegate.name = dest
-                                        delegate.set_location(slot)
-                                        impl_slot = Variable()
-                                        impl_slot.name = slot
-                                        impl_slot.is_constant = True
-                                        impl_slot.set_type(ElementaryType("bytes32"))
-                                        self._proxy_impl_slot = impl_slot
-                                        break
+                                    print(statement["value"]["arguments"][0])
+                                    if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
+                                        slot = statement["value"]["arguments"][0]["value"]
+                                        if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
+                                            delegate = LocalVariable()
+                                            delegate.set_type(ElementaryType("address"))
+                                            delegate.name = dest
+                                            delegate.set_location(slot)
+                                            impl_slot = Variable()
+                                            impl_slot.name = slot
+                                            impl_slot.is_constant = True
+                                            impl_slot.set_type(ElementaryType("bytes32"))
+                                            self._proxy_impl_slot = impl_slot
+                                            break
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
         if print_debug:
@@ -1577,6 +1607,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.identifier import Identifier
         from slither.core.declarations.function_contract import FunctionContract
         from slither.analyses.data_dependency import data_dependency
@@ -1674,6 +1705,19 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 if isinstance(e, Identifier) and e.value.is_constant:
                                                     self._proxy_impl_slot = e.value
                                                     if print_debug: print(f"Found storage slot: {e.value.name}")
+                                    else:
+                                        delegate = self.find_delegate_from_call_exp(r, print_debug)
+                                        rc = r.called
+                                        if delegate is None and isinstance(rc, MemberAccess):
+                                            m = rc.expression
+                                            print(f"Member access expression: {m}")
+                                            if isinstance(m, TypeConversion):
+                                                print(f"TypeConversion: {m.expression}")
+                                                e = m.expression
+                                                if isinstance(e, Identifier) and str(e.value.type) == "address":
+                                                    print(f"Identifier: {e.value}")
+                                                    delegate = self.find_delegate_variable_from_name(e.value.name,
+                                                                                                     func, print_debug)
             if print_debug:
                 print(f"{func.name} returns a variable of type {ret.type} "
                       f" {(' called ' + ret.name) if ret.name != '' else '' }")
