@@ -1186,7 +1186,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print(n.expression)
                             elif n.type == NodeType.ASSEMBLY:
                                 inline_asm = n.inline_asm
-                                if inline_asm and "sload" in inline_asm and self._delegates_to.name in inline_asm:
+                                print(inline_asm)
+                                if inline_asm and "sload" in str(inline_asm): # and self._delegates_to.name in inline_asm:
                                     print(inline_asm)
                                     self._is_upgradeable_proxy = True
         if print_debug:
@@ -1529,6 +1530,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     break
                 break
         if parent_func.contains_assembly:
+            if print_debug: print(f"{parent_func} contains assembly, searching for sload")
             for n in parent_func.all_nodes():
                 if n.type == NodeType.ASSEMBLY:
                     if isinstance(n.inline_asm, str):
@@ -1560,6 +1562,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             impl_slot.set_type(ElementaryType("bytes32"))
                                             self._proxy_impl_slot = impl_slot
                                             break
+                                    elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
+                                        for sv in self.state_variables:
+                                            if sv.name == statement["value"]["arguments"][0]["name"] and sv.is_constant:
+                                                slot = str(sv.expression)
+                                                delegate = LocalVariable()
+                                                delegate.set_type(ElementaryType("address"))
+                                                delegate.name = dest
+                                                delegate.set_location(slot)
+                                                self._proxy_impl_slot = sv
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
         if print_debug:

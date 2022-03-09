@@ -217,12 +217,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                         info.append("\n")
                         json = self.generate_result(info)
                         results.append(json)
-                elif isinstance(delegate, LocalVariable) and delegate.location is not None \
-                        and "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" in delegate.location:
+                elif isinstance(delegate, LocalVariable) and delegate.location is not None and\
+                        "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7" in str(delegate.location):
                     print(proxy.name + " appears to be an EIP-1822 proxy. Looking for Proxiable contract.")
                     proxiable = proxy.compilation_unit.get_contract_from_name("Proxiable")
                     if proxiable is not None:
                         setter = proxiable.get_function_from_signature("updateCodeAddress(address)")
+                        if setter is None:
+                            setter = proxiable.get_function_from_signature("_updateCodeAddress(address)")
                         if setter is not None:
                             print(f"Found implementation setter {setter.signature_str}"
                                   f" in contract {proxiable.name}")
@@ -237,7 +239,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 " appears to be an EIP-1822 Universal Upgradeable Proxy:\nThis proxy doesn't contain"
                                 " its own upgrade logic - it is in the logic contract which must inherit Proxiable.\n",
                                 proxiable,
-                                " appears to be the logic contract used by this proxy."
+                                " appears to be the logic contract used by this proxy.\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
