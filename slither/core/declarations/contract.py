@@ -1410,7 +1410,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 delegate = sv
                 if print_debug:
                     print(f"{dest} is a State Variable in contract {sv.contract.name}")
-                    print(f"\nEnd {self.name}.find_delegate_variable\n")
+                    print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                 return delegate
         if print_debug:
             print("\nSearching Local Variables")
