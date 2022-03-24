@@ -301,31 +301,32 @@ or one of the proxy patterns developed by OpenZeppelin.
                             getter = proxy.proxy_implementation_getter
                             exp = None
                             ext_call = None
-                            for node in getter.all_nodes():
-                                # print(node.type)
-                                exp = node.expression
-                                # print(exp)
-                                # if node.expression is not None:
-                                if node.type == NodeType.RETURN and isinstance(exp, CallExpression):
-                                    print("This return node is a CallExpression")
-                                    if isinstance(exp.called, MemberAccess):
-                                        print("The CallExpression is for MemberAccess")
-                                        exp = exp.called
-                                        break
-                                    elif isinstance(node.expression, Identifier):
-                                        print("This return node is a variable Identifier")
-                                    elif isinstance(node.expression, ExpressionTyped):
-                                        print(node.expression.type)
-                                elif node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
-                                    left = exp.expression_left
-                                    right = exp.expression_right
-                                    if isinstance(left, Identifier):
-                                        print(f"Left: Identifier {left.type}")
-                                    if isinstance(right, CallExpression):
-                                        print(f"Right: {right.called}")
-                                        if "call" in str(right):
-                                            exp = right.called
+                            if getter is not None:
+                                for node in getter.all_nodes():
+                                    # print(node.type)
+                                    exp = node.expression
+                                    # print(exp)
+                                    # if node.expression is not None:
+                                    if node.type == NodeType.RETURN and isinstance(exp, CallExpression):
+                                        print("This return node is a CallExpression")
+                                        if isinstance(exp.called, MemberAccess):
+                                            print("The CallExpression is for MemberAccess")
+                                            exp = exp.called
                                             break
+                                        elif isinstance(node.expression, Identifier):
+                                            print("This return node is a variable Identifier")
+                                        elif isinstance(node.expression, ExpressionTyped):
+                                            print(node.expression.type)
+                                    elif node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
+                                        left = exp.expression_left
+                                        right = exp.expression_right
+                                        if isinstance(left, Identifier):
+                                            print(f"Left: Identifier {left.type}")
+                                        if isinstance(right, CallExpression):
+                                            print(f"Right: {right.called}")
+                                            if "call" in str(right):
+                                                exp = right.called
+                                                break
                             if isinstance(exp, MemberAccess):
                                 # Getter calls function of another contract in return expression
                                 call_exp = exp.expression
