@@ -1295,6 +1295,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
+        from slither.core.solidity_types.elementary_type import ElementaryType
 
         is_proxy = False
         delegates_to: Variable = None
@@ -1339,11 +1340,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = dest.replace(")", "(").split("(")[1]
                         for v in parent_func.variables_read_or_written:
                             if v.name == dest:
+                                if print_debug: print(f"sload from variable: {v}")
                                 if isinstance(v, LocalVariable) and v.expression is not None:
                                     e = v.expression
                                     if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
                                         v = e.value
-                                if isinstance(v, StateVariable):
+                                if isinstance(v, StateVariable) and v.is_constant:
+                                    if print_debug: print(f"Found storage slot: {v}")
+                                    slot = str(v.expression)
+                                    delegates_to = LocalVariable()
+                                    delegates_to.set_type(ElementaryType("address"))
+                                    delegates_to.name = dest
+                                    delegates_to.set_location(slot)
                                     self._proxy_impl_slot = v
                     if dest.endswith(")"):
                         dest = params[2]
