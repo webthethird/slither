@@ -1177,6 +1177,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 elif self._proxy_impl_getter is not None:
                                     return c.getter_return_is_non_constant(print_debug)
                     elif isinstance(self._delegates_to, StateVariable):
+                        """
+                        Handle the case where the delegate address is a state variable which is also declared in the
+                        implementation contract at the same position in storage, in which case the setter may be
+                        located in the implementation contract, though we have no other clues that this may be the case.
+                        """
                         index = -1
                         for idx, var in enumerate(self.state_variables_ordered):
                             if var == self._delegates_to:
