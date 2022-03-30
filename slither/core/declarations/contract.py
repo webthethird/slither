@@ -1176,6 +1176,27 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     return self._is_upgradeable_proxy
                                 elif self._proxy_impl_getter is not None:
                                     return c.getter_return_is_non_constant(print_debug)
+                    elif isinstance(self._delegates_to, StateVariable):
+                        index = -1
+                        for idx, var in enumerate(self.state_variables_ordered):
+                            if var == self._delegates_to:
+                                index = idx
+                                break
+                        if index >= 0:
+                            for c in self.compilation_unit.contracts:
+                                if len(c.state_variables_ordered) < index + 1:
+                                    continue
+                                var = c.state_variables_ordered[index]
+                                if var is not None:
+                                    if print_debug: print(f"Found {var} at slot {index} in contract {c}")
+                                    if var.name == self._delegates_to.name and var.type == self._delegates_to.type:
+                                        self._proxy_impl_getter = self.find_getter_in_contract(c, var, print_debug)
+                                        self._proxy_impl_setter = self.find_setter_in_contract(c, var,None, print_debug)
+                                        if self._proxy_impl_setter is not None:
+                                            self._is_upgradeable_proxy = True
+                                            return self._is_upgradeable_proxy
+                                        elif self._proxy_impl_getter is not None:
+                                            return c.getter_return_is_non_constant(print_debug)
                     else:
                         for n in self.fallback_function.all_nodes():
                             print(n.type)
@@ -1186,9 +1207,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 print(n.expression)
                             elif n.type == NodeType.ASSEMBLY:
                                 inline_asm = n.inline_asm
-                                print(inline_asm)
                                 if inline_asm and "sload" in str(inline_asm): # and self._delegates_to.name in inline_asm:
-                                    print(inline_asm)
                                     self._is_upgradeable_proxy = True
         if print_debug:
             print(f"\nEnd {self.name}.is_upgradeable_proxy\n")
