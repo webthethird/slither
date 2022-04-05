@@ -1915,22 +1915,22 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print(f"{member_name} is a member of the contract type: {contract.name}")
                     if contract.is_interface:
                         if print_debug: print("Which is an interface")
+                    for c in self.compilation_unit.contracts:
+                        if c == contract:
+                            continue
+                        if contract in c.inheritance:
+                            if print_debug: print(f"{c.name} inherits {contract.name}")
+                            contract = c
+                    if contract.is_interface:
                         for c in self.compilation_unit.contracts:
                             if c == contract:
                                 continue
-                            if contract in c.inheritance:
-                                if print_debug: print(f"{c.name} inherits {contract.name}")
-                                contract = c
-                        if contract.is_interface:
-                            for c in self.compilation_unit.contracts:
-                                if c == contract:
-                                    continue
-                                for f in c.functions:
-                                    if f.name == member_name and str(f.return_type) == "address":
-                                        contract = c
-                                for v in c.state_variables:
-                                    if v.name == member_name and "public" in v.visibility and "address" in str(v.type):
-                                        contract = c
+                            for f in c.functions:
+                                if f.name == member_name and str(f.return_type) == "address":
+                                    contract = c
+                            for v in c.state_variables:
+                                if v.name == member_name and "public" in v.visibility and "address" in str(v.type):
+                                    contract = c
                 # elif isinstance(ctype, ElementaryType) and str(ctype) == "address":
                 #     print(str(e) + " is an address variable: " + str(e.value.expression))
                 #     if member_name == "staticcall" and isinstance(args, List) and len(args) == 0:
@@ -1981,7 +1981,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 and a.value.is_constant:
                                             self._proxy_impl_slot = a.value
                                             break
-                        elif isinstance(e, IndexAccess):
+                            elif isinstance(ex, IndexAccess):
+                                e = ex  # Fall through
+                        if isinstance(e, IndexAccess):
                             left = e.expression_left
                             if print_debug:
                                 print(f"Return expression is an IndexAccess on variable {left}")
