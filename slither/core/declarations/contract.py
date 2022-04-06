@@ -1420,6 +1420,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
         from slither.core.children.child_contract import ChildContract
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.member_access import MemberAccess
@@ -1444,9 +1445,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if isinstance(parent_func, ChildContract):
                     if print_debug:
                         print(f"{dest} is a Local Variable in {parent_func.contract.name}.{parent_func.name}")
+                if lv.name == "facet":
+                    delegate = lv
+                    if print_debug:
+                        print(f"{dest} appears to be a Diamond facet address")
+                        print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
+                    return delegate
                 if lv.expression is not None:
                     exp = lv.expression
                     if print_debug: print(f"Expression: {exp}")
+                    while isinstance(exp, TypeConversion):
+                        if print_debug: print("type conversion")
+                        exp = exp.expression
                     if isinstance(exp, Identifier):
                         val = exp.value
                         if print_debug: print(f"Identifier value: {val}")
@@ -1472,6 +1482,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     print(f"{val.name} is a State Variable in contract {val.contract.name}")
                                     print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                                 return delegate
+                    if isinstance(exp, MemberAccess):
+                        delegate = self.find_delegate_from_member_access(exp, print_debug)
+                        if print_debug: print(f"Member Access\nEnd {self.name}.find_delegate_variable\n")
                 else:
                     if print_debug: print(f"No expression found for {dest}\nLooking for assignment operation")
                     for n in parent_func.all_nodes():
@@ -1931,10 +1944,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for v in c.state_variables:
                                 if v.name == member_name and "public" in v.visibility and "address" in str(v.type):
                                     contract = c
-                # elif isinstance(ctype, ElementaryType) and str(ctype) == "address":
-                #     print(str(e) + " is an address variable: " + str(e.value.expression))
-                #     if member_name == "staticcall" and isinstance(args, List) and len(args) == 0:
-                #         print("staticcall with no arguments - must be calling fallback in " + str(e))
+                        if contract.is_interface:
+                            if print_debug: print(f"Could not find a contract that inherits {contract.name}")
+                elif isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Structure):
+                    print(str(e) + " is a user defined variable: " + str(e.value.expression))
         if contract is not None:
             if print_debug: print(f"Looking for {member_name} in {contract.name}")
             for f in contract.functions:
