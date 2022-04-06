@@ -1662,6 +1662,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.tuple_expression import TupleExpression
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.identifier import Identifier
@@ -1735,6 +1736,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             break
                     if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp\n")
                     return delegate
+                elif isinstance(rex, IndexAccess):
+                    left = rex.expression_left
+                    if isinstance(left, Identifier) and isinstance(left.value, StateVariable):
+                        delegate = left.value
             if ret.name is not None and ret_node is None:
                 # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
                 for n in func.all_nodes():
@@ -2119,6 +2124,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :return: the corresponding Variable object, if found
         """
         from slither.slithir.operations import LowLevelCall
+        from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.children.child_function import ChildFunction
+        from slither.core.children.child_contract import ChildContract
+
         b = False
         d = None
         if print_debug:
@@ -2131,6 +2143,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     b = True
                     d = ir.destination
                     break
+        if isinstance(d, LocalVariable):
+            e = d.expression
+            if print_debug: print(e)
+            if e is not None:
+                if isinstance(e, Identifier):
+                    if print_debug: print("identifier")
+                if isinstance(e, CallExpression) and isinstance(d, ChildFunction):
+                    if isinstance(d.function, ChildContract):
+                        d = d.function.contract.find_delegate_from_call_exp(e, print_debug)
+                elif isinstance(e, MemberAccess) and isinstance(d, ChildFunction):
+                    d = d.contract.find_delegate_from_member_access(e, print_debug)
         if print_debug:
             print("\nEnd Contract.find_delegatecall_in_ir\n")
         return b, d
