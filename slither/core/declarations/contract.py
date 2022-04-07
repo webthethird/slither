@@ -1426,6 +1426,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
         from slither.core.children.child_contract import ChildContract
         from slither.core.expressions.literal import Literal
+        from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.index_access import IndexAccess
