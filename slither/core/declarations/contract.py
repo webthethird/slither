@@ -1100,6 +1100,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.literal import Literal
 
         print_debug = True
         if print_debug: print(f"\nBegin {self.name}.is_upgradeable_proxy")
@@ -1115,7 +1116,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print(f"Call destination {self._delegates_to} is constant\n")
                     self._is_upgradeable_proxy = False
                     return False
-                
+                # if the destination is hard-coded, return false
+                if isinstance(self._delegates_to.expression, Literal):
+                    if print_debug: print(f"Call destination {self._delegates_to.expression} is hardcoded\n")
+                    self._is_upgradeable_proxy = False
+                    return False
+
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
                 if print_debug: print(f"{self.name} is delegating to {self._delegates_to}\nLooking for setter\n")
                 if self._proxy_impl_setter is None:
@@ -1419,16 +1425,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.solidity_types.elementary_type import ElementaryType
         from slither.core.children.child_contract import ChildContract
+        from slither.core.expressions.literal import Literal
         from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
 
         delegate = None
-        if print_debug: print(f"\nBegin {self.name}.find_delegate_variable_from_name\nSearching State Variables")
-        print(dest)
+        if print_debug: print(f"\nBegin {self.name}.find_delegate_variable_from_name\nSearching for {dest}\n")
+        if len(dest) == 42 and dest.startswith("0x"):
+            if print_debug: print(f"{dest} is a hard-coded address")
+            addr = Literal(dest, ElementaryType("address"))
+            delegate = Variable()
+            delegate.expression = addr
+            delegate.type = ElementaryType("address")
+            delegate.name = dest
+            if print_debug: print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
+            return delegate
+        if print_debug: print("Searching State Variables")
         for sv in self.state_variables:
             if print_debug: print(f"Checking {sv.name}")
             if sv.name == dest:
@@ -2176,6 +2191,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.literal import Literal
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.variables.state_variable import StateVariable
 
@@ -2229,6 +2245,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             exp = exp.expression
                                             if isinstance(exp, Identifier):
                                                 delegate_to = val
+                                elif isinstance(exp, Literal) and str(exp.type) == "address":
+                                    delegate_to = val
                             else:
                                 delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
         if print_debug:
