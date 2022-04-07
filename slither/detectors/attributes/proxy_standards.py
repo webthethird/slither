@@ -541,7 +541,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                 json = self.generate_result(info)
                 results.append(json)
                 if contract.delegates_to is not None:
-                    if contract.delegates_to in contract.constructor.variables_written:
+                    if contract.constructor is not None \
+                            and contract.delegates_to in contract.constructor.variables_written:
                         if contract.delegates_to.is_immutable:
                             info = [contract,
                                     " delegate destination address initialized in Constructor and its type is immutable.\n"]
