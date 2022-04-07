@@ -1815,6 +1815,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if print_debug: print("Return value set by sload in asm")
                                 delegate = ret
                                 slotname = asm.split("sload(")[1].split(")")[0]
+                                if slotname.startswith("0x"):
+                                    delegate = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, ret.name,
+                                                                                              func, print_debug)
+                                    if delegate != ret:
+                                        break
                                 for v in func.variables_read_or_written:
                                     if v.name == slotname:
                                         if isinstance(v, StateVariable) and v.is_constant:
