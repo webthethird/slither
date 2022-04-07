@@ -540,5 +540,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
                 results.append(json)
-
+                if contract.delegates_to is not None:
+                    if contract.delegates_to.is_immutable:
+                        print("Immutable")
+                        info = [contract, " delegate destination address type is immutable.\n"]
+                        json = self.generate_result(info)
+                        results.append(json)
         return results
