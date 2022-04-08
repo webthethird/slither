@@ -1487,7 +1487,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         Must be the getter, but we still need a variable
                         """
                         delegate = self.find_delegate_from_call_exp(exp, print_debug)
-                        if print_debug: print(f"Call Expression\nEnd {self.name}.find_delegate_variable\n")
+                        if print_debug: print(f"Call Expression\nEnd {self.name}.find_delegate_variable_by_name\n")
+                        return delegate
                     elif isinstance(exp, IndexAccess):
                         exp = exp.expression_left
                         if isinstance(exp, Identifier):
@@ -1500,7 +1501,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 return delegate
                     if isinstance(exp, MemberAccess):
                         delegate = self.find_delegate_from_member_access(exp, print_debug)
+                        if delegate is None:
+                            delegate = lv
                         if print_debug: print(f"Member Access\nEnd {self.name}.find_delegate_variable\n")
+                        return delegate
                 else:
                     if print_debug: print(f"No expression found for {dest}\nLooking for assignment operation")
                     for n in parent_func.all_nodes():
