@@ -1095,9 +1095,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.declarations.function_contract import FunctionContract
-        from slither.core.expressions.expression_typed import ExpressionTyped
+        from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.solidity_types.user_defined_type import UserDefinedType
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.identifier import Identifier
         from slither.core.expressions.literal import Literal
@@ -1121,11 +1121,28 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print(f"Call destination {self._delegates_to.expression} is hardcoded\n")
                     self._is_upgradeable_proxy = False
                     return False
-                if isinstance(self._delegates_to, LocalVariable) and isinstance(self._delegates_to.function, FunctionContract):   # TODO Change these lines to check if the expression
-                    if self._delegates_to.function.contract.is_interface:    # TODO for this LocalVariable is accessing interface
-                        if print_debug: print(f"Call destination {self._delegates_to.expression} is hidden in an interface\n")
-                        self._is_upgradeable_proxy = True
-                        return self._is_upgradeable_proxy
+                if isinstance(self._delegates_to, LocalVariable): # and isinstance(self._delegates_to.function, FunctionContract):
+                    if print_debug: print("Local Variable")
+                    call = self._delegates_to.expression
+                    if isinstance(call, CallExpression):
+                        call = call.called
+                        if isinstance(call, MemberAccess):
+                            e = call.expression
+                            if print_debug: print(e)
+                            if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+                                ctype = e.type
+                                if isinstance(e, Identifier):
+                                    if isinstance(e.value, Contract):
+                                        ctype = UserDefinedType(e.value)
+                                    else:
+                                        ctype = e.value.type
+                                if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
+                                                                                     Contract) and ctype.type != self:
+                                    contract = ctype.type
+                                    if contract.is_interface:
+                                        if print_debug: print(f"Call destination {self._delegates_to.expression} is hidden in an interface\n")
+                                        self._is_upgradeable_proxy = True
+                                        return self._is_upgradeable_proxy
 
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
                 if print_debug: print(f"{self.name} is delegating to {self._delegates_to}\nLooking for setter\n")
