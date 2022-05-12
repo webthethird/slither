@@ -1125,8 +1125,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print("Local Variable")
                     call = self._delegates_to.expression
                     if isinstance(call, CallExpression):
-                        called = call.called
-                        if isinstance(called, MemberAccess):
+                        call = call.called
+                        if isinstance(call, MemberAccess):
                             e = call.expression
                             if print_debug: print(e)
                             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
