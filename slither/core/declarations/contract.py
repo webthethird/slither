@@ -78,7 +78,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._signatures_declared: Optional[List[str]] = None
 
         self._is_upgradeable: Optional[bool] = None
-        self._is_upgradeable_proxy: Optional[bool] = None
+        self._is_upgradeable_proxy: Optional[Union[bool, str]] = None
         self._fallback_function: Optional["FunctionContract"] = None
         self._is_proxy: Optional[bool] = None
         self._delegates_to: Optional["Variable"] = None
@@ -1085,7 +1085,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable
 
     @property
-    def is_upgradeable_proxy(self) -> bool:
+    def is_upgradeable_proxy(self) -> Union[bool, str]:
         """
         Determines if a proxy contract can be upgraded, i.e. if there's an implementation address setter for upgrading
 
@@ -1125,8 +1125,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug: print("Local Variable")
                     call = self._delegates_to.expression
                     if isinstance(call, CallExpression):
-                        call = call.called
-                        if isinstance(call, MemberAccess):
+                        called = call.called
+                        if isinstance(called, MemberAccess):
                             e = call.expression
                             if print_debug: print(e)
                             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
@@ -1141,7 +1141,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     contract = ctype.type
                                     if contract.is_interface:
                                         if print_debug: print(f"Call destination {self._delegates_to.expression} is hidden in an interface\n")
-                                        self._is_upgradeable_proxy = True
+                                        self._is_upgradeable_proxy = "MAYBE"
                                         return self._is_upgradeable_proxy
 
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
