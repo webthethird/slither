@@ -131,7 +131,9 @@ or one of the proxy patterns developed by OpenZeppelin.
         for contract in self.contracts:
             if contract.is_upgradeable_proxy:
                 proxy = contract
-                info = [proxy, " appears to be an upgradeable proxy contract.\n"]
+                info = [proxy, " appears to ",
+                        "maybe " if contract.is_upgradeable_proxy == "MAYBE" else "",
+                        "be an upgradeable proxy contract.\n"]
                 json = self.generate_result(info)
                 results.append(json)
                 delegate = proxy.delegates_to
