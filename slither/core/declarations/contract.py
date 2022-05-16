@@ -1137,6 +1137,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if isinstance(call, MemberAccess):
                             e = call.expression
                             if print_debug: print(f"{e} (Slither line:{getframeinfo(currentframe()).lineno})")
+                            if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
+                                f = e.called.value
+                                if isinstance(f, Function):
+                                    e = f.return_node().expression
                             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                                 ctype = e.type
                                 if isinstance(e, Identifier):
@@ -1362,6 +1366,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @property
     def proxy_impl_storage_offset(self) -> Optional["Variable"]:
         return self._proxy_impl_slot
+
+    def is_upgradeable_proxy_confirmed(self) -> Optional[bool]:
+        if self._is_upgradeable_proxy_confirmed is None:
+            self.is_upgradeable_proxy()
+        return self._is_upgradeable_proxy_confirmed
 
     def find_delegatecall_in_asm(
             self,
@@ -2078,6 +2087,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             member_name = exp.member_name
             e = exp.expression
             if print_debug: print(f"{e} (Slither line:{getframeinfo(currentframe()).lineno})")
+            if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
+                if print_debug: print(f"Member of call expression result"
+                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                f = e.called.value
+                if isinstance(f, Function):
+                    e = f.return_node().expression
+                    if print_debug: print(f"Call to function {f} returns {e}"
+                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 ctype = e.type
                 if isinstance(e, Identifier):
@@ -2315,10 +2332,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         b = False
         d = None
         if print_debug:
-            print("\nBegin Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            print(f"\nBegin Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
         for ir in node.irs:
             if isinstance(ir, LowLevelCall):
-                if print_debug: print("\nFound LowLevelCall (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                if print_debug: print(f"\nFound LowLevelCall (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 if ir.function_name == "delegatecall":
                     if print_debug: print(f"\nFound delegatecall in LowLevelCall"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
@@ -2337,7 +2354,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 elif isinstance(e, MemberAccess) and isinstance(d, ChildFunction):
                     d = d.contract.find_delegate_from_member_access(e, d, print_debug)
         if print_debug:
-            print("\nEnd Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            print(f"\nEnd Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return b, d
 
     def find_delegatecall_in_exp_node(self, node, print_debug):
@@ -2366,7 +2383,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         delegate_to = None
         expression = node.expression
         if print_debug:
-            print(f"\nBegin Contract.find_delegatecall_in_exp_node\n\n"
+            print(f"\nBegin {self.name}.find_delegatecall_in_exp_node\n\n"
                   f"Found Expression Node: {expression} (Slither line:{getframeinfo(currentframe()).lineno})")
         if isinstance(expression, ExpressionTyped):
             if print_debug: print(f"Expression Type: {expression.type}"
@@ -2422,7 +2439,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
         if print_debug:
-            print("\nEnd Contract.find_delegatecall_in_exp_node (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            print(f"\nEnd {self.name}.find_delegatecall_in_exp_node "
+                  f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
         return is_proxy, delegate_to
 
     def getter_return_is_non_constant(self, print_debug) -> bool:
