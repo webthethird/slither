@@ -1230,6 +1230,19 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             return self._is_upgradeable_proxy
                                         elif self._proxy_impl_getter is not None:
                                             return c.getter_return_is_non_constant(print_debug)
+                    elif self._proxy_impl_slot is not None or self._delegates_to.expression is not None:
+                        for c in self.compilation_unit.contracts:
+                            if c != self:
+                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegates_to,
+                                                                                       print_debug)
+                                self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegates_to,
+                                                                                       self._proxy_impl_slot,
+                                                                                       print_debug)
+                                if self._proxy_impl_setter is not None:
+                                    self._is_upgradeable_proxy = True
+                                    return self._is_upgradeable_proxy
+                                elif self._proxy_impl_getter is not None:
+                                    return c.getter_return_is_non_constant(print_debug)
                     else:
                         for n in self.fallback_function.all_nodes():
                             print(n.type)
