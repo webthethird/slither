@@ -79,7 +79,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._signatures_declared: Optional[List[str]] = None
 
         self._is_upgradeable: Optional[bool] = None
-        self._is_upgradeable_proxy: Optional[Union[bool, str]] = None
+        self._is_upgradeable_proxy: Optional[bool] = None
+        self._is_upgradeable_proxy_confirmed: Optional[bool] = None
+
         self._fallback_function: Optional["FunctionContract"] = None
         self._is_proxy: Optional[bool] = None
         self._delegates_to: Optional["Variable"] = None
@@ -1111,6 +1113,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if print_debug: print(f"\nChecking contract: {self.name} "
                                   f"(Slither line:{getframeinfo(currentframe()).lineno})")
             self._is_upgradeable_proxy = False
+            self._is_upgradeable_proxy_confirmed = False
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
             if self.is_proxy and self._delegates_to is not None:
                 
@@ -1148,7 +1151,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if print_debug: print(f"Call destination {self._delegates_to.expression} "
                                                               f"is hidden in an interface "
                                                               f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                        self._is_upgradeable_proxy = "MAYBE"
+                                        self._is_upgradeable_proxy = True
+                                        self._is_upgradeable_proxy_confirmed = False
                                         return self._is_upgradeable_proxy
 
                 # now find setter in the contract. If succeed, then the contract is upgradeable.
@@ -1168,6 +1172,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                               f"{self._proxy_impl_setter.contract.name} "
                               f"(Slither line:{getframeinfo(currentframe()).lineno})")
                     self._is_upgradeable_proxy = True
+                    self._is_upgradeable_proxy_confirmed = True
                 elif print_debug: print(f"\nCould not find implementation setter in {self.name} "
                                         f"(Slither line:{getframeinfo(currentframe()).lineno})")
                 
@@ -1185,6 +1190,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if self._proxy_impl_getter is not None:
                     if self._proxy_impl_setter is not None:
                         self._is_upgradeable_proxy = True
+                        self._is_upgradeable_proxy_confirmed = True
                         return self._is_upgradeable_proxy
                     else:
                         return self.getter_return_is_non_constant(print_debug)
@@ -1212,6 +1218,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                        None, print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
+                                    self._is_upgradeable_proxy_confirmed = True
                                     return self._is_upgradeable_proxy
                                 elif self._proxy_impl_getter is not None:
                                     return c.getter_return_is_non_constant(print_debug)
@@ -1239,6 +1246,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         self._proxy_impl_setter = self.find_setter_in_contract(c, var,None, print_debug)
                                         if self._proxy_impl_setter is not None:
                                             self._is_upgradeable_proxy = True
+                                            self._is_upgradeable_proxy_confirmed = True
                                             return self._is_upgradeable_proxy
                                         elif self._proxy_impl_getter is not None:
                                             return c.getter_return_is_non_constant(print_debug)
@@ -1252,6 +1260,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                        print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
+                                    self._is_upgradeable_proxy_confirmed = True
                                     return self._is_upgradeable_proxy
                                 elif self._proxy_impl_getter is not None:
                                     return c.getter_return_is_non_constant(print_debug)
