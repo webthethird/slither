@@ -23,7 +23,6 @@ from slither.utils.erc import (
     ERC777_signatures,
     ERC1155_signatures,
     ERC1967_signatures,
-    ERC1967_upgrade_signatures,
 )
 from slither.utils.tests_pattern import is_test_contract
 
@@ -1268,7 +1267,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             return c.getter_return_is_non_constant(print_debug)
                     elif self._proxy_impl_slot is not None or self._delegates_to.expression is not None:
                         for c in self.compilation_unit.contracts:
-                            if c != self:
+                            if c != self and self not in c.inheritance:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegates_to,
                                                                                        print_debug)
                                 self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegates_to,
@@ -2116,6 +2115,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         ctype = e.value.type
                 if isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Contract) and ctype.type != self:
                     contract = ctype.type
+                    interface = None
                     if print_debug: print(f"{member_name} is a member of the contract type: {contract.name}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
                     if contract.is_interface:
@@ -2587,6 +2587,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 continue
             if not f.name == "fallback" and "constructor" not in f.name.lower():
+                if print_debug: print(f"Visibility: {f.visibility}")
+                if f.visibility == "internal" or f.visibility == "private":
+                    continue
                 if len(f.returns) > 0:
                     for v in f.returns:
                         if print_debug:
@@ -2697,6 +2700,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 continue
             if not f.name == "fallback" and "constructor" not in f.name.lower() and "init" not in f.name.lower() \
                     and f.name != contract.name:
+                if print_debug: print(f"Visibility: {f.visibility}")
+                if f.visibility == "internal" or f.visibility == "private":
+                    continue
                 for v in f.variables_written:
                     if isinstance(v, LocalVariable) and v in f.returns:
                         if print_debug: print(f"{f.name} returns local variable: {v.name}"
