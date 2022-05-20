@@ -320,6 +320,45 @@ ERC1155 = ERC1155 + ERC1155_TOKEN_RECEIVER + ERC1155_METADATA
 
 ERC1155_signatures = erc_to_signatures(ERC1155)
 
+# Final
+# https://eips.ethereum.org/EIPS/eip-1967
+ERC1967_upgraded_event = ERC_EVENT("Upgraded", ["address"], [True])
+ERC1967_beaconupgraded_event = ERC_EVENT("BeaconUpgraded", ["address"], [True])
+ERC1967_adminchanged_event = ERC_EVENT("AdminChanged", ["address", "address"], [False, False])
+ERC1967_EVENTS = [
+    ERC1967_upgraded_event,
+    ERC1967_beaconupgraded_event,
+    ERC1967_adminchanged_event
+]
+
+ERC1967_PROXY = [
+    ERC("constructor", ["address", "bytes"], "", False, True, []),
+    ERC("_delegate", ["address"], "", False, True, []),
+    ERC("_implementation", [], "address", True, True, []),
+    ERC("_fallback", [], "", False, True, []),
+    ERC("_beforeFallback", [], "", False, True, [])
+]
+
+ERC1967_UPGRADE = [
+    ERC("_getImplementation", [], "address", True, False, []),
+    ERC("_setImplementation", ["address"], "address", False, False, []),
+    ERC("_upgradeTo", ["address"], "", False, False, [ERC1967_upgraded_event]),
+    ERC("_upgradeToAndCall", ["address", "bytes", "bool"], "", False, False, []),
+    ERC("_upgradeToAndCallSecure", ["address", "bytes", "bool"], "", False, False, []),
+    ERC("_getAdmin", [], "address", True, False, []),
+    ERC("_setAdmin", ["address"], "", False, False, []),
+    ERC("_changeAdmin", ["address"], "", False, False, [ERC1967_adminchanged_event]),
+    ERC("_getBeacon", [], "address", True, False, []),
+    ERC("_setBeacon", ["address"], "", False, False, []),
+    ERC("_upgradeBeaconToAndCall", ["address", "bytes", "bool"], "", False, False, [ERC1967_beaconupgraded_event])
+]
+
+ERC1967 = ERC1967_PROXY + ERC1967_UPGRADE
+
+ERC1967_signatures = erc_to_signatures(ERC1967)
+ERC1967_proxy_signatures = erc_to_signatures(ERC1967_PROXY)
+ERC1967_upgrade_signatures = erc_to_signatures(ERC1967_UPGRADE)
+
 ERCS = {
     "ERC20": (ERC20, ERC20_EVENTS),
     "ERC223": (ERC223, ERC223_EVENTS),
@@ -328,4 +367,5 @@ ERCS = {
     "ERC1820": (ERC1820, ERC1820_EVENTS),
     "ERC777": (ERC777, ERC777_EVENTS),
     "ERC1155": (ERC1155, ERC1155_EVENTS),
+    "ERC1967": (ERC1967, ERC1967_EVENTS),
 }
