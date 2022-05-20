@@ -356,7 +356,6 @@ ERC1967_UPGRADE = [
 ERC1967 = ERC1967_PROXY + ERC1967_UPGRADE
 
 ERC1967_signatures = erc_to_signatures(ERC1967)
-ERC1967_upgrade_signatures = erc_to_signatures(ERC1967_UPGRADE)
 
 ERCS = {
     "ERC20": (ERC20, ERC20_EVENTS),
