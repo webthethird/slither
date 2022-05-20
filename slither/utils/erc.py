@@ -340,10 +340,10 @@ ERC1967_PROXY = [
 ]
 
 ERC1967_UPGRADE = [
-    ERC("_getImplementation", [], "address", True, False, []),
-    ERC("_setImplementation", ["address"], "address", False, False, []),
-    ERC("_upgradeTo", ["address"], "", False, False, [ERC1967_upgraded_event]),
-    ERC("_upgradeToAndCall", ["address", "bytes", "bool"], "", False, False, []),
+    ERC("_getImplementation", [], "address", True, True, []),
+    ERC("_setImplementation", ["address"], "address", False, True, []),
+    ERC("_upgradeTo", ["address"], "", False, True, [ERC1967_upgraded_event]),
+    ERC("_upgradeToAndCall", ["address", "bytes", "bool"], "", False, True, []),
     ERC("_upgradeToAndCallSecure", ["address", "bytes", "bool"], "", False, False, []),
     ERC("_getAdmin", [], "address", True, False, []),
     ERC("_setAdmin", ["address"], "", False, False, []),
