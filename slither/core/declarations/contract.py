@@ -79,23 +79,26 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._signatures: Optional[List[str]] = None
         self._signatures_declared: Optional[List[str]] = None
 
+        # Upgradeability properties
         self._is_upgradeable: Optional[bool] = None
         self._is_upgradeable_proxy: Optional[bool] = None
         self._is_upgradeable_proxy_confirmed: Optional[bool] = None
-
         self._fallback_function: Optional["FunctionContract"] = None
         self._is_proxy: Optional[bool] = None
-        self._is_transparent_proxy: Optional[bool] = None
+        self._is_admin_only_proxy: Optional[bool] = None
         self._delegate_variable: Optional["Variable"] = None
         self._delegate_contract: Optional["Contract"] = None
         self._proxy_impl_setter: Optional["Function"] = None
         self._proxy_impl_getter: Optional["Function"] = None
         self._proxy_impl_slot: Optional["Variable"] = None
+        self._proxy_storage_slots: Optional[List["Variable"]] = None
+        self._proxy_storage_contract: Optional["Contract"] = None
+        self._proxy_registry_contract: Optional["Contract"] = None
+        self._proxy_admin_contract: Optional["Contract"] = None
+        self._has_multiple_implementations: Optional[bool] = None
         self._is_storage_inherited: Optional[bool] = None
         self._is_storage_eternal: Optional[bool] = None
         self._is_storage_unstructured: Optional[bool] = None
-        self._storage_contract: Optional["Contract"] = None
-        self._proxy_registry_contract: Optional["Contract"] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -1391,7 +1394,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self.is_upgradeable_proxy()
         return self._is_upgradeable_proxy_confirmed
 
-
+    @property
+    def is_admin_only_proxy(self) -> bool:
+        # TODO: check if transparent
+        return self._is_transparent_proxy
 
     def find_delegatecall_in_asm(
             self,
