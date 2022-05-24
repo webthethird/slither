@@ -136,7 +136,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         "be an upgradeable proxy contract.\n"]
                 json = self.generate_result(info)
                 results.append(json)
-                delegate = proxy.delegates_to
+                delegate = proxy.delegate_variable
                 print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
                 lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
                 ierc_1538 = proxy.compilation_unit.get_contract_from_name("IERC1538")
@@ -542,10 +542,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
                 results.append(json)
-                if contract.delegates_to is not None:
+                if contract.delegate_variable is not None:
                     if contract.constructor is not None \
-                            and contract.delegates_to in contract.constructor.variables_written:
-                        if contract.delegates_to.is_immutable:
+                            and contract.delegate_variable in contract.constructor.variables_written:
+                        if contract.delegate_variable.is_immutable:
                             info = [contract, " delegate destination address initialized in Constructor and its type is immutable.\n"]
                             json = self.generate_result(info)
                             results.append(json)
@@ -553,7 +553,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info = [contract, " delegate destination address initialized in Constructor and its type is regular variable.\n"]
                             json = self.generate_result(info)
                             results.append(json)
-                    elif isinstance(contract.delegates_to.expression, Literal):
+                    elif isinstance(contract.delegate_variable.expression, Literal):
                         info = [contract, " delegate destination address is hard-coded in the proxy.\n"]
                         json = self.generate_result(info)
                         results.append(json)
