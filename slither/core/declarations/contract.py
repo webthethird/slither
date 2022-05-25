@@ -2802,33 +2802,35 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             ex: /tests/proxies/DiamondFactory.sol
             """
             if print_debug:
-                print("\nBegin DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                print(f"\nBegin DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
             constructor = contract.constructors_declared
-            for n in constructor.all_nodes():
-                if n.type == NodeType.EXPRESSION:
-                    exp = n.expression
-                    if print_debug:
-                        print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
-                        if isinstance(exp, ExpressionTyped):
-                            print(f"Expression type: {exp.type} (Slither line:{getframeinfo(currentframe()).lineno})")
-                    if isinstance(exp, CallExpression):
-                        print(exp.called)
-                        if "diamondCut" in str(exp.called):
-                            diamond_cut = exp.arguments[0]
-                            if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
-                                idiamond_cut = contract.compilation_unit.get_contract_from_name("IDiamondCut")
-                                cut_facet = idiamond_cut
-                                for c in contract.compilation_unit.contracts:
-                                    if c == idiamond_cut:
-                                        continue
-                                    if idiamond_cut in c.inheritance:
-                                        cut_facet = c
-                                for f in cut_facet.functions:
-                                    if f.name == "diamondCut":
-                                        setter = f
-                                        break
+            if constructor is not None:
+                for n in constructor.all_nodes():
+                    if n.type == NodeType.EXPRESSION:
+                        exp = n.expression
+                        if print_debug:
+                            print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
+                            if isinstance(exp, ExpressionTyped):
+                                print(f"Expression type: {exp.type}"
+                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                        if isinstance(exp, CallExpression):
+                            print(exp.called)
+                            if "diamondCut" in str(exp.called):
+                                diamond_cut = exp.arguments[0]
+                                if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
+                                    idiamond_cut = contract.compilation_unit.get_contract_from_name("IDiamondCut")
+                                    cut_facet = idiamond_cut
+                                    for c in contract.compilation_unit.contracts:
+                                        if c == idiamond_cut:
+                                            continue
+                                        if idiamond_cut in c.inheritance:
+                                            cut_facet = c
+                                    for f in cut_facet.functions:
+                                        if f.name == "diamondCut":
+                                            setter = f
+                                            break
             if print_debug:
-                print("\nEnd DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                print(f"\nEnd DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
         if print_debug:
             print(f"\nEnd {contract.name}.find_setter_in_contract"
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
