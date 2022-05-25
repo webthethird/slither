@@ -5,9 +5,11 @@ from slither.detectors.abstract_detector import AbstractDetector, DetectorClassi
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
+from slither.core.declarations.structure import Structure
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
+from slither.core.variables.structure_variable import StructureVariable
 from slither.core.expressions.identifier import Identifier
 from slither.core.expressions.literal import Literal
 from slither.core.declarations.function_contract import FunctionContract
@@ -17,6 +19,9 @@ from slither.core.expressions.type_conversion import TypeConversion
 from slither.core.expressions.assignment_operation import AssignmentOperation
 from slither.core.expressions.binary_operation import BinaryOperation
 from slither.core.expressions.member_access import MemberAccess
+from slither.core.expressions.index_access import IndexAccess
+from slither.core.solidity_types.mapping_type import MappingType
+from slither.core.solidity_types.user_defined_type import UserDefinedType
 
 
 def find_slot_in_setter_asm(
@@ -81,6 +86,29 @@ def find_slot_string_from_assert(
     return slot_string, assert_exp, minus
 
 
+def find_mapping_in_local_var_exp(delegate: LocalVariable):
+    mapping = None
+    e = delegate.expression
+    print(f"{delegate} expression is {e}")
+    while isinstance(e, TypeConversion) or isinstance(e, MemberAccess):
+        e = e.expression
+    if isinstance(e, IndexAccess):
+        left = e.expression_left
+        if isinstance(left, MemberAccess):
+            e = left.expression
+            member = left.member_name
+            if isinstance(e, Identifier):
+                v = e.value
+                if isinstance(v.type, UserDefinedType) and isinstance(v.type.type, Structure):
+                    if isinstance(v.type.type.elems[member].type, MappingType):
+                        mapping = v.type.type.elems[member]
+        elif isinstance(left, Identifier):
+            v = left.value
+            if isinstance(v.type, MappingType):
+                mapping = v
+    return mapping
+
+
 class ProxyFeatures(AbstractDetector, ABC):
     ARGUMENT = "proxy-features"
     IMPACT = DetectorClassification.INFORMATIONAL
@@ -133,14 +161,38 @@ or one of the proxy patterns developed by OpenZeppelin.
             if contract.is_upgradeable_proxy:
                 proxy = contract
                 info = [proxy, " appears to ",
-                        "maybe " if not contract.is_upgradeable_proxy_confirmed() else "",
+                        "maybe " if not contract.is_upgradeable_proxy_confirmed else "",
                         "be an upgradeable proxy contract.\n"]
                 json = self.generate_result(info)
                 results.append(json)
                 delegate = proxy.delegate_variable
                 print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
+
+                # Extract EIP-2535 Diamond features
+                lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
+                if lib_diamond is not None and lib_diamond.get_structure_from_name("DiamondStorage") is not None:
+                    info = [proxy, " appears to be an EIP-2535 Diamond Proxy.\n"]
+                    json = self.generate_result(info)
+                    results.append(json)
+                    if isinstance(delegate, LocalVariable) and delegate.expression is not None:
+                        mapping = find_mapping_in_local_var_exp(delegate)
+                        if mapping is not None:
+                            struct = None
+                            if isinstance(mapping, StructureVariable):
+                                struct = mapping.structure
+                            info = [
+                                proxy, " stores the values for ", delegate,
+                                " in the mapping called ", mapping,
+                                " which is located in the structure " if struct is not None else "",
+                                struct if struct is not None else "",
+                                "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+
             elif contract.is_proxy:
                 proxy = contract
+        return results
 
 
 class ProxyStandards(AbstractDetector, ABC):
@@ -194,7 +246,7 @@ or one of the proxy patterns developed by OpenZeppelin.
             if contract.is_upgradeable_proxy:
                 proxy = contract
                 info = [proxy, " appears to ",
-                        "maybe " if not contract.is_upgradeable_proxy_confirmed() else "",
+                        "maybe " if not contract.is_upgradeable_proxy_confirmed else "",
                         "be an upgradeable proxy contract.\n"]
                 json = self.generate_result(info)
                 results.append(json)
