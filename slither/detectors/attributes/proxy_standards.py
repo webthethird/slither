@@ -81,6 +81,68 @@ def find_slot_string_from_assert(
     return slot_string, assert_exp, minus
 
 
+class ProxyFeatures(AbstractDetector, ABC):
+    ARGUMENT = "proxy-features"
+    IMPACT = DetectorClassification.INFORMATIONAL
+    CONFIDENCE = DetectorClassification.MEDIUM
+
+    HELP = "Proxy contract does not conform to any known standard"
+    WIKI = "https://github.com/crytic/slither/wiki/Upgradeability-Checks#non-standard-proxy"
+    WIKI_TITLE = "Non-Standard Proxy"
+
+    # region wiki_description
+    WIKI_DESCRIPTION = """
+Determine whether an upgradeable proxy contract conforms to any known proxy standards, i.e. OpenZeppelin, UUPS, Diamond 
+Multi-Facet Proxy, etc.
+"""
+    # endregion wiki_description
+
+    # region wiki_exploit_scenario
+    WIKI_EXPLOIT_SCENARIO = """
+```solidity
+contract Proxy{
+    address logicAddress;
+
+    function() payable {
+        logicAddress.delegatecall(msg.data)
+    }
+}
+
+contract Logic{
+    uint variable1;
+}
+```
+The new version, `V2` does not contain `variable1`. 
+If a new variable is added in an update of `V2`, this variable will hold the latest value of `variable2` and
+will be corrupted.
+"""
+    # endregion wiki_exploit_scenario
+
+    # region wiki_recommendation
+    WIKI_RECOMMENDATION = """
+It is better to use one of the common standards for upgradeable proxy contracts. Consider EIP-1967, EIP-1822, EIP-2523, 
+or one of the proxy patterns developed by OpenZeppelin.
+"""
+
+    # endregion wiki_recommendation
+
+    def _detect(self):
+        results = []
+        storage_inheritance_index = None  # Use to ensure
+        for contract in self.contracts:
+            if contract.is_upgradeable_proxy:
+                proxy = contract
+                info = [proxy, " appears to ",
+                        "maybe " if not contract.is_upgradeable_proxy_confirmed() else "",
+                        "be an upgradeable proxy contract.\n"]
+                json = self.generate_result(info)
+                results.append(json)
+                delegate = proxy.delegate_variable
+                print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
+            elif contract.is_proxy:
+                proxy = contract
+
+
 class ProxyStandards(AbstractDetector, ABC):
     ARGUMENT = "proxy-standards"
     IMPACT = DetectorClassification.INFORMATIONAL
