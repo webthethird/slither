@@ -1131,8 +1131,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if self._is_upgradeable_proxy is None:
             if print_debug: print(f"\nBegin {self.name}.is_upgradeable_proxy "
                                   f"(Slither line:{getframeinfo(currentframe()).lineno})"
-                                  f"\n\nChecking contract: {self.name} "
-                                  f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                                  f"\n\nChecking contract: {self.name} ")
             self._is_upgradeable_proxy = False
             self._is_upgradeable_proxy_confirmed = False
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
