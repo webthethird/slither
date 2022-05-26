@@ -22,6 +22,7 @@ from slither.core.expressions.member_access import MemberAccess
 from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType
 from slither.core.solidity_types.user_defined_type import UserDefinedType
+from slither.core.solidity_types.elementary_type import ElementaryType
 
 
 def find_slot_in_setter_asm(
@@ -86,13 +87,15 @@ def find_slot_string_from_assert(
     return slot_string, assert_exp, minus
 
 
-def find_mapping_in_local_var_exp(delegate: LocalVariable):
+def find_mapping_in_local_var_exp(delegate: LocalVariable) -> (Optional["Variable"], Optional["IndexAccess"]):
     mapping = None
+    exp = None
     e = delegate.expression
     print(f"{delegate} expression is {e}")
     while isinstance(e, TypeConversion) or isinstance(e, MemberAccess):
         e = e.expression
     if isinstance(e, IndexAccess):
+        exp = e
         left = e.expression_left
         if isinstance(left, MemberAccess):
             e = left.expression
@@ -106,7 +109,7 @@ def find_mapping_in_local_var_exp(delegate: LocalVariable):
             v = left.value
             if isinstance(v.type, MappingType):
                 mapping = v
-    return mapping
+    return mapping, exp
 
 
 class ProxyFeatures(AbstractDetector, ABC):
@@ -168,28 +171,52 @@ or one of the proxy patterns developed by OpenZeppelin.
                 delegate = proxy.delegate_variable
                 print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
 
-                # Extract EIP-2535 Diamond features
-                lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
-                if lib_diamond is not None and lib_diamond.get_structure_from_name("DiamondStorage") is not None:
-                    info = [proxy, " appears to be an EIP-2535 Diamond Proxy.\n"]
+                mapping = None
+                exp = None
+                if delegate.expression is not None:
+                    # Try to extract a mapping from delegate variable
+                    # If found, this could suggest the proxy implements EIP-1538 or EIP-2535
+                    mapping, exp = find_mapping_in_local_var_exp(delegate)
+                    print(f"Mapping: {mapping}\nExpression: {exp}")
+                elif isinstance(delegate.type, MappingType):
+                    mapping = delegate
+                    for e in proxy.fallback_function.variables_read_as_expression:
+                        if isinstance(e, IndexAccess) and isinstance(e.expression_left, Identifier):
+                            if e.expression_left.value == mapping:
+                                exp = e
+                                break
+                if mapping is not None and isinstance(mapping.type, MappingType):
+                    mtype: MappingType = mapping.type
+                    struct = None
+                    if isinstance(mapping, StructureVariable):
+                        struct = mapping.structure
+                    info = [
+                        proxy, " stores the values for ", delegate,
+                        " in the mapping called ", mapping,
+                        " which is located in the structure " if struct is not None else "",
+                        struct if struct is not None else "",
+                        "\n"
+                    ]
                     json = self.generate_result(info)
                     results.append(json)
-                    if isinstance(delegate, LocalVariable) and delegate.expression is not None:
-                        mapping = find_mapping_in_local_var_exp(delegate)
-                        if mapping is not None:
-                            struct = None
-                            if isinstance(mapping, StructureVariable):
-                                struct = mapping.structure
-                            info = [
-                                proxy, " stores the values for ", delegate,
-                                " in the mapping called ", mapping,
-                                " which is located in the structure " if struct is not None else "",
-                                struct if struct is not None else "",
-                                "\n"
-                            ]
-                            json = self.generate_result(info)
-                            results.append(json)
-
+                    # Extract EIP-2535 Diamond features
+                    lib_diamond = proxy.compilation_unit.get_contract_from_name("LibDiamond")
+                    if lib_diamond is not None and lib_diamond.get_structure_from_name(
+                            "DiamondStorage") is not None:
+                        info = [proxy, " appears to be an EIP-2535 Diamond Proxy.\n"]
+                        json = self.generate_result(info)
+                        results.append(json)
+                        # TODO: Determine if the Diamond is upgradeable
+                        # i.e., if it adds a DiamondCut facet in constructor
+                        # TODO: Determine if the compilation unit contains the required Loupe functions
+                    elif str(mtype.type_from) == "bytes4" and str(exp.expression_right) == "msg.sig":
+                        info = [proxy, " appears to be an EIP-1538 Transparent Proxy.\n"]
+                        json = self.generate_result(info)
+                        results.append(json)
+                else:
+                    print(f"{delegate} expression is None")
+                # else:
+                #     print(f"{delegate} is a StateVariable")
             elif contract.is_proxy:
                 proxy = contract
         return results
