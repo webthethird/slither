@@ -1184,9 +1184,23 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                       f"Looking for setter (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 if self._proxy_impl_setter is None:
                     if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
+                        if print_debug: print(f"Looking for setter in {self._delegate_variable.contract} "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
                         self._proxy_impl_setter = self.find_setter_in_contract(self._delegate_variable.contract,
                                                                                self._delegate_variable,
                                                                                self._proxy_impl_slot, print_debug)
+                        if self._proxy_impl_setter is None:
+                            if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} "
+                                                  f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                            for c in self.compilation_unit.contracts:
+                                if c == self or c == self._delegate_variable.contract:
+                                    continue
+                                if self._delegate_variable.contract in c.inheritance:
+                                    if print_debug: print(f"Looking for setter in {c} "
+                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                           self._proxy_impl_slot,
+                                                                                           print_debug)
                     if self._proxy_impl_setter is None:
                         self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegate_variable,
                                                                                self._proxy_impl_slot, print_debug)
@@ -1838,6 +1852,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug: print(f"Got abstract function, looking for overriding function"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 func = self.get_function_from_signature(func.full_name)
+                while func is None:
+                    for c in self.inheritance:
+                        func = c.get_function_from_signature(func.full_name)
                 if len(func.all_nodes()) > 0:
                     if print_debug: print(f"Success (Slither line:{getframeinfo(currentframe()).lineno})")
                 elif print_debug: print(f"Failure (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -1846,7 +1863,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             # if ret.name is None or ret.name == "":
             # Case #2/3 - need to find RETURN node and the variable returned first
             ret_node = func.return_node()
-            if print_debug: print(f"Return node of function {func.name}: {ret_node}"
+            if print_debug: print(f"Return node of function {func.canonical_name}: {ret_node}"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
             if ret_node is not None:
                 rex = ret_node.expression
@@ -2066,6 +2083,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate = self.find_delegate_from_member_access(e, var, print_debug)
                             else:
                                 delegate = self.find_delegate_from_member_access(called, var, print_debug)
+                    elif isinstance(e, IndexAccess):
+                        left = e.expression_left
+                        if isinstance(left, Identifier):
+                            delegate = left.value
                 else:
                     if print_debug: print(f"has no expression (Slither line:{getframeinfo(currentframe()).lineno})")
         if print_debug:
