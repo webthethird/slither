@@ -182,12 +182,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                 delegate = proxy.delegate_variable
                 print(f"{proxy.name} delegates to variable of type {delegate.type} called {delegate.name}")
 
-                mapping = None
-                exp = None
-
                 # Try to extract a mapping from delegate variable
                 # If found, this could suggest the proxy implements EIP-1538 or EIP-2535
-                mapping, exp = self.find_mapping_in_local_var_exp(delegate)
+                mapping, exp = self.find_mapping_in_var_exp(delegate, proxy)
                 if mapping is not None and isinstance(mapping.type, MappingType):
                     mtype: MappingType = mapping.type
                     struct = None
@@ -272,6 +269,7 @@ or one of the proxy patterns developed by OpenZeppelin.
     def _detect(self):
         results = []
         storage_inheritance_index = None    # Use to ensure
+        ProxyFeatures._detect()
         for contract in self.contracts:
             if contract.is_upgradeable_proxy:
                 proxy = contract
