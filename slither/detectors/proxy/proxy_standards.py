@@ -25,93 +25,6 @@ from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
 
 
-def find_slot_in_setter_asm(
-        inline_asm: Union[str, Dict],
-        delegate: LocalVariable
-) -> Optional[str]:
-    slot = None
-    if "AST" in inline_asm and isinstance(inline_asm, Dict):
-        for statement in inline_asm["AST"]["statements"]:
-            if statement["nodeType"] == "YulExpressionStatement":
-                statement = statement["expression"]
-            if statement["nodeType"] == "YulVariableDeclaration":
-                statement = statement["value"]
-            if statement["nodeType"] == "YulFunctionCall":
-                if statement["functionName"]["name"] == "sstore":
-                    if statement["arguments"][1] == delegate.name:
-                        slot = statement["arguments"][0]
-    else:
-        asm_split = inline_asm.split("\n")
-        for asm in asm_split:
-            if "sstore" in asm:
-                params = asm.split("(")[1].strip(")").split(", ")
-                slot = params[0]
-    return slot
-
-
-def find_slot_string_from_assert(
-        proxy: Contract,
-        slot: StateVariable
-):
-    slot_string = None
-    assert_exp = None
-    minus = 0
-    if proxy.constructor is not None:
-        for exp in proxy.constructor.all_expressions():
-            if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)" and slot.name in str(exp):
-                print(f"Found assert statement in constructor:\n{str(exp)}")
-                assert_exp = exp
-                arg = exp.arguments[0]
-                if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
-                    e = arg.expression_right
-                    print("BinaryOperation ==")
-                    if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
-                        print(f"TypeConversion bytes32: {str(e)}")
-                        e = e.expression
-                    if isinstance(e, BinaryOperation) and str(e.type) == "-":
-                        print(f"BinaryOperation -: {str(e)}")
-                        if isinstance(e.expression_right, Literal):
-                            print(f"Minus: {str(e.expression_right.value)}")
-                            minus = int(e.expression_right.value)
-                            e = e.expression_left
-                    if isinstance(e, TypeConversion) and str(e.type) == "uint256":
-                        print(f"TypeConversion uint256: {str(e)}")
-                        e = e.expression
-                    if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
-                        print(f"CallExpression keccak256: {str(e)}")
-                        arg = e.arguments[0]
-                        if isinstance(arg, Literal):
-                            if str(arg.type) == "string":
-                                slot_string = arg.value
-                                break
-    return slot_string, assert_exp, minus
-
-
-def find_mapping_in_local_var_exp(delegate: LocalVariable) -> (Optional["Variable"], Optional["IndexAccess"]):
-    mapping = None
-    exp = None
-    e = delegate.expression
-    print(f"{delegate} expression is {e}")
-    while isinstance(e, TypeConversion) or isinstance(e, MemberAccess):
-        e = e.expression
-    if isinstance(e, IndexAccess):
-        exp = e
-        left = e.expression_left
-        if isinstance(left, MemberAccess):
-            e = left.expression
-            member = left.member_name
-            if isinstance(e, Identifier):
-                v = e.value
-                if isinstance(v.type, UserDefinedType) and isinstance(v.type.type, Structure):
-                    if isinstance(v.type.type.elems[member].type, MappingType):
-                        mapping = v.type.type.elems[member]
-        elif isinstance(left, Identifier):
-            v = left.value
-            if isinstance(v.type, MappingType):
-                mapping = v
-    return mapping, exp
-
-
 class ProxyFeatures(AbstractDetector, ABC):
     ARGUMENT = "proxy-features"
     IMPACT = DetectorClassification.INFORMATIONAL
@@ -157,6 +70,104 @@ or one of the proxy patterns developed by OpenZeppelin.
 
     # endregion wiki_recommendation
 
+    @staticmethod
+    def find_slot_in_setter_asm(
+            inline_asm: Union[str, Dict],
+            delegate: LocalVariable
+    ) -> Optional[str]:
+        slot = None
+        if "AST" in inline_asm and isinstance(inline_asm, Dict):
+            for statement in inline_asm["AST"]["statements"]:
+                if statement["nodeType"] == "YulExpressionStatement":
+                    statement = statement["expression"]
+                if statement["nodeType"] == "YulVariableDeclaration":
+                    statement = statement["value"]
+                if statement["nodeType"] == "YulFunctionCall":
+                    if statement["functionName"]["name"] == "sstore":
+                        if statement["arguments"][1] == delegate.name:
+                            slot = statement["arguments"][0]
+        else:
+            asm_split = inline_asm.split("\n")
+            for asm in asm_split:
+                if "sstore" in asm:
+                    params = asm.split("(")[1].strip(")").split(", ")
+                    slot = params[0]
+        return slot
+
+    @staticmethod
+    def find_slot_string_from_assert(
+            proxy: Contract,
+            slot: StateVariable
+    ):
+        slot_string = None
+        assert_exp = None
+        minus = 0
+        if proxy.constructor is not None:
+            for exp in proxy.constructor.all_expressions():
+                if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)" and slot.name in str(exp):
+                    print(f"Found assert statement in constructor:\n{str(exp)}")
+                    assert_exp = exp
+                    arg = exp.arguments[0]
+                    if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
+                        e = arg.expression_right
+                        print("BinaryOperation ==")
+                        if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
+                            print(f"TypeConversion bytes32: {str(e)}")
+                            e = e.expression
+                        if isinstance(e, BinaryOperation) and str(e.type) == "-":
+                            print(f"BinaryOperation -: {str(e)}")
+                            if isinstance(e.expression_right, Literal):
+                                print(f"Minus: {str(e.expression_right.value)}")
+                                minus = int(e.expression_right.value)
+                                e = e.expression_left
+                        if isinstance(e, TypeConversion) and str(e.type) == "uint256":
+                            print(f"TypeConversion uint256: {str(e)}")
+                            e = e.expression
+                        if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
+                            print(f"CallExpression keccak256: {str(e)}")
+                            arg = e.arguments[0]
+                            if isinstance(arg, Literal):
+                                if str(arg.type) == "string":
+                                    slot_string = arg.value
+                                    break
+        return slot_string, assert_exp, minus
+
+    @staticmethod
+    def find_mapping_in_var_exp(
+            delegate: Variable,
+            proxy: Contract
+    ) -> (Optional["Variable"], Optional["IndexAccess"]):
+        mapping = None
+        exp = None
+        e = delegate.expression
+        if e is not None:
+            print(f"{delegate} expression is {e}")
+            while isinstance(e, TypeConversion) or isinstance(e, MemberAccess):
+                e = e.expression
+            if isinstance(e, IndexAccess):
+                exp = e
+                left = e.expression_left
+                if isinstance(left, MemberAccess):
+                    e = left.expression
+                    member = left.member_name
+                    if isinstance(e, Identifier):
+                        v = e.value
+                        if isinstance(v.type, UserDefinedType) and isinstance(v.type.type, Structure):
+                            if isinstance(v.type.type.elems[member].type, MappingType):
+                                mapping = v.type.type.elems[member]
+                elif isinstance(left, Identifier):
+                    v = left.value
+                    if isinstance(v.type, MappingType):
+                        mapping = v
+        elif isinstance(delegate.type, MappingType):
+            mapping = delegate
+            for e in proxy.fallback_function.variables_read_as_expression:
+                if isinstance(e, IndexAccess) and isinstance(e.expression_left, Identifier):
+                    if e.expression_left.value == mapping:
+                        exp = e
+                        break
+        return mapping, exp
+
     def _detect(self):
         results = []
         storage_inheritance_index = None  # Use to ensure
@@ -173,18 +184,10 @@ or one of the proxy patterns developed by OpenZeppelin.
 
                 mapping = None
                 exp = None
-                if delegate.expression is not None:
-                    # Try to extract a mapping from delegate variable
-                    # If found, this could suggest the proxy implements EIP-1538 or EIP-2535
-                    mapping, exp = find_mapping_in_local_var_exp(delegate)
-                    print(f"Mapping: {mapping}\nExpression: {exp}")
-                elif isinstance(delegate.type, MappingType):
-                    mapping = delegate
-                    for e in proxy.fallback_function.variables_read_as_expression:
-                        if isinstance(e, IndexAccess) and isinstance(e.expression_left, Identifier):
-                            if e.expression_left.value == mapping:
-                                exp = e
-                                break
+
+                # Try to extract a mapping from delegate variable
+                # If found, this could suggest the proxy implements EIP-1538 or EIP-2535
+                mapping, exp = self.find_mapping_in_local_var_exp(delegate)
                 if mapping is not None and isinstance(mapping.type, MappingType):
                     mtype: MappingType = mapping.type
                     struct = None
@@ -222,7 +225,7 @@ or one of the proxy patterns developed by OpenZeppelin.
         return results
 
 
-class ProxyStandards(AbstractDetector, ABC):
+class ProxyStandards(ProxyFeatures, ABC):
     ARGUMENT = "proxy-standards"
     IMPACT = DetectorClassification.INFORMATIONAL
     CONFIDENCE = DetectorClassification.MEDIUM
@@ -436,7 +439,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                         # elif node.type == NodeType.EXPRESSION:
                                         #     print(node.expression)
                                         elif node.type == NodeType.ASSEMBLY:
-                                            slot = find_slot_in_setter_asm(node.inline_asm, delegate)
+                                            slot = self.find_slot_in_setter_asm(node.inline_asm, delegate)
                                             break
                                     if slot is not None:
                                         print(slot)
@@ -605,7 +608,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     else:
                         print(f"Implementation slot: {slot.name} = {slot.expression}")
                         slot_value = str(slot.expression)
-                        slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, slot)
+                        slot_string, assert_exp, minus = self.find_slot_string_from_assert(proxy, slot)
                         if slot_string is not None:
                             s = sha3.keccak_256()
                             s.update(slot_string.encode("utf-8"))
@@ -667,7 +670,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             print(s.name)
                             if s == slot or (slot is not None and s.name == slot.name):
                                 continue
-                            slot_string, assert_exp, minus = find_slot_string_from_assert(proxy, s)
+                            slot_string, assert_exp, minus = self.find_slot_string_from_assert(proxy, s)
                             if assert_exp is not None:
                                 assert_str = str(assert_exp).replace("assert(bool)(", "").replace("))", "')")\
                                     .replace("()(", "('").replace("(bytes)(", "('").replace("==", "=")
