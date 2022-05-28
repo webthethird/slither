@@ -119,7 +119,7 @@ class ProxyFeatures(AbstractDetector, ABC):
 
     HELP = "Proxy contract does not conform to any known standard"
     WIKI = "https://github.com/crytic/slither/wiki/Upgradeability-Checks#non-standard-proxy"
-    WIKI_TITLE = "Non-Standard Proxy"
+    WIKI_TITLE = "Proxy Features"
 
     # region wiki_description
     WIKI_DESCRIPTION = """
