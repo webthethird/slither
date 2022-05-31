@@ -88,6 +88,32 @@ class ProxyFeatureExtraction:
                         self._impl_address_location = self.contract
         return self._impl_address_location
 
+    def find_slot_in_setter_asm(self) -> Optional[str]:
+        slot = None
+        delegate = self._impl_address_variable
+        setter = self.contract.proxy_implementation_setter
+        if setter is not None:
+            for node in setter.all_nodes():
+                if node.type == NodeType.ASSEMBLY and node.inline_asm is not None:
+                    inline_asm = node.inline_asm
+                    if "AST" in inline_asm and isinstance(inline_asm, Dict):
+                        for statement in inline_asm["AST"]["statements"]:
+                            if statement["nodeType"] == "YulExpressionStatement":
+                                statement = statement["expression"]
+                            if statement["nodeType"] == "YulVariableDeclaration":
+                                statement = statement["value"]
+                            if statement["nodeType"] == "YulFunctionCall":
+                                if statement["functionName"]["name"] == "sstore":
+                                    if statement["arguments"][1] == delegate.name:
+                                        slot = statement["arguments"][0]
+                    else:
+                        asm_split = inline_asm.split("\n")
+                        for asm in asm_split:
+                            if "sstore" in asm:
+                                params = asm.split("(")[1].strip(")").split(", ")
+                                slot = params[0]
+        return slot
+
     # endregion
     ###################################################################################
     ###################################################################################
@@ -95,29 +121,6 @@ class ProxyFeatureExtraction:
     ###################################################################################
     ###################################################################################
 
-    @staticmethod
-    def find_slot_in_setter_asm(
-            inline_asm: Union[str, Dict],
-            delegate: LocalVariable
-    ) -> Optional[str]:
-        slot = None
-        if "AST" in inline_asm and isinstance(inline_asm, Dict):
-            for statement in inline_asm["AST"]["statements"]:
-                if statement["nodeType"] == "YulExpressionStatement":
-                    statement = statement["expression"]
-                if statement["nodeType"] == "YulVariableDeclaration":
-                    statement = statement["value"]
-                if statement["nodeType"] == "YulFunctionCall":
-                    if statement["functionName"]["name"] == "sstore":
-                        if statement["arguments"][1] == delegate.name:
-                            slot = statement["arguments"][0]
-        else:
-            asm_split = inline_asm.split("\n")
-            for asm in asm_split:
-                if "sstore" in asm:
-                    params = asm.split("(")[1].strip(")").split(", ")
-                    slot = params[0]
-        return slot
 
     @staticmethod
     def find_slot_string_from_assert(
