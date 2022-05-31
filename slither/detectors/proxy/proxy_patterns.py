@@ -158,8 +158,17 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check if impl_address_location contract is inherited by any contract besides current proxy
                             """
-
-
+                            for c in self.contracts:
+                                if c == proxy or c == proxy_features.impl_address_location:
+                                    continue
+                                if proxy_features.impl_address_location in proxy.inheritance and \
+                                        proxy_features.impl_address_location in c.inheritance:
+                                    info = [
+                                        proxy_features.impl_address_location,
+                                        " appears to be Inherited Storage\n"
+                                    ]
+                                    json = self.generate_result(info)
+                                    results.append(json)
                         elif isinstance(delegate, MappingType):
                             info = [
                                 contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
