@@ -76,12 +76,54 @@ or one of the proxy patterns developed by OpenZeppelin.
         for contract in self.contracts:
             proxy_features = ProxyFeatureExtraction(contract, self.compilation_unit)
             if proxy_features.is_upgradeable_proxy:
+                delegate = proxy_features.impl_address_variable
                 info = [contract, " appears to ",
                         "maybe " if not proxy_features.is_upgradeable_proxy_confirmed else "",
-                        "be an upgradeable proxy contract.\n"]
+                        "be an upgradeable proxy contract.\nIt delegates to a variable of type ",
+                        f"{delegate.type} called {delegate.name}.\n"]
                 json = self.generate_result(info)
                 results.append(json)
-
+                """
+                Check location of implementation address, i.e. contract.delegate_variable.
+                Could be located in proxy contract or in a different contract.
+                """
+                if proxy_features.impl_address_location == contract:
+                    """
+                    Check the scope of the implementation address variable,
+                    i.e., StateVariable or LocalVariable.
+                    """
+                    if isinstance(delegate, StateVariable):
+                        """
+                        Check the type of the state variable, i.e. an address, a mapping, or something else
+                        """
+                        if f"{delegate.type}" == "address":
+                            info = [
+                                contract,
+                                " stores implementation address as a state variable: ",
+                                delegate,
+                                "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
+                                "EIP-1967, EIP-1822, Unstructured Storage, Eternal Storage or another well-audited pattern.\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        elif isinstance(delegate, MappingType):
+                            """
+                            Check mapping types, i.e. type_from or type_to
+                            """
+                    elif isinstance(delegate, LocalVariable):
+                        """
+                        Check where the local variable gets the value of the implementation address from, i.e., 
+                        is it loaded from a storage slot, or by a call to a different contract, or something else?
+                        """
+                else:
+                    info = [delegate, " was found in a different contract: ",
+                            proxy_features.impl_address_location]
+                    json = self.generate_result(info)
+                    results.append(json)
+                    """
+                    Check the scope of the implementation address variable,
+                    i.e., StateVariable or LocalVariable.
+                    """
             elif contract.is_proxy:
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
