@@ -114,6 +114,26 @@ class ProxyFeatureExtraction:
                                 slot = params[0]
         return slot
 
+    def all_mappings(self) -> Optional[List["MappingType"]]:
+        mappings = []
+        for v in self.contract.state_variables:
+            if isinstance(v.type, MappingType):
+                mappings.append(v.type)
+        if len(mappings) == 0:
+            return None
+        return mappings
+
+    def is_eternal_storage(self) -> bool:
+        mappings = self.all_mappings()
+        types = ["uint256", "string", "address", "bytes", "bool", "int256"]
+        types2 = types
+        if mappings is not None:
+            for t in types:
+                for m in mappings:
+                    if str(m.type_to) == t:
+                        types2.remove(t)
+        return len(types2) == 0
+
     # endregion
     ###################################################################################
     ###################################################################################
