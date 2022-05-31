@@ -118,6 +118,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check mapping types, i.e. delegate.type_from and delegate.type_to
                             """
+                            if proxy_features.is_eternal_storage():
+                                info = [
+                                    proxy,
+                                    " appears to be Eternal Storage\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
                         else:
                             """
                             Do something else? 
@@ -169,7 +176,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     ]
                                     json = self.generate_result(info)
                                     results.append(json)
-                        elif isinstance(delegate, MappingType):
+                        elif isinstance(delegate.type, MappingType):
                             info = [
                                 contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
                                 delegate, "\n"
@@ -179,6 +186,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check mapping types, i.e. delegate.type_from and delegate.type_to
                             """
+                            if proxy_features.is_eternal_storage():
+                                info = [
+                                    proxy_features.impl_address_location,
+                                    " appears to be Eternal+Inherited Storage\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
