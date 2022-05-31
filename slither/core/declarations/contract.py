@@ -1314,8 +1314,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 inline_asm = n.inline_asm
                                 if inline_asm and "sload" in str(inline_asm): # and self._delegates_to.name in inline_asm:
                                     self._is_upgradeable_proxy = True
-        if print_debug:
-            print(f"\nEnd {self.name}.is_upgradeable_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            if print_debug:
+                print(f"\nEnd {self.name}.is_upgradeable_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return self._is_upgradeable_proxy
 
     @property
@@ -1372,8 +1372,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._is_proxy = is_proxy
                     if self._is_proxy and self._delegate_variable is not None:
                         break
-        if print_debug:
-            print(f"\nEnd {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            if print_debug:
+                print(f"\nEnd {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return self._is_proxy
 
     """
