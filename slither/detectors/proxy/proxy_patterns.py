@@ -118,6 +118,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check mapping types, i.e. delegate.type_from and delegate.type_to
                             """
+                        else:
+                            """
+                            Do something else? 
+                            Print result for debugging
+                            """
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
@@ -150,6 +155,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+                            """
+                            Check if impl_address_location contract is inherited by any contract besides current proxy
+                            """
+
 
                         elif isinstance(delegate, MappingType):
                             info = [
@@ -170,6 +179,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         Should not be reachable, but print a result for debugging
                         """
+                """
+                Check if proxy contains external functions 
+                """
+
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
