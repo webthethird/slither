@@ -116,7 +116,7 @@ class ProxyFeatureExtraction:
 
     def all_mappings(self) -> Optional[List["MappingType"]]:
         mappings = []
-        for v in self.contract.state_variables:
+        for v in self.impl_address_location.state_variables:
             if isinstance(v.type, MappingType):
                 mappings.append(v.type)
         if len(mappings) == 0:
@@ -130,7 +130,7 @@ class ProxyFeatureExtraction:
         if mappings is not None:
             for t in types:
                 for m in mappings:
-                    if str(m.type_to) == t:
+                    if str(m.type_to) == t and (str(m.type_from) == "string" or str(m.type_from) == "bytes32"):
                         types2.remove(t)
         return len(types2) == 0
 
