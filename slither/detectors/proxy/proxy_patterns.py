@@ -76,8 +76,9 @@ or one of the proxy patterns developed by OpenZeppelin.
         for contract in self.contracts:
             proxy_features = ProxyFeatureExtraction(contract, self.compilation_unit)
             if proxy_features.is_upgradeable_proxy:
+                proxy = contract
                 delegate = proxy_features.impl_address_variable
-                info = [contract, " appears to ",
+                info = [proxy, " appears to ",
                         "maybe " if not proxy_features.is_upgradeable_proxy_confirmed else "",
                         "be an upgradeable proxy contract.\nIt delegates to a variable of type ",
                         f"{delegate.type} called {delegate.name}.\n"]
@@ -87,7 +88,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Check location of implementation address, i.e. contract.delegate_variable.
                 Could be located in proxy contract or in a different contract.
                 """
-                if proxy_features.impl_address_location == contract:
+                if proxy_features.impl_address_location == proxy:
                     """
                     Check the scope of the implementation address variable,
                     i.e., StateVariable or LocalVariable.
@@ -98,7 +99,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         if f"{delegate.type}" == "address":
                             info = [
-                                contract,
+                                proxy,
                                 " stores implementation address as a state variable: ",
                                 delegate,
                                 "\nAvoid declaring state variables in the proxy. Better to use a standard storage slot,"
@@ -109,7 +110,7 @@ or one of the proxy patterns developed by OpenZeppelin.
 
                         elif isinstance(delegate, MappingType):
                             info = [
-                                contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
+                                proxy, " stores implementation(s) in a mapping declared in the proxy contract: ",
                                 delegate, "\n"
                             ]
                             json = self.generate_result(info)
@@ -141,7 +142,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         if f"{delegate.type}" == "address":
                             info = [
-                                contract,
+                                proxy,
                                 " stores implementation address as a state variable called ",
                                 delegate,
                                 " which is declared in the contract: ",
