@@ -28,7 +28,8 @@ from slither.core.solidity_types.elementary_type import ElementaryType
 
 class ProxyFeatureExtraction:
     """
-    Wrapper class for extracting proxy features from a Contract object
+    Wrapper class for extracting proxy features from a Contract object.
+    Not a detector, but used exclusively by ProxyPatterns detector.
     """
 
     def __init__(self, contract: "Contract", compilation_unit: "SlitherCompilationUnit"):
