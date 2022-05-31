@@ -269,7 +269,7 @@ or one of the proxy patterns developed by OpenZeppelin.
     def _detect(self):
         results = []
         storage_inheritance_index = None    # Use to ensure
-        ProxyFeatures._detect()
+        ProxyFeatures._detect(self)
         for contract in self.contracts:
             if contract.is_upgradeable_proxy:
                 proxy = contract
