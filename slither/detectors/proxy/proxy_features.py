@@ -69,6 +69,10 @@ class ProxyFeatureExtraction:
         return self.contract.is_upgradeable_proxy
 
     @property
+    def is_upgradeable_proxy_confirmed(self) -> bool:
+        return self.contract.is_upgradeable_proxy_confirmed
+
+    @property
     def impl_address_variable(self) -> Optional["Variable"]:
         if self._impl_address_variable is None:
             self._impl_address_variable = self.contract.delegate_variable
