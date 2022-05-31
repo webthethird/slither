@@ -106,16 +106,27 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+
                         elif isinstance(delegate, MappingType):
+                            info = [
+                                contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
+                                delegate, "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                             """
-                            Check mapping types, i.e. type_from or type_to
+                            Check mapping types, i.e. delegate.type_from and delegate.type_to
                             """
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
-                else:
+                    else:
+                        """
+                        Should not be reachable, but print a result for debugging
+                        """
+                else:   # Location of delegate is in a different contract
                     info = [delegate, " was found in a different contract: ",
                             proxy_features.impl_address_location, "\n"]
                     json = self.generate_result(info)
@@ -124,6 +135,40 @@ or one of the proxy patterns developed by OpenZeppelin.
                     Check the scope of the implementation address variable,
                     i.e., StateVariable or LocalVariable.
                     """
+                    if isinstance(delegate, StateVariable):
+                        """
+                        Check the type of the state variable, i.e. an address, a mapping, or something else
+                        """
+                        if f"{delegate.type}" == "address":
+                            info = [
+                                contract,
+                                " stores implementation address as a state variable called ",
+                                delegate,
+                                " which is declared in the contract: ",
+                                proxy_features.impl_address_location
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+
+                        elif isinstance(delegate, MappingType):
+                            info = [
+                                contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
+                                delegate, "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                            """
+                            Check mapping types, i.e. delegate.type_from and delegate.type_to
+                            """
+                    elif isinstance(delegate, LocalVariable):
+                        """
+                        Check where the local variable gets the value of the implementation address from, i.e., 
+                        is it loaded from a storage slot, or by a call to a different contract, or something else?
+                        """
+                    else:
+                        """
+                        Should not be reachable, but print a result for debugging
+                        """
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
