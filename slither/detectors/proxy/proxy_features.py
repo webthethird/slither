@@ -88,6 +88,8 @@ class ProxyFeatureExtraction:
                 function = self._impl_address_variable.function
                 if isinstance(function, FunctionContract):
                     self._impl_address_location = function.contract
+                    if self._impl_address_location in self.contract.inheritance:
+                        self._impl_address_location = self.contract
         return self._impl_address_location
 
     # endregion
