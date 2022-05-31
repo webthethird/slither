@@ -101,8 +101,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 contract,
                                 " stores implementation address as a state variable: ",
                                 delegate,
-                                "\nAvoid variables in the proxy. Better to use a standard storage slot, e.g. as proposed in ",
-                                "EIP-1967, EIP-1822, Unstructured Storage, Eternal Storage or another well-audited pattern.\n"
+                                "\nAvoid declaring state variables in the proxy. Better to use a standard storage slot,"
+                                " e.g. as proposed in EIP-1967, EIP-1822, EIP-2535 or another well-audited pattern.\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -117,7 +117,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                 else:
                     info = [delegate, " was found in a different contract: ",
-                            proxy_features.impl_address_location]
+                            proxy_features.impl_address_location, "\n"]
                     json = self.generate_result(info)
                     results.append(json)
                     """
@@ -125,6 +125,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                     i.e., StateVariable or LocalVariable.
                     """
             elif contract.is_proxy:
+                """
+                Contract is either a non-upgradeable proxy, or upgradeability could not be determined
+                """
                 info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
                 json = self.generate_result(info)
                 results.append(json)
