@@ -56,10 +56,6 @@ class ProxyFeatureExtraction:
     ###################################################################################
     ###################################################################################
 
-    @property
-    def contract(self) -> Contract:
-        assert self.contract
-        return self.contract
 
     @property
     def is_proxy(self) -> bool:
