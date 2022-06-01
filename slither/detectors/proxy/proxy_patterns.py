@@ -72,10 +72,9 @@ or one of the proxy patterns developed by OpenZeppelin.
 
     # endregion wiki_recommendation
 
-    def detect_mappings(self, proxy_features: ProxyFeatureExtraction):
+    def detect_mappings(self, proxy_features: ProxyFeatureExtraction, delegate: Variable):
         results = []
         proxy = proxy_features.contract
-        delegate = proxy_features.impl_address_variable
         if not isinstance(delegate.type, MappingType):
             return results
         """
@@ -88,7 +87,7 @@ or one of the proxy patterns developed by OpenZeppelin.
             ]
             json = self.generate_result(info)
             results.append(json)
-        elif f"{delegate.type.type_from}" == "bytes4" and f"{delegate.type.type_to}" == "address":
+        elif f"{delegate.type.type_from}" == "bytes4":  # and f"{delegate.type.type_to}" == "address":
             """
             Check to confirm that `msg.sig` is used as the key in the mapping
             """
@@ -107,11 +106,43 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 if isinstance(delegate, StructureVariable):
                     struct = delegate.structure
-                    info = [
-                        delegate,
-                        " is declared as part of a struct: ",
-                        struct
-                    ]
+                    if struct.name == "DiamondStorage":
+                        if struct.canonical_name == "LibDiamond.DiamondStorage":
+                            info = [
+                                delegate,
+                                " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                struct,
+                                " which is declared in the standard's LibDiamond library.\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        elif isinstance(struct, StructureContract):
+                            info = [
+                                delegate,
+                                " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                struct,
+                                " but not the one declared in the LibDiamond library. It is declared in ",
+                                struct.contract,
+                                "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        """
+                        Search for the Loupe functions required by EIP-2535.
+                        """
+
+                        """
+                        Check if function for adding/removing/replacing functions (i.e. DiamondCut) added in constructor
+                        to determine if the Diamond is actually upgradeable
+                        """
+                    else:
+                        info = [
+                            delegate,
+                            " is declared as part of a user-defined structure: ",
+                            struct, "\n"
+                        ]
+                        json = self.generate_result(info)
+                        results.append(json)
                 else:
                     """
                     Mapping not stored in a struct
@@ -176,7 +207,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            map_results = self.detect_mappings(proxy_features)
+                            map_results = self.detect_mappings(proxy_features, delegate)
                             for r in map_results:
                                 results.append(r)
                         else:
@@ -189,6 +220,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
+                        print(f"{delegate} is a LocalVariable")
+                        mapping, exp = ProxyFeatureExtraction.find_mapping_in_var_exp(delegate, proxy)
+                        if mapping is not None:
+                            map_results = self.detect_mappings(proxy_features, mapping)
+                            for r in map_results:
+                                results.append(r)
                     else:
                         """
                         Should not be reachable, but print a result for debugging
@@ -237,7 +274,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            map_results = self.detect_mappings(proxy_features)
+                            map_results = self.detect_mappings(proxy_features, delegate)
                             for r in map_results:
                                 results.append(r)
 
