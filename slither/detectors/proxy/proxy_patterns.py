@@ -253,20 +253,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            """
-                            Check if impl_address_location contract is inherited by any contract besides current proxy
-                            """
-                            for c in self.contracts:
-                                if c == proxy or c == proxy_features.impl_address_location:
-                                    continue
-                                if proxy_features.impl_address_location in proxy.inheritance and \
-                                        proxy_features.impl_address_location in c.inheritance:
-                                    info = [
-                                        proxy_features.impl_address_location,
-                                        " appears to be Inherited Storage\n"
-                                    ]
-                                    json = self.generate_result(info)
-                                    results.append(json)
                         elif isinstance(delegate.type, MappingType):
                             info = [
                                 contract, " stores implementation(s) in a mapping declared in another contract: ",
@@ -277,6 +263,20 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, delegate)
                             for r in map_results:
                                 results.append(r)
+                        """
+                        Check if impl_address_location contract is inherited by any contract besides current proxy
+                        """
+                        for c in self.contracts:
+                            if c == proxy or c == proxy_features.impl_address_location:
+                                continue
+                            if proxy_features.impl_address_location in proxy.inheritance and \
+                                    proxy_features.impl_address_location in c.inheritance:
+                                info = [
+                                    proxy_features.impl_address_location,
+                                    " appears to be using Inherited Storage\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
 
                     elif isinstance(delegate, LocalVariable):
                         """
