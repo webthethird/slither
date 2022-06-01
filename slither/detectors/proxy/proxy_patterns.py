@@ -130,7 +130,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         Search for the Loupe functions required by EIP-2535.
                         """
-
+                        loupe_facets = proxy_features.find_diamond_loupe_functions()
+                        if len(loupe_facets) == 4:
+                            info = [
+                                f"The Loupe function {f} is located in {c}\n" for f,c in loupe_facets
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                         """
                         Check if function for adding/removing/replacing functions (i.e. DiamondCut) added in constructor
                         to determine if the Diamond is actually upgradeable
@@ -215,6 +221,15 @@ or one of the proxy patterns developed by OpenZeppelin.
                             Do something else? 
                             Print result for debugging
                             """
+                            info = [
+                                proxy,
+                                " stores implementation address in a state variable of type ",
+                                delegate.type,
+                                " declared in the proxy contract: ",
+                                delegate, "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 

@@ -151,6 +151,25 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
+    def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
+        loupe_facets = []
+        loupe_sigs = [
+            "facets() returns(IDiamondLoupe.Facet[])",
+            "facetAddresses() returns(address[])",
+            "facetAddress(bytes4) returns(address)",
+            "facetFunctionSelectors(address) returns(bytes4[])"
+        ]
+        for c in self.compilation_unit.contracts:
+            if c == self.contract or c.is_interface:
+                continue
+            print(f"Looking for Loupe functions in {c}")
+            for f in c.functions:
+                print(f.signature_str)
+                if f.signature_str in loupe_sigs:
+                    loupe_sigs.remove(f.signature_str)
+                    loupe_facets.append((f.signature_str, c))
+        return loupe_facets
+
 
     # endregion
     ###################################################################################
