@@ -202,6 +202,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+                            """
+                            Check if the implementation address setter is in the proxy contract. 
+                            """
+                            """
+                            Check if logic contract has same variable declared in same slot, i.e. Singleton/MasterCopy
+                            """
 
                         elif isinstance(delegate.type, MappingType):
                             info = [
