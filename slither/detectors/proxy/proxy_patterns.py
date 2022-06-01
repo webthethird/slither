@@ -6,6 +6,7 @@ from slither.detectors.proxy.proxy_features import ProxyFeatureExtraction
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
+from slither.core.children.child_contract import ChildContract
 from slither.core.declarations.structure import Structure
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
@@ -199,6 +200,27 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
+                        if proxy_features.get_slot_loaded is not None:
+                            info = [
+                                proxy,
+                                " appears to be Unstructured Storage\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                            if proxy_features.get_slot_loaded() == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+
+                                setter = proxy_features.contract.proxy_implementation_setter
+                                if isinstance(setter, ChildContract):
+                                    if setter.contract == proxy:
+                                        info = [
+                                            " EIP-1967\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                        else:
+                            """
+                            Do something else
+                            """
                     else:
                         """
                         Should not be reachable, but print a result for debugging

@@ -134,6 +134,43 @@ class ProxyFeatureExtraction:
                         types2.remove(t)
         return len(types2) == 0
 
+    def get_slot_loaded(self) -> str:
+        fallback = self.contract.fallback_function
+        delegate = self.contract.delegate_variable
+        if delegate.expression is not None:
+            exp = delegate.expression
+            if isinstance(exp, CallExpression):
+                if str(exp.called) == "sload":
+                    params = exp.split("(")[1].strip(")")
+                    slot = params[0]
+                    return slot
+        else:
+            for node in fallback.all_nodes():
+                if node.type == NodeType.VARIABLE:
+                    exp = node.variable_declaration.expression
+                    if exp is not None and isinstance(exp, Identifier):
+                        slot = str(exp.value.expression)
+                        return slot
+                elif node.type == NodeType.ASSEMBLY:
+                    slot = None
+                    if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
+                        for statement in node.inline_asm["AST"]["statements"]:
+                            if statement["nodeType"] == "YulExpressionStatement":
+                                statement = statement["expression"]
+                            if statement["nodeType"] == "YulVariableDeclaration":
+                                statement = statement["value"]
+                            if statement["nodeType"] == "YulFunctionCall":
+                                if statement["functionName"]["name"] == "sload":
+                                    if statement["arguments"][1] == delegate.name:
+                                        slot = statement["arguments"][0]
+                    else:
+                        asm_split = node.inline_asm.split("\n")
+                        for asm in asm_split:
+                            if "sload" in asm:
+                                params = asm.split("(")[1].strip(")")
+                                slot = params[0]
+                    return slot
+
     # endregion
     ###################################################################################
     ###################################################################################
