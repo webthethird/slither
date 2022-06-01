@@ -82,6 +82,8 @@ class ProxyFeatureExtraction:
                 self._impl_address_location = self._impl_address_variable.contract
             elif isinstance(self._impl_address_variable, LocalVariable):
                 function = self._impl_address_variable.function
+                if function is None:
+                    self._impl_address_location = self.contract
                 if isinstance(function, FunctionContract):
                     self._impl_address_location = function.contract
                     if self._impl_address_location in self.contract.inheritance:
@@ -170,6 +172,43 @@ class ProxyFeatureExtraction:
                                 params = asm.split("(")[1].strip(")")
                                 slot = params[0]
                     return slot
+
+    def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
+        ret = False
+        if isinstance(mapping.type, MappingType):
+            for node in self.contract.fallback_function.all_nodes():
+                if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+                    if node.expression is None:
+                        continue
+                    exp = node.expression
+                    if isinstance(exp, AssignmentOperation):
+                        exp = exp.expression_right
+                    if isinstance(exp, MemberAccess):
+                        exp = exp.expression
+                    if isinstance(exp, IndexAccess):
+                        if mapping.name in str(exp.expression_left) and str(exp.expression_right) == "msg.sig":
+                            ret = True
+        return ret
+
+    def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
+        loupe_facets = []
+        loupe_sigs = [
+            "facets() returns(IDiamondLoupe.Facet[])",
+            "facetAddresses() returns(address[])",
+            "facetAddress(bytes4) returns(address)",
+            "facetFunctionSelectors(address) returns(bytes4[])"
+        ]
+        for c in self.compilation_unit.contracts:
+            if c == self.contract or c.is_interface:
+                continue
+            print(f"Looking for Loupe functions in {c}")
+            for f in c.functions:
+                print(f.signature_str)
+                if f.signature_str in loupe_sigs:
+                    loupe_sigs.remove(f.signature_str)
+                    loupe_facets.append((f.signature_str, c))
+        return loupe_facets
+
 
     # endregion
     ###################################################################################
