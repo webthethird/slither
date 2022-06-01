@@ -82,6 +82,8 @@ class ProxyFeatureExtraction:
                 self._impl_address_location = self._impl_address_variable.contract
             elif isinstance(self._impl_address_variable, LocalVariable):
                 function = self._impl_address_variable.function
+                if function is None:
+                    self._impl_address_location = self.contract
                 if isinstance(function, FunctionContract):
                     self._impl_address_location = function.contract
                     if self._impl_address_location in self.contract.inheritance:
