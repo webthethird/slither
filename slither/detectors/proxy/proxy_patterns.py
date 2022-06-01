@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
 from slither.core.declarations.structure import Structure
+from slither.core.declarations.structure_contract import StructureContract
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
@@ -71,6 +72,63 @@ or one of the proxy patterns developed by OpenZeppelin.
 
     # endregion wiki_recommendation
 
+    def detect_mappings(self, proxy_features: ProxyFeatureExtraction):
+        results = []
+        proxy = proxy_features.contract
+        delegate = proxy_features.impl_address_variable
+        if not isinstance(delegate.type, MappingType):
+            return results
+        """
+        Check mapping types, i.e. delegate.type_from and delegate.type_to
+        """
+        if proxy_features.is_eternal_storage():
+            info = [
+                proxy,
+                " appears to use Eternal Storage\n"
+            ]
+            json = self.generate_result(info)
+            results.append(json)
+        elif f"{delegate.type.type_from}" == "bytes4" and f"{delegate.type.type_to}" == "address":
+            """
+            Check to confirm that `msg.sig` is used as the key in the mapping
+            """
+            if proxy_features.is_mapping_from_msg_sig(delegate):
+                info = [
+                    delegate,
+                    " maps function signatures (i.e. `msg.sig`) to addresses where the functions"
+                    " are implemented, suggesting that ",
+                    proxy,
+                    " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                ]
+                json = self.generate_result(info)
+                results.append(json)
+                """
+                Check if the mapping is stored in a struct, i.e. DiamondStorage for EIP-2535
+                """
+                if isinstance(delegate, StructureVariable):
+                    struct = delegate.structure
+                    info = [
+                        delegate,
+                        " is declared as part of a struct: ",
+                        struct
+                    ]
+                else:
+                    """
+                    Mapping not stored in a struct
+                    """
+            else:
+                info = [
+                    delegate,
+                    " probably maps function signatures (i.e. the key is of type `bytes4`) to"
+                    " addresses where the functions are implemented, but the detector could not"
+                    " find the index access expression using `msg.sig` and cannot say for sure if ",
+                    proxy,
+                    " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                ]
+                json = self.generate_result(info)
+                results.append(json)
+        return results
+
     def _detect(self):
         results = []
         for contract in self.contracts:
@@ -108,23 +166,19 @@ or one of the proxy patterns developed by OpenZeppelin.
                             json = self.generate_result(info)
                             results.append(json)
 
-                        elif isinstance(delegate, MappingType):
+                        elif isinstance(delegate.type, MappingType):
                             info = [
-                                proxy, " stores implementation(s) in a mapping declared in the proxy contract: ",
+                                proxy,
+                                " stores implementation(s) in a mapping of type ",
+                                delegate.type,
+                                " declared in the proxy contract: ",
                                 delegate, "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            """
-                            Check mapping types, i.e. delegate.type_from and delegate.type_to
-                            """
-                            if proxy_features.is_eternal_storage():
-                                info = [
-                                    proxy,
-                                    " appears to be Eternal Storage\n"
-                                ]
-                                json = self.generate_result(info)
-                                results.append(json)
+                            map_results = self.detect_mappings(proxy_features)
+                            for r in map_results:
+                                results.append(r)
                         else:
                             """
                             Do something else? 
@@ -178,21 +232,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     results.append(json)
                         elif isinstance(delegate.type, MappingType):
                             info = [
-                                contract, " stores implementation(s) in a mapping declared in the proxy contract: ",
+                                contract, " stores implementation(s) in a mapping declared in another contract: ",
                                 delegate, "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            """
-                            Check mapping types, i.e. delegate.type_from and delegate.type_to
-                            """
-                            if proxy_features.is_eternal_storage():
-                                info = [
-                                    proxy_features.impl_address_location,
-                                    " appears to be Eternal+Inherited Storage\n"
-                                ]
-                                json = self.generate_result(info)
-                                results.append(json)
+                            map_results = self.detect_mappings(proxy_features)
+                            for r in map_results:
+                                results.append(r)
 
                     elif isinstance(delegate, LocalVariable):
                         """

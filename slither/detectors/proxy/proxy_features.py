@@ -134,6 +134,24 @@ class ProxyFeatureExtraction:
                         types2.remove(t)
         return len(types2) == 0
 
+    def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
+        ret = False
+        if isinstance(mapping.type, MappingType):
+            for node in self.contract.fallback_function.all_nodes():
+                if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+                    if node.expression is None:
+                        continue
+                    exp = node.expression
+                    if isinstance(exp, AssignmentOperation):
+                        exp = exp.expression_right
+                    if isinstance(exp, MemberAccess):
+                        exp = exp.expression
+                    if isinstance(exp, IndexAccess):
+                        if mapping.name in str(exp.expression_left) and str(exp.expression_right) == "msg.sig":
+                            ret = True
+        return ret
+
+
     # endregion
     ###################################################################################
     ###################################################################################
