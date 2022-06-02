@@ -2796,8 +2796,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if isinstance(inline, str):
                             for asm in inline.split("\n"):
                                 if "sstore" in asm:
-                                    if print_debug: print(asm)
+                                    if print_debug: print(f"{asm} (Slither line:{getframeinfo(currentframe()).lineno})")
                                     slotname = asm.split("sstore(")[1].split(",")[0]
+                                    if slotname == str(storage_slot):
+                                        setter = f
+                                        break
                                     for v in f.variables_read_or_written:
                                         if v.name == slotname:
                                             if v in [storage_slot, var_to_set]:
