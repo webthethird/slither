@@ -1261,7 +1261,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                               f"(Slither line:{getframeinfo(currentframe()).lineno})")
                         for c in self.compilation_unit.contracts:
                             if self._delegate_variable.contract in c.inheritance and c != self:
-                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable, print_debug)
+                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
+                                                                                       print_debug)
                                 self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
                                                                                        None, print_debug)
                                 if self._proxy_impl_setter is not None:
@@ -2656,9 +2657,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 continue
             if not f.name == "fallback" and "constructor" not in f.name.lower():
-                if print_debug: print(f"Visibility: {f.visibility}")
-                if f.visibility == "internal" or f.visibility == "private":
-                    continue
+                # if print_debug: print(f"Visibility: {f.visibility}")
+                # if f.visibility == "internal" or f.visibility == "private":
+                #     continue
                 if len(f.returns) > 0:
                     for v in f.returns:
                         if print_debug:
