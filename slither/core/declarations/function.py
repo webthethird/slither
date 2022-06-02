@@ -641,7 +641,7 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         """
         from slither.core.cfg.node import NodeType
         nodes = None
-        for node in self.all_nodes():
+        for node in self.nodes:
             if node.type == NodeType.RETURN and node.function == self:
                 if nodes is None:
                     nodes = []
