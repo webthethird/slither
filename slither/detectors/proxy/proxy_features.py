@@ -164,7 +164,11 @@ class ProxyFeatureExtraction:
                     if len(str(arg)) == 66 and str(arg).startswith("0x"):
                         return str(arg)
                     elif isinstance(arg, Identifier):
-                        print(f"arg expression: {arg.value.expression}")
+                        v = arg.value
+                        if v.expression is not None:
+                            exp = v.expression
+                            if isinstance(exp, Identifier) and exp.value.is_constant:
+                                return str(exp.value.expression)
         else:
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
