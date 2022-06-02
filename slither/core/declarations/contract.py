@@ -1729,8 +1729,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                             delegate = exp.value
                                         elif isinstance(exp, CallExpression):
+                                            called = exp.called
+                                            if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                                self._proxy_impl_getter = called.value
                                             delegate = self.find_delegate_from_call_exp(exp, pv, print_debug)
                                 elif isinstance(arg, CallExpression):
+                                    called = exp.called
+                                    if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                        self._proxy_impl_getter = called.value
                                     _delegate = self.find_delegate_from_call_exp(arg, pv, print_debug)
                                     if _delegate is not None:
                                         delegate = _delegate
@@ -1900,6 +1906,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     and called.value.contract != self:
                                 if print_debug: print(f"Encountered call to another contract: {rex}"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                self._proxy_impl_getter = called.value
                                 delegate = called.value.contract.find_delegate_from_call_exp(rex, var, print_debug)
                                 if delegate is None:
                                     if print_debug: print(f"{called.value.contract.name}"
@@ -1908,6 +1915,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                    self._proxy_impl_getter = called.value
                                 delegate = self.find_delegate_from_call_exp(rex, var, print_debug)
                                 if delegate is None:
                                     if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned "
