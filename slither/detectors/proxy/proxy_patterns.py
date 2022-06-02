@@ -248,6 +248,36 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, mapping)
                             for r in map_results:
                                 results.append(r)
+                    elif isinstance(delegate, StructureVariable):
+                        """
+                        Check the type of the structure variable, i.e. an address, a mapping, or something else
+                        """
+                        struct = delegate.structure
+                        if f"{delegate.type}" == "address":
+                            info = [
+                                proxy,
+                                " stores implementation address as a variable called ",
+                                delegate,
+                                " found in the structure called ",
+                                struct,
+                                " which is declared in the proxy contract\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        elif isinstance(delegate.type, MappingType):
+                            info = [
+                                proxy,
+                                " stores implementation address in a mapping called ",
+                                delegate,
+                                " found in the structure called ",
+                                struct,
+                                " which is declared in the proxy contract\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                            map_results = self.detect_mappings(proxy_features, delegate)
+                            for r in map_results:
+                                results.append(r)
                     else:
                         """
                         Should not be reachable, but print a result for debugging
@@ -271,7 +301,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 " stores implementation address as a state variable called ",
                                 delegate,
                                 " which is declared in the contract: ",
-                                proxy_features.impl_address_location
+                                proxy_features.impl_address_location,
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -326,6 +357,39 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Do something else
                             """
+                    elif isinstance(delegate, StructureVariable):
+                        """
+                        Check the type of the structure variable, i.e. an address, a mapping, or something else
+                        """
+                        struct = delegate.structure
+                        if f"{delegate.type}" == "address":
+                            info = [
+                                proxy,
+                                " stores implementation address as a variable called ",
+                                delegate,
+                                " found in the structure called ",
+                                struct,
+                                " which is declared in the contract: ",
+                                proxy_features.impl_address_location
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                        elif isinstance(delegate.type, MappingType):
+                            info = [
+                                proxy,
+                                " stores implementation address in a mapping called ",
+                                delegate,
+                                " found in the structure called ",
+                                struct,
+                                " which is declared in the contract: ",
+                                proxy_features.impl_address_location,
+                                "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
+                            map_results = self.detect_mappings(proxy_features, delegate)
+                            for r in map_results:
+                                results.append(r)
                     else:
                         """
                         Should not be reachable, but print a result for debugging
