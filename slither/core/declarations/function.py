@@ -635,6 +635,19 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
                 break
         return n
 
+    def return_nodes(self) -> List["Node"]:
+        """
+        list(Node): List of return nodes (some functions have more than one)
+        """
+        from slither.core.cfg.node import NodeType
+        nodes = None
+        for node in self.all_nodes():
+            if node.type == NodeType.RETURN and node.function == self:
+                if nodes is None:
+                    nodes = []
+                nodes.append(node)
+        return nodes
+
     # endregion
     ###################################################################################
     ###################################################################################
