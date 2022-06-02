@@ -305,20 +305,48 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
-                        if proxy_features.get_slot_loaded is not None:
+                        slot = proxy_features.get_slot_loaded()
+                        if slot is not None:
                             info = [
                                 proxy,
                                 " appears to be Unstructured Storage\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            if proxy_features.get_slot_loaded() == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-
-                                setter = proxy_features.contract.proxy_implementation_setter
-                                if isinstance(setter, ChildContract):
-                                    if setter.contract == proxy:
+                            setter = proxy_features.contract.proxy_implementation_setter
+                            if isinstance(setter, ChildContract):
+                                if setter.contract == proxy:
+                                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                                         info = [
                                             " EIP-1967\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                    else:
+                                        info = [
+                                            " Early unstructured storage (i.e. ZeppelinOS)\nUsing slot: ",
+                                            slot
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                elif setter.contract != proxy and proxy_features.proxy_onlyHave_constructor_fallback():
+                                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                                        info = [
+                                            " EIP-1822 (OpenZeppelin implementation)\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+
+                                    elif slot == "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7":
+                                        info = [
+                                            " EIP-1822\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                    else:
+                                        info = [
+                                            " Early unstructured storage (i.e. ZeppelinOS)\nUsing slot: ",
+                                            proxy_features.get_slot_loaded()
                                         ]
                                         json = self.generate_result(info)
                                         results.append(json)
