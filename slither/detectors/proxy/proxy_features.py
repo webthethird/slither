@@ -123,7 +123,7 @@ class ProxyFeatureExtraction:
 
     def all_mappings(self) -> Optional[List["MappingType"]]:
         mappings = []
-        for v in self.impl_address_location.state_variables:
+        for v in self.contract.state_variables:
             if isinstance(v.type, MappingType):
                 mappings.append(v.type)
         if len(mappings) == 0:
@@ -133,13 +133,10 @@ class ProxyFeatureExtraction:
     def is_eternal_storage(self) -> bool:
         mappings = self.all_mappings()
         types = ["uint256", "string", "address", "bytes", "bool", "int256"]
-        types2 = types
         if mappings is not None:
-            for t in types:
-                for m in mappings:
-                    if str(m.type_to) == t and (str(m.type_from) == "string" or str(m.type_from) == "bytes32"):
-                        types2.remove(t)
-        return len(types2) == 0
+            maps_to = [str(m.type_to) for m in mappings]
+            return all([t in maps_to for t in types])
+        return False
 
     def find_impl_slot_from_sload(self) -> str:
         fallback = self.contract.fallback_function
