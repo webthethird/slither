@@ -192,6 +192,15 @@ class ProxyFeatureExtraction:
                                 slot = params[0]
                     return slot
 
+    def proxy_onlyHave_constructor_fallback(self) -> bool:
+        i=0
+        for function in self.contract.functions_declared:
+            if function.is_constructor or function.is_fallback:
+                i += 1
+            elif function.visibility in ["external", "public"]:
+                return False
+        return i == 2
+
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         ret = False
         if isinstance(mapping.type, MappingType):

@@ -365,15 +365,40 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-                                """
-                                bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
-                                """
-                                setter = proxy_features.contract.proxy_implementation_setter
-                                if isinstance(setter, ChildContract):
-                                    if setter.contract == proxy:
+                            setter = proxy_features.contract.proxy_implementation_setter
+                            if isinstance(setter, ChildContract):
+                                if setter.contract == proxy:
+                                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                                         info = [
                                             " EIP-1967\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                    else:
+                                        info = [
+                                            " Early unstructured storage (i.e. ZeppelinOS)\nUsing slot: ",
+                                            slot, "\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                elif setter.contract != proxy and proxy_features.proxy_onlyHave_constructor_fallback():
+                                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                                        info = [
+                                            " EIP-1822 (OpenZeppelin implementation)\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+
+                                    elif slot == "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7":
+                                        info = [
+                                            " EIP-1822\n"
+                                        ]
+                                        json = self.generate_result(info)
+                                        results.append(json)
+                                    else:
+                                        info = [
+                                            " Early unstructured storage (i.e. ZeppelinOS)\nUsing slot: ",
+                                            proxy_features.get_slot_loaded()
                                         ]
                                         json = self.generate_result(info)
                                         results.append(json)
