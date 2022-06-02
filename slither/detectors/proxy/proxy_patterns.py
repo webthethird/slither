@@ -248,6 +248,27 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, mapping)
                             for r in map_results:
                                 results.append(r)
+                        else:
+                            slot = proxy_features.find_impl_slot_from_sload()
+                            if slot is not None:
+                                info = [
+                                    proxy,
+                                    " appears to use Unstructured Storage\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                                    """
+                                    bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
+                                    """
+                                    setter = proxy_features.contract.proxy_implementation_setter
+                                    if isinstance(setter, ChildContract):
+                                        if setter.contract == proxy:
+                                            info = [
+                                                " EIP-1967\n"
+                                            ]
+                                            json = self.generate_result(info)
+                                            results.append(json)
                     elif isinstance(delegate, StructureVariable):
                         """
                         Check the type of the structure variable, i.e. an address, a mapping, or something else
@@ -336,15 +357,18 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
-                        if proxy_features.get_slot_loaded is not None:
+                        slot = proxy_features.find_impl_slot_from_sload()
+                        if slot is not None:
                             info = [
                                 proxy,
-                                " appears to be Unstructured Storage\n"
+                                " appears to use Unstructured Storage\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            if proxy_features.get_slot_loaded() == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-
+                            if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                                """
+                                bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
+                                """
                                 setter = proxy_features.contract.proxy_implementation_setter
                                 if isinstance(setter, ChildContract):
                                     if setter.contract == proxy:

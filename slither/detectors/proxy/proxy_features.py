@@ -144,16 +144,27 @@ class ProxyFeatureExtraction:
                         types2.remove(t)
         return len(types2) == 0
 
-    def get_slot_loaded(self) -> str:
+    def find_impl_slot_from_sload(self) -> str:
         fallback = self.contract.fallback_function
         delegate = self.contract.delegate_variable
-        if delegate.expression is not None:
+        slot = self.contract.proxy_impl_storage_offset
+        if slot is not None:
+            if len(slot.name) == 66 and slot.name.startswith("0x"):
+                return slot.name
+            else:
+                return str(slot.expression)
+        elif delegate.expression is not None:
             exp = delegate.expression
+            print(f"Expression for {delegate}: {exp}")
             if isinstance(exp, CallExpression):
-                if str(exp.called) == "sload":
-                    params = exp.split("(")[1].strip(")")
-                    slot = params[0]
-                    return slot
+                print(f"Called: {exp.called}")
+                if str(exp.called).startswith("sload"):
+                    # params = exp.split("(")[1].strip(")")
+                    arg = exp.arguments[0]
+                    if len(str(arg)) == 66 and str(arg).startswith("0x"):
+                        return str(arg)
+                    elif isinstance(arg, Identifier):
+                        print(f"arg expression: {arg.value.expression}")
         else:
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
