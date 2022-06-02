@@ -7,6 +7,7 @@ from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
 from slither.core.compilation_unit import SlitherCompilationUnit
 from slither.core.declarations.structure import Structure
+from slither.core.declarations.structure_contract import StructureContract
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
@@ -79,8 +80,10 @@ class ProxyFeatureExtraction:
     def impl_address_location(self) -> Optional["Contract"]:
         if self._impl_address_location is None:
             if isinstance(self._impl_address_variable, StateVariable):
+                print("impl_address_variable is a StateVariable")
                 self._impl_address_location = self._impl_address_variable.contract
             elif isinstance(self._impl_address_variable, LocalVariable):
+                print("impl_address_variable is a LocalVariable")
                 function = self._impl_address_variable.function
                 if function is None:
                     self._impl_address_location = self.contract
@@ -88,6 +91,11 @@ class ProxyFeatureExtraction:
                     self._impl_address_location = function.contract
                     if self._impl_address_location in self.contract.inheritance:
                         self._impl_address_location = self.contract
+            elif isinstance(self._impl_address_variable, StructureVariable):
+                print("impl_address_variable is a StructureVariable")
+                struct = self._impl_address_variable.structure
+                if isinstance(struct, StructureContract):
+                    self._impl_address_location = struct.contract
         return self._impl_address_location
 
     def find_slot_in_setter_asm(self) -> Optional[str]:
