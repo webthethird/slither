@@ -80,10 +80,8 @@ class ProxyFeatureExtraction:
     def impl_address_location(self) -> Optional["Contract"]:
         if self._impl_address_location is None:
             if isinstance(self._impl_address_variable, StateVariable):
-                print("impl_address_variable is a StateVariable")
                 self._impl_address_location = self._impl_address_variable.contract
             elif isinstance(self._impl_address_variable, LocalVariable):
-                print("impl_address_variable is a LocalVariable")
                 function = self._impl_address_variable.function
                 if function is None:
                     self._impl_address_location = self.contract
@@ -92,7 +90,6 @@ class ProxyFeatureExtraction:
                     if self._impl_address_location in self.contract.inheritance:
                         self._impl_address_location = self.contract
             elif isinstance(self._impl_address_variable, StructureVariable):
-                print("impl_address_variable is a StructureVariable")
                 struct = self._impl_address_variable.structure
                 if isinstance(struct, StructureContract):
                     self._impl_address_location = struct.contract
