@@ -424,4 +424,10 @@ contract ERC1538Proxy is ERC1538Core, Proxy
 			return m_funcs.value1(0xFFFFFFFF);
 		}
 	}
+
+	function setFunc(string calldata funcSignature, address funcDelegate) 
+	external onlyOwner
+	{
+		_setFunc(funcSignature, funcDelegate);
+	}
 }

@@ -655,6 +655,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             None,
         )
 
+    def get_function_from_name(self, name: str) -> Optional["Function"]:
+        """
+            Return a function from a name
+        Args:
+            name (str): name of the function (not the signature)
+        Returns:
+            Function
+        """
+        return next((f for f in self.functions if f.name == name), None)
+
     def get_function_from_canonical_name(self, canonical_name: str) -> Optional["Function"]:
         """
             Return a function from a a canonical name (contract.signature())
@@ -1862,60 +1872,64 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             ret = func.returns[0]
             # if ret.name is None or ret.name == "":
             # Case #2/3 - need to find RETURN node and the variable returned first
-            ret_node = func.return_node()
-            if print_debug: print(f"Return node of function {func.canonical_name}: {ret_node}"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-            if ret_node is not None:
-                rex = ret_node.expression
-                if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
-                    if print_debug: print(f"{rex} (Slither line:{getframeinfo(currentframe()).lineno})")
-                    ret = rex.value
-                elif isinstance(rex, CallExpression):
-                    if print_debug: print(f"Encountered call expression at RETURN node: {rex}"
+            ret_nodes = func.return_nodes()
+            if ret_nodes is not None:
+                for ret_node in ret_nodes:
+                    if print_debug: print(f"Return node of function {func.canonical_name}: {ret_node}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    called = rex.called
-                    if isinstance(called, MemberAccess):
-                        if print_debug: print(f"Encountered member access expression: {called}"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        delegate = self.find_delegate_from_member_access(called, var, print_debug)
-                        if delegate is None:
-                            if print_debug: print(f"{self.name}.find_delegate_from_member_access returned None"
+                    if ret_node is not None:
+                        rex = ret_node.expression
+                        if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
+                            if print_debug: print(f"{rex} (Slither line:{getframeinfo(currentframe()).lineno})")
+                            ret = rex.value
+                            if isinstance(ret, LocalVariable):
+                                break
+                        elif isinstance(rex, CallExpression):
+                            if print_debug: print(f"Encountered call expression at RETURN node: {rex}"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract) \
-                            and called.value.contract != self:
-                        if print_debug: print(f"Encountered call to another contract: {rex}"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        delegate = called.value.contract.find_delegate_from_call_exp(rex, var, print_debug)
-                        if delegate is None:
-                            if print_debug: print(f"{called.value.contract.name}"
-                                                  f".find_delegate_from_member_access returned None"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    else:
-                        if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        delegate = self.find_delegate_from_call_exp(rex, var, print_debug)
-                        if delegate is None:
-                            if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned None"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    if delegate is None:
-                        delegate = LocalVariable()
-                        delegate.expression = rex
-                    if delegate.name is None:
-                        delegate.name = str(called)
-                    if delegate.type is None:
-                        delegate.type = ret.type
-                    for a in exp.arguments:
-                        if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
-                            self._proxy_impl_slot = a
-                            break
-                    if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-                    return delegate
-                elif isinstance(rex, IndexAccess):
-                    left = rex.expression_left
-                    if isinstance(left, Identifier) and isinstance(left.value, StateVariable):
-                        delegate = left.value
-            if ret.name is not None and ret_node is None:
+                            called = rex.called
+                            if isinstance(called, MemberAccess):
+                                if print_debug: print(f"Encountered member access expression: {called}"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                delegate = self.find_delegate_from_member_access(called, var, print_debug)
+                                if delegate is None:
+                                    if print_debug: print(f"{self.name}.find_delegate_from_member_access returned None"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                            elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract) \
+                                    and called.value.contract != self:
+                                if print_debug: print(f"Encountered call to another contract: {rex}"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                delegate = called.value.contract.find_delegate_from_call_exp(rex, var, print_debug)
+                                if delegate is None:
+                                    if print_debug: print(f"{called.value.contract.name}"
+                                                          f".find_delegate_from_member_access returned None"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                            else:
+                                if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                delegate = self.find_delegate_from_call_exp(rex, var, print_debug)
+                                if delegate is None:
+                                    if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned "
+                                                          f"None (Slither line:{getframeinfo(currentframe()).lineno})")
+                            if delegate is None:
+                                delegate = LocalVariable()
+                                delegate.expression = rex
+                            if delegate.name is None:
+                                delegate.name = str(called)
+                            if delegate.type is None:
+                                delegate.type = ret.type
+                            for a in exp.arguments:
+                                if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
+                                    self._proxy_impl_slot = a
+                                    break
+                            if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp"
+                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                            return delegate
+                        elif isinstance(rex, IndexAccess):
+                            left = rex.expression_left
+                            if isinstance(left, Identifier) and isinstance(left.value, StateVariable):
+                                delegate = left.value
+            if ret.name is not None and ret_nodes is None:
                 # Case #1 - return variable is named, so it's initialized in the entry point with no value assigned
                 for n in func.all_nodes():
                     if n.type == NodeType.EXPRESSION:
@@ -2181,8 +2195,27 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             delegate = var
                             return delegate
                 elif isinstance(ctype, UserDefinedType) and isinstance(ctype.type, Structure):
-                    if print_debug: print(f"{e} is a user defined variable: {e.value.expression}"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                    struct = ctype.type
+                    if isinstance(struct, Structure):
+                        if print_debug: print(f"{e} is a user defined variable: {ctype.type}"
+                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                        try:
+                            delegate = struct.elems[member_name]
+                        except:
+                            if struct.contract != self:
+                                fn = struct.contract.get_function_from_name(member_name)
+                                if fn is not None and fn.return_node() is not None:
+                                    ret_node = fn.return_node()
+                                    rex = ret_node.expression
+                                    if isinstance(rex, IndexAccess):
+                                        left = rex.expression_left
+                                        if isinstance(left, MemberAccess):
+                                            ex = left.expression
+                                            if isinstance(ex, Identifier):
+                                                v = ex.value
+                                                t = v.type
+                                                if isinstance(t, UserDefinedType) and t.type == struct:
+                                                    delegate = struct.elems[left.member_name]
         if contract is not None:
             if print_debug: print(f"Looking for {member_name} in {contract.name}"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -2714,6 +2747,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.expression_typed import ExpressionTyped
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.identifier import Identifier
 
@@ -2810,6 +2844,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if l.expression_left == vexp.expression_left:
                                         setter = f
                                         break
+                            elif isinstance(l, IndexAccess):
+                                l = l.expression_left
+                                if isinstance(l, MemberAccess) and l.member_name == var_to_set.name:
+                                    setter = f
+                                    break
                             elif str(l) == var_to_set.name:
                                 setter = f
                                 break
