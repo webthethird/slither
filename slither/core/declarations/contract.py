@@ -2697,7 +2697,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if slotname == slot.name:
                                     getter = f
                                     break
-                                for v in f.variables_read_or_written:
+                                for v in n.function.variables_read_or_written:
                                     if v.name == slotname and isinstance(v, LocalVariable) and v.expression is not None:
                                         e = v.expression
                                         if isinstance(e, Identifier) and e.value == slot:
@@ -2801,7 +2801,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if slotname == str(storage_slot):
                                         setter = f
                                         break
-                                    for v in f.variables_read_or_written:
+                                    for v in node.function.variables_read_or_written:
+                                        print(f"{f} reads and/or writes to variable {v} "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                         if v.name == slotname:
                                             if v in [storage_slot, var_to_set]:
                                                 setter = f
