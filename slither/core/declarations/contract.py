@@ -1763,7 +1763,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     and statement["variables"][0]["name"] == dest:
                                 if statement["value"]["nodeType"] == "YulFunctionCall" \
                                         and statement["value"]["functionName"]["name"] == "sload":
-                                    if print_debug: print(statement["value"]["arguments"][0] &
+                                    if print_debug: print(f"{statement['value']['arguments'][0]}" 
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
                                         slot = statement["value"]["arguments"][0]["value"]
