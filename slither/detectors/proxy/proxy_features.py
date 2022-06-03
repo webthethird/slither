@@ -202,6 +202,40 @@ class ProxyFeatureExtraction:
                 return False
         return i == 2
 
+    def external_function_specific_call(self) -> bool:
+        for function in self.contract.functions_declared:
+            if (not function.is_fallback) and (not function.is_constructor) and\
+                    (function.visibility in ["external", "public"]):
+                for node in function.all_nodes():
+                    if node.type == NodeType.EXPRESSION:
+                        exp = node.expression
+                        if 'msg.sender' in str(exp):
+                            """
+                            do something
+                            """
+
+    def implementation_address_from_contractcall(self) -> bool:
+        call = self.contract.delegate_variable.expression
+        if isinstance(call, CallExpression):
+            call = call.called
+            if isinstance(call, MemberAccess):
+                e = call.expression
+                if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
+                    f = e.called.value
+                    if isinstance(f, FunctionContract):
+                        e = f.return_node().expression
+                if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+                    ctype = e.type
+                    if isinstance(e, Identifier):
+                        if isinstance(e.value, Contract):
+                            ctype = UserDefinedType(e.value)
+                        else:
+                            ctype = e.value.type
+                    if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
+                                                                         Contract) and ctype.type != self:
+                        return True
+        return False
+
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         ret = False
         if isinstance(mapping.type, MappingType):
