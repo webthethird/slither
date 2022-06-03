@@ -15,7 +15,9 @@ from slither.core.variables.structure_variable import StructureVariable
 from slither.core.expressions.identifier import Identifier
 from slither.core.expressions.literal import Literal
 from slither.core.declarations.function_contract import FunctionContract
+from slither.core.expressions.expression import Expression
 from slither.core.expressions.expression_typed import ExpressionTyped
+from slither.core.expressions.literal import Literal
 from slither.core.expressions.call_expression import CallExpression
 from slither.core.expressions.type_conversion import TypeConversion
 from slither.core.expressions.assignment_operation import AssignmentOperation
@@ -215,8 +217,10 @@ class ProxyFeatureExtraction:
                             do something
                             """
 
-    def implementation_address_from_contractcall(self) -> bool:
+    def implementation_address_from_contract_call(self) -> (bool, Optional[Expression]):
         call = self.contract.delegate_variable.expression
+        ret_exp = None
+        b = False
         if isinstance(call, CallExpression):
             call = call.called
             if isinstance(call, MemberAccess):
@@ -226,16 +230,23 @@ class ProxyFeatureExtraction:
                     if isinstance(f, FunctionContract):
                         e = f.return_node().expression
                 if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+
                     ctype = e.type
                     if isinstance(e, Identifier):
                         if isinstance(e.value, Contract):
                             ctype = UserDefinedType(e.value)
                         else:
                             ctype = e.value.type
+                            if isinstance(e.value, StateVariable):
+                                ret_exp = e
+                    elif isinstance(e, TypeConversion):
+                        exp = e.expression
+                        if isinstance(exp, Literal):
+                            ret_exp = exp
                     if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
                                                                          Contract) and ctype.type != self:
-                        return True
-        return False
+                        b = True
+        return b, ret_exp
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         ret = False
