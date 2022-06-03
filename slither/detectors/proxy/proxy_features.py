@@ -78,6 +78,13 @@ class ProxyFeatureExtraction:
 
     @property
     def impl_address_location(self) -> Optional["Contract"]:
+        """
+        Determine which contract the implementation address variable is declared in.
+        :return: For state variables, just return the StateVariable.contract.
+                 For local variables, return LocalVariable.function.contract
+                  or self.contract if that contract is inherited by self.contract.
+                 For structure variables, return StructureVariable.structure.contract.
+        """
         if self._impl_address_location is None:
             if isinstance(self._impl_address_variable, StateVariable):
                 self._impl_address_location = self._impl_address_variable.contract
