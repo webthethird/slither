@@ -188,7 +188,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                         print("EIP-1967")
                         info = [
                             proxy,
-                            " implements EIP-1967\n"
+                            " implements EIP-1967: Standard Proxy Storage Slots\n"
+                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
                         ]
                         json = self.generate_result(info)
                         results.append(json)
@@ -205,7 +206,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                     if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                         info = [
                             proxy,
-                            " implements EIP-1822 (OpenZeppelin UUPS implementation)\n"
+                            " implements EIP-1822 using the standard storage slot defined by ERC-1967: "
+                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
+                            "(OpenZeppelin UUPS implementation)\n"
                         ]
                         json = self.generate_result(info)
                         results.append(json)
@@ -264,9 +267,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            map_results = self.detect_mappings(proxy_features, delegate)
-                            for r in map_results:
-                                results.append(r)
                             """
                             Check if the implementation address setter is in the proxy contract. 
                             """
@@ -284,9 +284,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            map_results = self.detect_mappings(proxy_features, delegate)
-                            for r in map_results:
-                                results.append(r)
                         else:
                             """
                             Do something else? 
@@ -301,6 +298,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+                        """
+                        Check for mappings regardless of delegate.type, 
+                        in case EternalStorage is used for variables other than the implementation address.
+                        """
+                        map_results = self.detect_mappings(proxy_features, delegate)
+                        for r in map_results:
+                            results.append(r)
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
@@ -370,7 +374,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 delegate,
                                 " which is declared in the contract: ",
                                 proxy_features.impl_address_location,
-                                "\n"
+                                "\nThe getter is ",
+                                proxy.proxy_implementation_getter,
+                                " and the setter is ",
+                                proxy.proxy_implementation_setter
                             ]
                             json = self.generate_result(info)
                             results.append(json)
