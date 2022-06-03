@@ -192,10 +192,14 @@ class ProxyFeatureExtraction:
 
     def proxy_onlyHave_constructor_fallback(self) -> bool:
         i=0
-        for function in self.contract.functions_declared:
+        for function in self.contract.functions:
             if function.is_constructor or function.is_fallback:
+                print(f"Found {function.name}")
                 i += 1
             elif function.visibility in ["external", "public"]:
+                print(f"Found {function.visibility} function: {function.name}")
+                if function.is_receive:
+                    continue
                 return False
         return i == 2
 
