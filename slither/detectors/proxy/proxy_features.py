@@ -190,7 +190,7 @@ class ProxyFeatureExtraction:
                                 slot = params[0]
                     return slot
 
-    def proxy_onlyHave_constructor_fallback(self) -> bool:
+    def proxy_only_constructor_fallback(self) -> bool:
         i=0
         for function in self.contract.functions:
             if function.is_constructor or function.is_fallback:
