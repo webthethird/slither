@@ -273,6 +273,28 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check if logic contract has same variable declared in same slot, i.e. Singleton/MasterCopy
                             """
+                            idx, logic = proxy_features.is_impl_address_also_declared_in_logic()
+                            if idx >= 0 and logic is not None:
+                                if idx == 0:
+                                    suffix = "st"
+                                elif idx == 1:
+                                    suffix = "nd"
+                                elif idx == 2:
+                                    suffix = "rd"
+                                else:
+                                    suffix = "th"
+                                info = [
+                                    "The state variable ",
+                                    delegate,
+                                    " is declared in both the proxy and the logic contract (",
+                                    logic,
+                                    f") in the {idx + 1}{suffix} position, i.e. storage slot {idx}."
+                                    " This is how the GnosisSafeProxy works, and is similar to Inherited Storage."
+                                    " There is strong coupling between the storage layouts of the proxy and logic"
+                                    " contracts.\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
 
                         elif isinstance(delegate.type, MappingType):
                             info = [
