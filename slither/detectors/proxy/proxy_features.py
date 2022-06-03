@@ -104,7 +104,24 @@ class ProxyFeatureExtraction:
                     self._impl_address_location = struct.contract
         return self._impl_address_location
 
-    # def is_impl_address_also_declared_in_logic(self) -> bool:
+    def is_impl_address_also_declared_in_logic(self) -> (int, Optional[Contract]):
+        i = -1
+        c = None
+        if isinstance(self._impl_address_variable, StateVariable):
+            delegate = self._impl_address_variable
+            if self.contract.proxy_implementation_setter.contract != self.contract:
+                c = self.contract.proxy_implementation_setter.contract
+                for idx, var in enumerate(self.contract.state_variables_ordered):
+                    if var == delegate:
+                        index = idx
+                        break
+                if index >= 0 and len(c.state_variables_ordered) >= index + 1:
+                    var = c.state_variables_ordered[index]
+                    if var is not None:
+                        if var.name == delegate.name and var.type == delegate.type:
+                            ret = True
+                            i = index
+        return i, c
 
     def find_slot_in_setter_asm(self) -> Optional[str]:
         slot = None
