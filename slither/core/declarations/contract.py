@@ -1211,6 +1211,27 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
                                                                                            self._proxy_impl_slot,
                                                                                            print_debug)
+                    elif isinstance(self._delegate_variable, LocalVariable) and\
+                            isinstance(self._delegate_variable.function, FunctionContract) and\
+                            self._delegate_variable.function.contract != self:
+                        if print_debug: print(f"Looking for setter in {self._delegate_variable.function.contract} "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                        self._proxy_impl_setter = self.find_setter_in_contract(self._delegate_variable.function.contract,
+                                                                               self._delegate_variable,
+                                                                               self._proxy_impl_slot, print_debug)
+                        if self._proxy_impl_setter is None:
+                            if print_debug: print(f"\nCould not find setter in "
+                                                  f"{self._delegate_variable.function.contract} "
+                                                  f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                            for c in self.compilation_unit.contracts:
+                                if c == self or c == self._delegate_variable.function.contract:
+                                    continue
+                                if self._delegate_variable.function.contract in c.inheritance:
+                                    if print_debug: print(f"Looking for setter in {c} "
+                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                           self._proxy_impl_slot,
+                                                                                           print_debug)
                     if self._proxy_impl_setter is None:
                         self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegate_variable,
                                                                                self._proxy_impl_slot, print_debug)
@@ -1729,8 +1750,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                             delegate = exp.value
                                         elif isinstance(exp, CallExpression):
+                                            called = exp.called
+                                            if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                                self._proxy_impl_getter = called.value
                                             delegate = self.find_delegate_from_call_exp(exp, pv, print_debug)
                                 elif isinstance(arg, CallExpression):
+                                    called = exp.called
+                                    if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                        self._proxy_impl_getter = called.value
                                     _delegate = self.find_delegate_from_call_exp(arg, pv, print_debug)
                                     if _delegate is not None:
                                         delegate = _delegate
@@ -1900,6 +1927,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     and called.value.contract != self:
                                 if print_debug: print(f"Encountered call to another contract: {rex}"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                self._proxy_impl_getter = called.value
                                 delegate = called.value.contract.find_delegate_from_call_exp(rex, var, print_debug)
                                 if delegate is None:
                                     if print_debug: print(f"{called.value.contract.name}"
@@ -1908,6 +1936,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             else:
                                 if print_debug: print(f"Recursively calling {self.name}.find_delegate_from_call_exp"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                if isinstance(called, Identifier) and isinstance(called.value, Function):
+                                    self._proxy_impl_getter = called.value
                                 delegate = self.find_delegate_from_call_exp(rex, var, print_debug)
                                 if delegate is None:
                                     if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned "
@@ -2258,8 +2288,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if delegate is None:
                                         if print_debug: print(f"find_delegate_from_member_access returned None"
                                                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                        delegate = LocalVariable()
+                                        delegate: LocalVariable = LocalVariable()
                                         delegate.expression = e
+                                        delegate.set_function(f)
                                     if delegate.name is None:
                                         delegate.name = str(e)
                                     if delegate.type is None:
@@ -2697,7 +2728,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if slotname == slot.name:
                                     getter = f
                                     break
-                                for v in f.variables_read_or_written:
+                                for v in n.function.variables_read_or_written:
                                     if v.name == slotname and isinstance(v, LocalVariable) and v.expression is not None:
                                         e = v.expression
                                         if isinstance(e, Identifier) and e.value == slot:
@@ -2801,7 +2832,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if slotname == str(storage_slot):
                                         setter = f
                                         break
-                                    for v in f.variables_read_or_written:
+                                    for v in node.function.variables_read_or_written:
+                                        print(f"{f} reads and/or writes to variable {v} "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                         if v.name == slotname:
                                             if v in [storage_slot, var_to_set]:
                                                 setter = f

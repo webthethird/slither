@@ -76,8 +76,6 @@ or one of the proxy patterns developed by OpenZeppelin.
     def detect_mappings(self, proxy_features: ProxyFeatureExtraction, delegate: Variable):
         results = []
         proxy = proxy_features.contract
-        if not isinstance(delegate.type, MappingType):
-            return results
         """
         Check mapping types, i.e. delegate.type_from and delegate.type_to
         """
@@ -88,6 +86,8 @@ or one of the proxy patterns developed by OpenZeppelin.
             ]
             json = self.generate_result(info)
             results.append(json)
+        if not isinstance(delegate.type, MappingType):
+            return results
         elif f"{delegate.type.type_from}" == "bytes4":  # and f"{delegate.type.type_to}" == "address":
             """
             Check to confirm that `msg.sig` is used as the key in the mapping
@@ -264,6 +264,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+                            map_results = self.detect_mappings(proxy_features, delegate)
+                            for r in map_results:
+                                results.append(r)
                             """
                             Check if the implementation address setter is in the proxy contract. 
                             """
@@ -378,9 +381,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                            map_results = self.detect_mappings(proxy_features, delegate)
-                            for r in map_results:
-                                results.append(r)
+                        map_results = self.detect_mappings(proxy_features, delegate)
+                        for r in map_results:
+                            results.append(r)
                         """
                         Check if impl_address_location contract is inherited by any contract besides current proxy
                         """
@@ -390,7 +393,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             if proxy_features.impl_address_location in proxy.inheritance and \
                                     proxy_features.impl_address_location in c.inheritance:
                                 info = [
-                                    proxy_features.impl_address_location,
+                                    proxy,
                                     " appears to be using Inherited Storage\n"
                                 ]
                                 json = self.generate_result(info)
