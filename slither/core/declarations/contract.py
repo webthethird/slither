@@ -1427,13 +1427,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._delegate_variable
 
     @property
-    def proxy_implementation_setter(self) -> Optional["Function"]:
+    def proxy_implementation_setter(self) -> Optional["FunctionContract"]:
         if self.is_upgradeable_proxy:
             return self._proxy_impl_setter
         return self._proxy_impl_setter
 
     @property
-    def proxy_implementation_getter(self) -> Optional["Function"]:
+    def proxy_implementation_getter(self) -> Optional["FunctionContract"]:
         if self.is_upgradeable_proxy:
             return self._proxy_impl_getter
         return self._proxy_impl_getter
