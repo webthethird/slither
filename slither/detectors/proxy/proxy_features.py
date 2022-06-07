@@ -105,6 +105,14 @@ class ProxyFeatureExtraction:
         return self._impl_address_location
 
     def is_impl_address_also_declared_in_logic(self) -> (int, Optional[Contract]):
+        """
+        If the implementation address variable is a StateVariable declared in the proxy,
+        but the implementation setter is not declared in the proxy, then we need to determine
+        if the implementation contract declares the same variable in the same slot.
+        :return: The index indicating the position of the variable declaration, i.e. slot 0,
+                 and the Contract in which the variable (and its setter) is also declared,
+                 or else return -1 and None if this is not the case.
+        """
         i = -1
         c = None
         if isinstance(self._impl_address_variable, StateVariable):
@@ -159,6 +167,16 @@ class ProxyFeatureExtraction:
         return mappings
 
     def is_eternal_storage(self) -> bool:
+        """
+        Contracts using Eternal Storage must contain the following mappings:
+            mapping(bytes32 => uint256) internal uintStorage;
+            mapping(bytes32 => string) internal stringStorage;
+            mapping(bytes32 => address) internal addressStorage;
+            mapping(bytes32 => bytes) internal bytesStorage;
+            mapping(bytes32 => bool) internal boolStorage;
+            mapping(bytes32 => int256) internal intStorage;
+        Note: the implementation address variable may be stored separately.
+        """
         mappings = self.all_mappings()
         types = ["uint256", "string", "address", "bytes", "bool", "int256"]
         if mappings is not None:
@@ -245,8 +263,14 @@ class ProxyFeatureExtraction:
                                 slot = params[0]
                     return slot
 
-    def proxy_only_constructor_fallback(self) -> bool:
-        i=0
+    def proxy_only_contains_fallback(self) -> bool:
+        """
+        Determine whether the proxy contract contains any external/public functions
+        besides the fallback, not including the constructor or receive function.
+        :return: False if any other external/public function is found, or if the
+                 fallback function is missing, otherwise True
+        """
+        i = 0
         for function in self.contract.functions:
             if function.is_fallback:
                 print(f"Found {function.name}")
@@ -302,6 +326,11 @@ class ProxyFeatureExtraction:
         return b, ret_exp
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
+        """
+        Determine whether the given variable is a mapping with function signatures as keys
+        :param: mapping: Should be a Variable with mapping.type == MappingType
+        :return: True if a matching IndexAccess expression is found using msg.sig as the key, otherwise False
+        """
         ret = False
         if isinstance(mapping.type, MappingType):
             for node in self.contract.fallback_function.all_nodes():
@@ -319,6 +348,14 @@ class ProxyFeatureExtraction:
         return ret
 
     def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
+        """
+        For EIP-2535 Diamonds, determine if all four Loupe functions are
+        included in any of the "Facet" contracts in the compilation unit.
+        These functions are required to be compliant with the standard, and
+        it is not sufficient to only include the interface w/o implementations.
+        :return: List of (function signature, Contract) pairs indicating
+                 which contract contains each of the Loupe functions.
+        """
         loupe_facets = []
         loupe_sigs = [
             "facets() returns(IDiamondLoupe.Facet[])",
