@@ -117,8 +117,9 @@ class ProxyFeatureExtraction:
         c = None
         if isinstance(self._impl_address_variable, StateVariable):
             delegate = self._impl_address_variable
-            if self.contract.proxy_implementation_setter.contract != self.contract:
-                c = self.contract.proxy_implementation_setter.contract
+            setter = self.contract.proxy_implementation_setter
+            if setter is not None and setter.contract != self.contract:
+                c = setter.contract
                 for idx, var in enumerate(self.contract.state_variables_ordered):
                     if var == delegate:
                         index = idx
@@ -127,13 +128,11 @@ class ProxyFeatureExtraction:
                     var = c.state_variables_ordered[index]
                     if var is not None:
                         if var.name == delegate.name and var.type == delegate.type:
-                            ret = True
                             i = index
         return i, c
 
     def find_slot_in_setter_asm(self) -> Optional[str]:
         slot = None
-        delegate = self._impl_address_variable
         setter = self.contract.proxy_implementation_setter
         if setter is not None:
             for node in setter.all_nodes():
@@ -147,14 +146,24 @@ class ProxyFeatureExtraction:
                                 statement = statement["value"]
                             if statement["nodeType"] == "YulFunctionCall":
                                 if statement["functionName"]["name"] == "sstore":
-                                    if statement["arguments"][1] == delegate.name:
-                                        slot = statement["arguments"][0]
+                                    slot = statement["arguments"][0]
                     else:
                         asm_split = inline_asm.split("\n")
                         for asm in asm_split:
                             if "sstore" in asm:
                                 params = asm.split("(")[1].strip(")").split(", ")
                                 slot = params[0]
+                    if slot is not None:
+                        sv = self.contract.get_state_variable_from_name(slot)
+                        if sv is None:
+                            lv = node.function.get_local_variable_from_name(slot)
+                            if lv is not None and lv.expression is not None and isinstance(lv.expression,
+                                                                                           Identifier):
+                                if isinstance(lv.expression.value, StateVariable):
+                                    sv = lv.expression.value
+                        if sv is not None and sv.expression is not None:
+                            slot = str(sv.expression)
+                        break
         return slot
 
     def all_mappings(self) -> Optional[List["MappingType"]]:
@@ -208,7 +217,6 @@ class ProxyFeatureExtraction:
             if isinstance(exp, CallExpression):
                 print(f"Called: {exp.called}")
                 # if str(exp.called).startswith("sload"):
-                    # params = exp.split("(")[1].strip(")")
                 arg = exp.arguments[0]
                 if len(str(arg)) == 66 and str(arg).startswith("0x"):
                     return str(arg)
@@ -228,7 +236,6 @@ class ProxyFeatureExtraction:
                         print()
                 else:
                     print()
-
         else:
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
@@ -242,7 +249,7 @@ class ProxyFeatureExtraction:
                         left = exp.expression_left
                         right = exp.expression_right
                         if isinstance(left, Identifier) and left.value == delegate:
-                            "do something"
+                            """do something"""
                 elif node.type == NodeType.ASSEMBLY:
                     slot = None
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
@@ -307,21 +314,20 @@ class ProxyFeatureExtraction:
                     if isinstance(f, FunctionContract):
                         e = f.return_node().expression
                 if isinstance(e, TypeConversion) or isinstance(e, Identifier):
-
-                    ctype = e.type
+                    c_type = e.type
                     if isinstance(e, Identifier):
                         if isinstance(e.value, Contract):
-                            ctype = UserDefinedType(e.value)
+                            c_type = UserDefinedType(e.value)
                         else:
-                            ctype = e.value.type
+                            c_type = e.value.type
                             if isinstance(e.value, StateVariable):
                                 ret_exp = e
                     elif isinstance(e, TypeConversion):
                         exp = e.expression
                         if isinstance(exp, Literal):
                             ret_exp = exp
-                    if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
-                                                                         Contract) and ctype.type != self:
+                    if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
+                                                                         Contract) and c_type.type != self:
                         b = True
         return b, ret_exp
 
@@ -332,7 +338,10 @@ class ProxyFeatureExtraction:
         :return: True if a matching IndexAccess expression is found using msg.sig as the key, otherwise False
         """
         ret = False
-        if isinstance(mapping.type, MappingType):
+        m_type = mapping.type
+        if isinstance(m_type, MappingType):
+            if str(m_type.type_from) != "bytes4":
+                return False
             for node in self.contract.fallback_function.all_nodes():
                 if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
                     if node.expression is None:
@@ -374,14 +383,12 @@ class ProxyFeatureExtraction:
                     loupe_facets.append((f.signature_str, c))
         return loupe_facets
 
-
     # endregion
     ###################################################################################
     ###################################################################################
     # region Static methods
     ###################################################################################
     ###################################################################################
-
 
     @staticmethod
     def find_slot_string_from_assert(
