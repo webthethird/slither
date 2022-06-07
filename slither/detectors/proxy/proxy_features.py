@@ -169,28 +169,48 @@ class ProxyFeatureExtraction:
     def find_impl_slot_from_sload(self) -> str:
         fallback = self.contract.fallback_function
         delegate = self.contract.delegate_variable
-        slot = self.contract.proxy_impl_storage_offset
-        if slot is not None:
-            if len(slot.name) == 66 and slot.name.startswith("0x"):
-                return slot.name
-            else:
-                return str(slot.expression)
-        elif delegate.expression is not None:
+        # slot = self.contract.proxy_impl_storage_offset
+        # if slot is not None:
+        #     if len(slot.name) == 66 and slot.name.startswith("0x"):
+        #         return slot.name
+        #     else:
+        #         return str(slot.expression)
+        if delegate.expression is not None:
             exp = delegate.expression
             print(f"Expression for {delegate}: {exp}")
+            if isinstance(exp, Identifier):
+                v = exp.value
+                if v.expression is not None:
+                    exp = v.expression
+                else:
+                    print("v.expression is None")
+            if isinstance(exp, MemberAccess):
+                print(f"called: {exp.expression}")
+                exp = exp.expression
             if isinstance(exp, CallExpression):
                 print(f"Called: {exp.called}")
-                if str(exp.called).startswith("sload"):
+                # if str(exp.called).startswith("sload"):
                     # params = exp.split("(")[1].strip(")")
-                    arg = exp.arguments[0]
-                    if len(str(arg)) == 66 and str(arg).startswith("0x"):
-                        return str(arg)
-                    elif isinstance(arg, Identifier):
-                        v = arg.value
-                        if v.expression is not None:
-                            exp = v.expression
-                            if isinstance(exp, Identifier) and exp.value.is_constant:
+                arg = exp.arguments[0]
+                if len(str(arg)) == 66 and str(arg).startswith("0x"):
+                    return str(arg)
+                elif isinstance(arg, Identifier):
+                    v = arg.value
+                    if v.expression is not None:
+                        exp = v.expression
+                        if isinstance(exp, Identifier):
+                            if exp.value.is_constant:
                                 return str(exp.value.expression)
+                            else:
+                                if str(exp.value.type) == "bytes32":
+                                    return str(exp.value)
+                        else:
+                            print(exp)
+                    else:
+                        print()
+                else:
+                    print()
+
         else:
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
@@ -198,6 +218,13 @@ class ProxyFeatureExtraction:
                     if exp is not None and isinstance(exp, Identifier):
                         slot = str(exp.value.expression)
                         return slot
+                elif node.type == NodeType.EXPRESSION:
+                    exp = node.expression
+                    if isinstance(exp, AssignmentOperation):
+                        left = exp.expression_left
+                        right = exp.expression_right
+                        if isinstance(left, Identifier) and left.value == delegate:
+                            "do something"
                 elif node.type == NodeType.ASSEMBLY:
                     slot = None
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
@@ -221,15 +248,15 @@ class ProxyFeatureExtraction:
     def proxy_only_constructor_fallback(self) -> bool:
         i=0
         for function in self.contract.functions:
-            if function.is_constructor or function.is_fallback:
+            if function.is_fallback:
                 print(f"Found {function.name}")
                 i += 1
             elif function.visibility in ["external", "public"]:
                 print(f"Found {function.visibility} function: {function.name}")
-                if function.is_receive:
+                if function.is_receive or function.is_constructor:
                     continue
                 return False
-        return i == 2
+        return i == 1
 
     def external_function_specific_call(self) -> bool:
         for function in self.contract.functions_declared:
