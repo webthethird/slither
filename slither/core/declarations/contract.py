@@ -1465,8 +1465,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         < 0.6.0 and >= 0.6.0, due to a change in how assembly is represented after compiling,
         i.e. as an AST for versions >= 0.6.0 and as a simple string for earlier versions.
 
-        :param inline_asm: The assembly code as either a string or an AST, depending on the solidity version
-        :param parent_func: The function associated with the assembly node (may be another function called by fallback)
+        :param: inline_asm: The assembly code as either a string or an AST, depending on the solidity version
+        :param: parent_func: The function associated with the assembly node (maybe another function called by fallback)
         :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
         from slither.core.expressions.identifier import Identifier
@@ -1482,8 +1482,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if print_debug: print(f"\nBegin {self.name}.find_delegatecall_in_asm "
                               f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
-            # @webthethird: inline_asm is a Yul AST for versions >= 0.6.0
-            # see tests/proxies/ExampleYulAST.txt for an example
+            """
+            inline_asm is a Yul AST for Solidity versions >= 0.6.0
+            see tests/proxies/ExampleYulAST.txt for an example
+            """
             for statement in inline_asm["AST"]["statements"]:
                 if statement["nodeType"] == "YulExpressionStatement":
                     statement = statement["expression"]
@@ -1503,6 +1505,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                   f"Current function: {parent_func.name}")
                         break
         else:
+            """
+            inline_asm is just a string for Solidity versions < 0.6.0.
+            It contains the entire block of assembly code, so we can split it by line.
+            """
             asm_split = inline_asm.split("\n")
             dest = None
             for asm in asm_split:
