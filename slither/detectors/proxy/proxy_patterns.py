@@ -231,6 +231,42 @@ or one of the proxy patterns developed by OpenZeppelin.
                         results.append(json)
         return results
 
+    def detect_cross_contract_call(self, proxy_features: ProxyFeatureExtraction):
+        results = []
+        proxy = proxy_features.contract
+        delegate = proxy_features.impl_address_variable
+        b, exp, t = proxy_features.impl_address_from_contract_call()
+        if b:
+            info = [
+                delegate,
+                " value is retrieved from a function call to another contract: ",
+                str(exp),
+                "\n"
+            ]
+            json = self.generate_result(info)
+            results.append(json)
+            if isinstance(exp, CallExpression) and isinstance(t, UserDefinedType):
+                if len(exp.arguments) > 0:
+                    info = [
+                        t.type,
+                        " appears to serve as a Registry contract for the proxy ",
+                        proxy,
+                        "\n"
+                    ]
+                else:
+                    info = [
+                        t.type,
+                        " appears to serve as a Beacon contract for the proxy ",
+                        proxy,
+                        "\n"
+                    ]
+                json = self.generate_result(info)
+                results.append(json)
+                """
+                Check where the Registry/Beacon address comes from
+                """
+        return results
+
     def _detect(self):
         results = []
         for contract in self.contracts:
@@ -340,13 +376,20 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         print(f"{delegate} is a LocalVariable")
                         mapping, exp = ProxyFeatureExtraction.find_mapping_in_var_exp(delegate, proxy)
+                        slot_results = self.detect_storage_slot(proxy_features)
                         if mapping is not None:
                             map_results = self.detect_mappings(proxy_features, mapping)
                             for r in map_results:
                                 results.append(r)
-                        else:
-                            slot_results = self.detect_storage_slot(proxy_features)
+                        elif len(slot_results) > 0:
                             for r in slot_results:
+                                results.append(r)
+                        else:
+                            """
+                            Check for call to a different contract in delegate.expression
+                            """
+                            cross_contract_results = self.detect_cross_contract_call(proxy_features)
+                            for r in cross_contract_results:
                                 results.append(r)
                     elif isinstance(delegate, StructureVariable):
                         """
@@ -405,7 +448,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 "\nThe getter is ",
                                 proxy.proxy_implementation_getter,
                                 " and the setter is ",
-                                proxy.proxy_implementation_setter
+                                proxy.proxy_implementation_setter,
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -418,6 +462,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                             results.append(json)
                         map_results = self.detect_mappings(proxy_features, delegate)
                         for r in map_results:
+                            results.append(r)
+                        """
+                        Check if proxy contract makes a call to impl_address_location contract to retrieve delegate
+                        """
+                        cross_contract_results = self.detect_cross_contract_call(proxy_features)
+                        for r in cross_contract_results:
                             results.append(r)
                         """
                         Check if impl_address_location contract is inherited by any contract besides current proxy

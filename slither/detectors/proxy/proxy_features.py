@@ -24,7 +24,7 @@ from slither.core.expressions.assignment_operation import AssignmentOperation
 from slither.core.expressions.binary_operation import BinaryOperation
 from slither.core.expressions.member_access import MemberAccess
 from slither.core.expressions.index_access import IndexAccess
-from slither.core.solidity_types.mapping_type import MappingType
+from slither.core.solidity_types.mapping_type import MappingType, Type
 from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
 
@@ -348,35 +348,113 @@ class ProxyFeatureExtraction:
                             do something
                             """
 
-    def impl_address_from_contract_call(self) -> (bool, Optional[Expression]):
-        call = self.impl_address_variable.expression
+    def impl_address_from_contract_call(self) -> (bool, Optional[Expression], Optional[Type]):
+        """
+        Determine whether the proxy contract retrieves the address of the
+        implementation contract by calling a function in a third contract,
+        i.e. from a Beacon or Registry contract.
+
+        Note: Because the initial execution of contract.is_upgradeable_proxy()
+              performs cross-contract analysis to trace this contract call,
+              if successful, impl_address_variable will be a StateVariable
+              declared in said third contract. But what we really want is a
+              LocalVariable which gets its value from a CallExpression, which
+              is what we'd have if the initial cross-contract analysis failed.
+
+        :return: True if cross-contract call was found, as well as the actual
+                 CallExpression and the Type of the contract being called.
+                 Otherwise, returns (False, None, None).
+        """
+        delegate = self.impl_address_variable
+        e = delegate.expression
+        print(f"impl_address_from_contract_call: {e}")
         ret_exp = None
+        c_type = None
         b = False
-        if isinstance(call, CallExpression):
-            call = call.called
-            if isinstance(call, MemberAccess):
-                e = call.expression
-                if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
-                    f = e.called.value
-                    if isinstance(f, FunctionContract):
-                        e = f.return_node().expression
-                if isinstance(e, TypeConversion) or isinstance(e, Identifier):
-                    c_type = e.type
-                    if isinstance(e, Identifier):
-                        if isinstance(e.value, Contract):
-                            c_type = UserDefinedType(e.value)
-                        else:
-                            c_type = e.value.type
-                            if isinstance(e.value, StateVariable):
-                                ret_exp = e
-                    elif isinstance(e, TypeConversion):
-                        exp = e.expression
-                        if isinstance(exp, Literal):
-                            ret_exp = exp
-                    if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
-                                                                         Contract) and c_type.type != self:
-                        b = True
-        return b, ret_exp
+        if isinstance(delegate, StateVariable) and delegate.contract != self.contract:
+            """
+            This indicates that cross-contract analysis during the initial execution of
+            contract.is_upgradeable_proxy() was able to identify the variable which is
+            returned by the cross-contract call. In this case, in order to return the
+            CallExpression which returned this value, we need to re-find it first.
+            """
+            getter = self.contract.proxy_implementation_getter
+            for node in self.contract.fallback_function.all_nodes():
+                exp = node.expression
+                if isinstance(exp, CallExpression):
+                    called = exp.called
+                    if isinstance(called, Identifier):
+                        f = called.value
+                        if isinstance(f, FunctionContract) and f == getter:
+                            e = exp
+                            print(f"found CallExpression calling getter in another contract: {e}")
+                            break
+                    elif isinstance(called, MemberAccess) and called.member_name == getter.name:
+                        e = exp
+                        print(f"found MemberAccess calling getter in another contract: {e}")
+                        break
+        while isinstance(e, CallExpression):
+            """
+            Unwrap the (possibly nested) function calls until a MemberAccess is found.
+            An example of why this is necessary (from tests/proxies/APMRegistry.sol):
+                function () payable public {
+                    address target = getCode();
+                    require(target != 0); // if app code hasn't been set yet, don't call
+                    delegatedFwd(target, msg.data);
+                }
+                function getCode() public view returns (address) {
+                    return getAppBase(appId);
+                }
+                function getAppBase(bytes32 _appId) internal view returns (address) {
+                    return kernel.getApp(keccak256(APP_BASES_NAMESPACE, _appId));
+                }
+            """
+            called = e.called
+            print(f"called: {called}")
+            if isinstance(called, Identifier):
+                f = called.value
+                if isinstance(f, FunctionContract):
+                    e = f.return_node().expression
+                    print(f"{called} returns {e}")
+                else:
+                    e = f.expression
+            elif isinstance(called, MemberAccess):
+                ret_exp = e
+                e = called
+                print(f"found MemberAccess: {e}")
+            else:
+                print(f"{called} is not Identifier or MemberAccess")
+                break
+        if isinstance(e, MemberAccess):
+            e = e.expression
+            if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
+                f = e.called.value
+                if isinstance(f, FunctionContract):
+                    e = f.return_node().expression
+            if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+                c_type = e.type
+                if isinstance(e, Identifier):
+                    print(f"Identifier: {e}")
+                    if isinstance(e.value, Contract):
+                        print(f"value is Contract: {e.value}")
+                        c_type = UserDefinedType(e.value)
+                    else:
+                        c_type = e.value.type
+                        if isinstance(e.value, StateVariable):
+                            print(f"value is StateVariable: {e.value}\nType: {c_type}")
+                elif isinstance(e, TypeConversion):
+                    print(f"TypeConversion: {e}")
+                    exp = e.expression
+                    if isinstance(exp, Literal):
+                        ret_exp = exp
+                if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
+                                                                      Contract) and c_type.type != self:
+                    b = True
+                    if c_type.type.is_interface:
+                        for c in self.compilation_unit.contracts:
+                            if c_type.type in c.inheritance:
+                                c_type = UserDefinedType(c)
+        return b, ret_exp, c_type
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         """
