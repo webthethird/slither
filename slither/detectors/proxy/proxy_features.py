@@ -82,6 +82,7 @@ class ProxyFeatureExtraction:
     def impl_address_location(self) -> Optional["Contract"]:
         """
         Determine which contract the implementation address variable is declared in.
+
         :return: For state variables, just return the StateVariable.contract.
                  For local variables, return LocalVariable.function.contract
                   or self.contract if that contract is inherited by self.contract.
@@ -109,6 +110,7 @@ class ProxyFeatureExtraction:
         If the implementation address variable is a StateVariable declared in the proxy,
         but the implementation setter is not declared in the proxy, then we need to determine
         if the implementation contract declares the same variable in the same slot.
+
         :return: The index indicating the position of the variable declaration, i.e. slot 0,
                  and the Contract in which the variable (and its setter) is also declared,
                  or else return -1 and None if this is not the case.
@@ -185,6 +187,8 @@ class ProxyFeatureExtraction:
             mapping(bytes32 => bool) internal boolStorage;
             mapping(bytes32 => int256) internal intStorage;
         Note: the implementation address variable may be stored separately.
+
+        :return: True if all of the above mappings are present, otherwise False.
         """
         mappings = self.all_mappings()
         types = ["uint256", "string", "address", "bytes", "bool", "int256"]
@@ -198,6 +202,7 @@ class ProxyFeatureExtraction:
         Given the implementation address variable (which should be a LocalVariable
         if loaded from a storage slot), searches the CFG of the fallback function
         to extract the value of the storage slot it is loaded from (using sload).
+
         :return: A string, which should be the 32-byte storage slot location.
         """
         fallback = self.contract.fallback_function
@@ -311,6 +316,7 @@ class ProxyFeatureExtraction:
         """
         Determine whether the proxy contract contains any external/public functions
         besides the fallback, not including the constructor or receive function.
+
         :return: False if any other external/public function is found, or if the
                  fallback function is missing, otherwise True
         """
@@ -371,6 +377,7 @@ class ProxyFeatureExtraction:
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         """
         Determine whether the given variable is a mapping with function signatures as keys
+
         :param: mapping: Should be a Variable with mapping.type == MappingType
         :return: True if a matching IndexAccess expression is found using msg.sig as the key, otherwise False
         """
@@ -399,6 +406,7 @@ class ProxyFeatureExtraction:
         included in any of the "Facet" contracts in the compilation unit.
         These functions are required to be compliant with the standard, and
         it is not sufficient to only include the interface w/o implementations.
+
         :return: List of (function signature, Contract) pairs indicating
                  which contract contains each of the Loupe functions.
         """
