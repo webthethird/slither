@@ -169,6 +169,9 @@ class ProxyFeatureExtraction:
         return slot
 
     def all_mappings(self) -> Optional[List["MappingType"]]:
+        """
+        :return:
+        """
         mappings = []
         for v in self.contract.state_variables:
             if isinstance(v.type, MappingType):
@@ -378,7 +381,7 @@ class ProxyFeatureExtraction:
         """
         Determine whether the given variable is a mapping with function signatures as keys
 
-        :param: mapping: Should be a Variable with mapping.type == MappingType
+        :param mapping: Should be a Variable with mapping.type == MappingType
         :return: True if a matching IndexAccess expression is found using msg.sig as the key, otherwise False
         """
         ret = False
