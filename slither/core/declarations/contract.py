@@ -1758,6 +1758,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate = v
                                         break
                                     elif isinstance(v, LocalVariable) and v.expression is not None:
+                                        delegate = v
                                         exp = v.expression
                                         if print_debug:
                                             print(f"{v.name} is a Local Variable with the expression: {exp}"
@@ -1766,7 +1767,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             delegate = exp.value
                                         elif isinstance(exp, CallExpression):
                                             called = exp.called
-                                            delegate = self.find_delegate_from_call_exp(exp, pv, print_debug)
+                                            _delegate = self.find_delegate_from_call_exp(exp, v, print_debug)
+                                            if _delegate is not None:
+                                                delegate = _delegate
+                                        break
                                 elif isinstance(arg, CallExpression):
                                     called = exp.called
                                     _delegate = self.find_delegate_from_call_exp(arg, pv, print_debug)
