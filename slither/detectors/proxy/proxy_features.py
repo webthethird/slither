@@ -215,6 +215,9 @@ class ProxyFeatureExtraction:
         #     else:
         #         return str(slot.expression)
         if delegate.expression is not None:
+            """
+            Means the variable was assigned a value when it was first declared. 
+            """
             exp = delegate.expression
             print(f"Expression for {delegate}: {exp}")
             if isinstance(exp, Identifier):
@@ -222,7 +225,7 @@ class ProxyFeatureExtraction:
                 if v.expression is not None:
                     exp = v.expression
                 else:
-                    print("v.expression is None")
+                    print(f"{v}.expression is None")
             if isinstance(exp, MemberAccess):
                 print(f"MemberAccess: {exp.expression}")
                 exp = exp.expression
@@ -243,12 +246,17 @@ class ProxyFeatureExtraction:
                                 if str(exp.value.type) == "bytes32":
                                     return str(exp.value)
                         else:
-                            print(exp)
+                            print(f"{exp} is not an Identifier")
                     else:
-                        print()
+                        print(f"{v}.expression is None")
                 else:
-                    print()
+                    print(f"CallExpression argument {arg} is not an Identifier")
         else:
+            """
+            Means the variable was declared before it was assigned a value.
+            i.e., if the return value was given a name in the function signature.
+            In this case we must search for where it was assigned a value. 
+            """
             print(f"Expression for {delegate} is None")
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
@@ -283,7 +291,7 @@ class ProxyFeatureExtraction:
                     else:
                         asm_split = node.inline_asm.split("\n")
                         for asm in asm_split:
-                            print(f"checking assembly line: {asm}")
+                            # print(f"checking assembly line: {asm}")
                             if "sload" in asm and str(delegate) in asm:
                                 slot = asm.split("(")[1].strip(")")
                 if slot is not None and len(str(slot)) != 66:
