@@ -1161,7 +1161,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     self._is_upgradeable_proxy = False
                     return False
                 if isinstance(self._delegate_variable, LocalVariable): # and isinstance(self._delegates_to.function, FunctionContract):
-                    if print_debug: print(f"Local Variable (Slither line:{getframeinfo(currentframe()).lineno})")
+                    if print_debug: print(f"Local Variable: {self._delegate_variable} "
+                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
                     call = self._delegate_variable.expression
                     if isinstance(call, CallExpression):
                         call = call.called
