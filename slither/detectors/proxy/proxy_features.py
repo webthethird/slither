@@ -240,25 +240,26 @@ class ProxyFeatureExtraction:
             if isinstance(exp, CallExpression):
                 print(f"Called: {exp.called}")
                 # if str(exp.called).startswith("sload"):
-                arg = exp.arguments[0]
-                if len(str(arg)) == 66 and str(arg).startswith("0x"):
-                    return str(arg)
-                elif isinstance(arg, Identifier):
-                    v = arg.value
-                    if v.expression is not None:
-                        exp = v.expression
-                        if isinstance(exp, Identifier):
-                            if exp.value.is_constant:
-                                return str(exp.value.expression)
+                if len(exp.arguments) > 0:
+                    arg = exp.arguments[0]
+                    if len(str(arg)) == 66 and str(arg).startswith("0x"):
+                        return str(arg)
+                    elif isinstance(arg, Identifier):
+                        v = arg.value
+                        if v.expression is not None:
+                            exp = v.expression
+                            if isinstance(exp, Identifier):
+                                if exp.value.is_constant:
+                                    return str(exp.value.expression)
+                                else:
+                                    if str(exp.value.type) == "bytes32":
+                                        return str(exp.value)
                             else:
-                                if str(exp.value.type) == "bytes32":
-                                    return str(exp.value)
+                                print(f"{exp} is not an Identifier")
                         else:
-                            print(f"{exp} is not an Identifier")
+                            print(f"{v}.expression is None")
                     else:
-                        print(f"{v}.expression is None")
-                else:
-                    print(f"CallExpression argument {arg} is not an Identifier")
+                        print(f"CallExpression argument {arg} is not an Identifier")
         else:
             """
             Means the variable was declared before it was assigned a value.
