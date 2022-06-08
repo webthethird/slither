@@ -189,7 +189,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         info = [
                             proxy,
                             " implements EIP-1967: Standard Proxy Storage Slots\n"
-                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
+                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)\n"
                         ]
                         json = self.generate_result(info)
                         results.append(json)
@@ -297,6 +297,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 results.append(json)
 
                         elif isinstance(delegate.type, MappingType):
+                            """
+                            Check for mapping results after the else block below, because we want 
+                            to check for Eternal Storage regardless of the delegate variable type.
+                            i.e. the implementation address may be stored as a StateVariable, but
+                            the proxy could still use mappings to store all other variables.
+                            """
                             info = [
                                 proxy,
                                 " stores implementation(s) in a mapping of type ",
