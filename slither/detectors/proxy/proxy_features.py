@@ -348,8 +348,8 @@ class ProxyFeatureExtraction:
                             do something
                             """
 
-    def implementation_address_from_contract_call(self) -> (bool, Optional[Expression]):
-        call = self.contract.delegate_variable.expression
+    def impl_address_from_contract_call(self) -> (bool, Optional[Expression]):
+        call = self.impl_address_variable.expression
         ret_exp = None
         b = False
         if isinstance(call, CallExpression):
