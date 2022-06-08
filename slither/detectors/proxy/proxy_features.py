@@ -194,8 +194,20 @@ class ProxyFeatureExtraction:
         return False
 
     def find_impl_slot_from_sload(self) -> str:
+        """
+        Given the implementation address variable (which should be a LocalVariable
+        if loaded from a storage slot), searches the CFG of the fallback function
+        to extract the value of the storage slot it is loaded from (using sload).
+        :return: A string, which should be the 32-byte storage slot location.
+        """
         fallback = self.contract.fallback_function
         delegate = self.contract.delegate_variable
+        slot = None
+        """
+        Uncomment the lines below to check if the slot was found during the 
+        initial execution of Contract.is_upgradeable_proxy().
+        Commented out for now to ensure the rest of the code here works without it.
+        """
         # slot = self.contract.proxy_impl_storage_offset
         # if slot is not None:
         #     if len(slot.name) == 66 and slot.name.startswith("0x"):
@@ -212,7 +224,7 @@ class ProxyFeatureExtraction:
                 else:
                     print("v.expression is None")
             if isinstance(exp, MemberAccess):
-                print(f"called: {exp.expression}")
+                print(f"MemberAccess: {exp.expression}")
                 exp = exp.expression
             if isinstance(exp, CallExpression):
                 print(f"Called: {exp.called}")
@@ -237,21 +249,27 @@ class ProxyFeatureExtraction:
                 else:
                     print()
         else:
+            print(f"Expression for {delegate} is None")
             for node in fallback.all_nodes():
                 if node.type == NodeType.VARIABLE:
+                    if node.variable_declaration != delegate:
+                        continue
                     exp = node.variable_declaration.expression
+                    print(f"find_impl_slot_from_sload: VARIABLE node: {exp}")
                     if exp is not None and isinstance(exp, Identifier):
                         slot = str(exp.value.expression)
                         return slot
                 elif node.type == NodeType.EXPRESSION:
                     exp = node.expression
+                    print(f"find_impl_slot_from_sload: EXPRESSION node: {exp}")
                     if isinstance(exp, AssignmentOperation):
                         left = exp.expression_left
                         right = exp.expression_right
                         if isinstance(left, Identifier) and left.value == delegate:
-                            """do something"""
+                            if isinstance(right, CallExpression) and str(right.called) == "sload":
+                                slot = right.arguments[0]
                 elif node.type == NodeType.ASSEMBLY:
-                    slot = None
+                    print(f"find_impl_slot_from_sload: ASSEMBLY node: {node.inline_asm}")
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
                         for statement in node.inline_asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulExpressionStatement":
@@ -265,10 +283,21 @@ class ProxyFeatureExtraction:
                     else:
                         asm_split = node.inline_asm.split("\n")
                         for asm in asm_split:
-                            if "sload" in asm:
-                                params = asm.split("(")[1].strip(")")
-                                slot = params[0]
-                    return slot
+                            print(f"checking assembly line: {asm}")
+                            if "sload" in asm and str(delegate) in asm:
+                                slot = asm.split("(")[1].strip(")")
+                if slot is not None and len(str(slot)) != 66:
+                    sv = self.contract.get_state_variable_from_name(slot)
+                    if sv is None:
+                        lv = node.function.get_local_variable_from_name(slot)
+                        if lv is not None and lv.expression is not None:
+                            exp = lv.expression
+                            if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
+                                sv = exp.value
+                    if sv is not None and sv.expression is not None and sv.is_constant:
+                        slot = str(sv.expression)
+                        break
+        return slot
 
     def proxy_only_contains_fallback(self) -> bool:
         """
