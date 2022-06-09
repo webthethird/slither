@@ -256,6 +256,8 @@ class ProxyFeatureExtraction:
                                         return str(exp.value)
                             else:
                                 print(f"{exp} is not an Identifier")
+                                if isinstance(exp, Literal):
+                                    return str(exp)
                         else:
                             print(f"{v}.expression is None")
                     else:
