@@ -353,8 +353,8 @@ class ProxyFeatureExtraction:
 
     def external_function_specific_call(self) -> bool:
         for function in self.contract.functions_declared:
-            if (not function.is_fallback) and (not function.is_constructor) and\
-                    (function.visibility in ["external", "public"]):
+            if not function.is_fallback and not function.is_constructor and function.visibility in ["external",
+                                                                                                    "public"]:
                 for node in function.all_nodes():
                     if node.type == NodeType.EXPRESSION:
                         exp = node.expression
