@@ -471,6 +471,11 @@ class ProxyFeatureExtraction:
                         for c in self.compilation_unit.contracts:
                             if c_type.type in c.inheritance:
                                 c_type = UserDefinedType(c)
+                elif str(c_type) == "address":
+                    b = True
+                    getter = self.contract.proxy_implementation_getter
+                    if getter is not None and getter.contract != self.contract:
+                        c_type = UserDefinedType(getter.contract)
         return b, ret_exp, c_type
 
     def find_registry_address_source(self, call: CallExpression) -> Optional[Variable]:
