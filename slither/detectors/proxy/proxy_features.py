@@ -290,16 +290,20 @@ class ProxyFeatureExtraction:
                 elif node.type == NodeType.ASSEMBLY:
                     print(f"find_impl_slot_from_sload: ASSEMBLY node: {node.inline_asm}")
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
-                        print(node.inline_asm)
                         for statement in node.inline_asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulExpressionStatement":
                                 statement = statement["expression"]
                             if statement["nodeType"] == "YulVariableDeclaration":
+                                if statement["variables"][0]["name"] != delegate.name:
+                                    continue
+                                statement = statement["value"]
+                            if statement["nodeType"] == "YulAssignment":
+                                if statement["variableNames"][0]["name"] != delegate.name:
+                                    continue
                                 statement = statement["value"]
                             if statement["nodeType"] == "YulFunctionCall":
                                 if statement["functionName"]["name"] == "sload":
-                                    if statement["arguments"][0] == delegate.name:
-                                        slot = statement["arguments"][0]
+                                    slot = statement["arguments"][0]["name"]
                     else:
                         asm_split = node.inline_asm.split("\n")
                         for asm in asm_split:
