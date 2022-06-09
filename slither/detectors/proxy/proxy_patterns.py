@@ -265,6 +265,28 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 Check where the Registry/Beacon address comes from
                 """
+                source = proxy_features.find_registry_address_source(exp)
+                if source is not None:
+                    if source.is_constant and str(source.type) == "bytes32":
+                        info = [
+                            "The address of ",
+                            t.type,
+                            " appears to be loaded from the storage slot ",
+                            source,
+                            " which is ",
+                            str(source.expression),
+                            "\n"
+                        ]
+                    elif isinstance(source, StateVariable):
+                        info = [
+                            "The address of ",
+                            t.type,
+                            " appears to be stored as a state variable: ",
+                            source,
+                            "\n"
+                        ]
+                    json = self.generate_result(info)
+                    results.append(json)
         return results
 
     def _detect(self):

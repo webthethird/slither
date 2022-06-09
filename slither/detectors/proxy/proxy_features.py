@@ -379,6 +379,8 @@ class ProxyFeatureExtraction:
             CallExpression which returned this value, we need to re-find it first.
             """
             getter = self.contract.proxy_implementation_getter
+            if getter is None and delegate.visibility in ["public", "external"]:
+                getter = delegate
             for node in self.contract.fallback_function.all_nodes():
                 exp = node.expression
                 if isinstance(exp, CallExpression):
@@ -455,6 +457,103 @@ class ProxyFeatureExtraction:
                             if c_type.type in c.inheritance:
                                 c_type = UserDefinedType(c)
         return b, ret_exp, c_type
+
+    def find_registry_address_source(self, call: CallExpression) -> Optional[Variable]:
+        """
+        Determine the source of the address of the third contract from which the proxy retrieves
+        its implementation address, i.e., where the Registry/Beacon address is stored.
+
+        :param call: The CallExpression returned by impl_address_from_contract_call()
+        """
+        print(f"find_registry_address_source: {call}")
+        exp = call.called
+        if isinstance(exp, MemberAccess):
+            print(f"MemberAccess: {exp}")
+            exp = exp.expression
+            """fall-through to below"""
+        if isinstance(exp, TypeConversion):
+            print(f"TypeConversion: {exp}")
+            exp = exp.expression
+            """fall-through to below"""
+        if isinstance(exp, CallExpression):
+            print(f"CallExpression: {exp}")
+            exp = exp.called
+            """fall-through to below"""
+        if isinstance(exp, Identifier):
+            print(f"Identifier: {exp}")
+            value = exp.value
+            while isinstance(value, LocalVariable):
+                print(f"LocalVariable: {value}")
+                exp = value.expression
+                if exp is not None:
+                    if isinstance(exp, CallExpression):
+                        """recursive call with new expression"""
+                        return self.find_registry_address_source(exp)
+                    elif isinstance(exp, Identifier):
+                        value = exp.value
+                        """fall-through to below, or repeat for another LocalVariable"""
+                else:
+                    break
+            if isinstance(value, FunctionContract):
+                func = value
+                if len(func.returns) > 0:
+                    value = func.returns[0]
+                    ret_node = func.return_node()
+                    if ret_node is not None and (value.name is None or value.name == ""):
+                        """
+                        If return value is unnamed, check return node expression
+                        """
+                        exp = ret_node.expression
+                        if exp is not None:
+                            if isinstance(exp, CallExpression):
+                                """recursive call with new expression"""
+                                return self.find_registry_address_source(exp)
+                            if isinstance(exp, Identifier):
+                                value = exp.value
+                    elif value.name is not None and value.name != "":
+                        """
+                        If return value is named, find where it is assigned a value
+                        """
+                        for node in func.all_nodes():
+                            if node.type == NodeType.EXPRESSION:
+                                exp = node.expression
+                                print(f"EXPRESSION node: {exp}")
+                                if isinstance(exp, AssignmentOperation):
+                                    left = exp.expression_left
+                                    right = exp.expression_right
+                                    if isinstance(left, Identifier) and left.value == value:
+                                        if isinstance(right, CallExpression):
+                                            print(f"Called: {right.called}")
+                                            if str(right.called).startswith("sload"):
+                                                exp = right.arguments[0]
+                                                if isinstance(exp, Identifier):
+                                                    value = exp.value
+                                                if isinstance(value, LocalVariable):
+                                                    exp = value.expression
+                                                    if isinstance(exp, Identifier):
+                                                        value = exp.value
+                                            else:
+                                                return self.find_registry_address_source(right)
+                                        if isinstance(right, Identifier):
+                                            value = right.value
+                                            break
+                            elif node.type == NodeType.ASSEMBLY:
+                                if "AST" not in node.inline_asm and not isinstance(node.inline_asm, Dict):
+                                    asm_split = node.inline_asm.split("\n")
+                                    for asm in asm_split:
+                                        # print(f"checking assembly line: {asm}")
+                                        if "sload" in asm and value.name in asm:
+                                            slot = asm.split("(")[1].strip(")")
+                                            value = self.contract.get_state_variable_from_name(slot)
+                                            if value is None:
+                                                lv = node.function.get_local_variable_from_name(slot)
+                                                if lv is not None and lv.expression is not None:
+                                                    exp = lv.expression
+                                                    if isinstance(exp, Identifier) and isinstance(exp.value,
+                                                                                                  StateVariable):
+                                                        value = exp.value
+            if isinstance(value, Variable):
+                return value
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         """
