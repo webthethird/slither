@@ -1259,12 +1259,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 # if both setter and getter can be found, then return true
                 # Otherwise, at least the getter's return is non-constant
                 if self._proxy_impl_getter is not None:
+                    if print_debug and isinstance(self._proxy_impl_getter, FunctionContract):
+                        print(f"\nImplementation retrieved by function: {self._proxy_impl_getter.name} in contract: "
+                              f"{self._proxy_impl_getter.contract.name} "
+                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
                     if self._proxy_impl_setter is not None:
                         self._is_upgradeable_proxy = True
                         self._is_upgradeable_proxy_confirmed = True
-                        return self._is_upgradeable_proxy
                     else:
-                        return self.getter_return_is_non_constant(print_debug)
+                        self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
+                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
+                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                    return self._is_upgradeable_proxy
                 else:
                     """
                     Handle the case, as in EIP 1822, where the Proxy has no implementation getter because it is
@@ -1299,9 +1305,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
                                     self._is_upgradeable_proxy_confirmed = True
+                                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                                     return self._is_upgradeable_proxy
                                 elif self._proxy_impl_getter is not None:
-                                    return c.getter_return_is_non_constant(print_debug)
+                                    self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
+                                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                                    return self._is_upgradeable_proxy
                     elif isinstance(self._delegate_variable, StateVariable):
                         """
                         Handle the case where the delegate address is a state variable which is also declared in the
@@ -1985,7 +1996,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             r = e.expression_right
                             if isinstance(l, Identifier) and l.value == ret:
                                 if isinstance(r, CallExpression):
-                                    if print_debug: print(f"CallExpression\n{r.called} "
+                                    if print_debug: print(f"CallExpression: {r.called} "
                                                           f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                     ret.expression = r
                                     if str(r.called) == "sload(uint256)":
@@ -2004,8 +2015,27 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                     if print_debug: print(f"Found storage slot: {e.value.name} (Slither"
                                                                           f" line:{getframeinfo(currentframe()).lineno}"
                                                                           f")")
+                                    elif str(r.called) == "abi.decode":
+                                        arg = r.arguments[0]
+                                        if print_debug: print(f"Value of {ret} comes from decoding the value of {arg}"
+                                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                        if isinstance(arg, Identifier):
+                                            v = arg.value
+                                            if v.expression is not None:
+                                                if print_debug: print(f"{v} expression is {v.expression} (Slither line:"
+                                                                      f"{getframeinfo(currentframe()).lineno})")
+                                                ret.expression = v.expression
+                                                delegate = ret
+                                            else:
+                                                if print_debug: print(f"{v} has no expression (Slither line:"
+                                                                      f"{getframeinfo(currentframe()).lineno})")
+                                                for exp in func.expressions:
+                                                    if isinstance(exp, AssignmentOperation):
+                                                        if v.name in str(exp.expression_left):
+                                                            ret.expression = exp.expression_right
+                                                            delegate = ret
                                     else:
-                                        delegate = self.find_delegate_from_call_exp(r, ret ,print_debug)
+                                        delegate = self.find_delegate_from_call_exp(r, ret, print_debug)
                                         rc = r.called
                                         if delegate is None and isinstance(rc, MemberAccess):
                                             m = rc.expression
@@ -2139,8 +2169,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     e = ret.expression
                                     if isinstance(e, CallExpression) and isinstance(e.called, MemberAccess):
                                         delegate = self.find_delegate_from_member_access(e, var, print_debug)
+                            elif called.member_name == "call" or called.member_name == "staticcall":
+                                _delegate = self.find_delegate_from_member_access(e, var, print_debug)
+                                if _delegate is not None:
+                                    delegate = _delegate
                             else:
-                                delegate = self.find_delegate_from_member_access(called, var, print_debug)
+                                _delegate = self.find_delegate_from_member_access(called, var, print_debug)
+                                if _delegate is not None:
+                                    delegate = _delegate
                     elif isinstance(e, IndexAccess):
                         left = e.expression_left
                         if isinstance(left, Identifier):
@@ -2260,6 +2296,61 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 t = v.type
                                                 if isinstance(t, UserDefinedType) and t.type == struct:
                                                     delegate = struct.elems[left.member_name]
+                elif isinstance(ctype, ElementaryType) and ctype.type == "address":
+                    if print_debug: print(f"{e.value} is an address variable"
+                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                    if member_name == "call" or member_name == "staticcall":
+                        """
+                        Implementation address comes from a call to an address w/o a specified
+                        Contract type, so we must check each contract for the function called.
+                        Trying to handle the tough case of Dharma's KeyRingUpgradeBeaconProxy.
+                        """
+                        arg = orig_exp.arguments[0]
+                        if print_debug: print(f"Call to {e.value} is {member_name} with argument {arg}"
+                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                        if arg is None or str(arg) == "":
+                            arg = "fallback"
+                        for c in self.compilation_unit.contracts:
+                            if c == self:
+                                continue
+                            if print_debug: print(f"Looking for {arg} in contract {c}"
+                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                            if arg == "fallback":
+                                fn = c.fallback_function
+                            else:
+                                fn = c.get_function_from_name(arg)
+                            if fn is None:
+                                continue
+                            else:
+                                if print_debug: print(f"Found function {arg} in contract {c}"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                if len(fn.returns) > 0:
+                                    if str(fn.returns[0].type) == "address":
+                                        ret = fn.returns[0]
+                                        """
+                                        This part doesn't apply to the FN I'm trying to solve,
+                                        so I leave it unfinished for now.
+                                        """
+                                else:
+                                    """
+                                    This bit is pretty specific to the Dharma BeaconProxy and
+                                    DharmaUpgradeBeacon, which uses its fallback as both the
+                                    setter and getter for the implementation address.
+                                    """
+                                    for node in fn.all_nodes():
+                                        if node.type == NodeType.ASSEMBLY:
+                                            inline_asm = node.inline_asm
+                                            if "sload" in inline_asm and "mstore" in inline_asm\
+                                                    and "return" in inline_asm:
+                                                if print_debug: print(f"Function {fn} in contract {c} appears to be the"
+                                                                      f" implementation getter (Slither line:"
+                                                                      f"{getframeinfo(currentframe()).lineno})")
+                                                self._proxy_impl_getter = fn
+                                            if "sstore" in inline_asm:
+                                                if print_debug: print(f"Function {fn} in contract {c} appears to be the"
+                                                                      f" implementation setter (Slither line:"
+                                                                      f"{getframeinfo(currentframe()).lineno})")
+                                                self._proxy_impl_setter = fn
         if contract is not None:
             if print_debug: print(f"Looking for {member_name} in {contract.name}"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -2680,6 +2771,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if print_debug:
             print(f"\nBegin {contract.name}.find_getter_in_contract"
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
+            if isinstance(var_to_get, Variable):
+                print(f"{var_to_get} is a Variable object")
+            else:
+                print(f"{var_to_get} is a string")
         if exp is not None and print_debug: print(exp)
         for f in contract.functions:
             if contract._proxy_impl_getter is not None:
