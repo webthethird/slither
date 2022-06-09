@@ -246,20 +246,16 @@ or one of the proxy patterns developed by OpenZeppelin.
             json = self.generate_result(info)
             results.append(json)
             if isinstance(exp, CallExpression) and isinstance(t, UserDefinedType):
-                if len(exp.arguments) > 0:
-                    info = [
-                        t.type,
-                        " appears to serve as a Registry contract for the proxy ",
-                        proxy,
-                        "\n"
-                    ]
+                if len(exp.arguments) > 0 and str(exp.arguments[0]) != "":
+                    rorb = "Registry"
                 else:
-                    info = [
-                        t.type,
-                        " appears to serve as a Beacon contract for the proxy ",
-                        proxy,
-                        "\n"
-                    ]
+                    rorb = "Beacon"
+                info = [
+                    t.type,
+                    f" appears to serve as a {rorb} contract for the proxy ",
+                    proxy.name,
+                    "\n"
+                ]
                 json = self.generate_result(info)
                 results.append(json)
                 """
@@ -285,6 +281,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                             source,
                             "\n"
                         ]
+                        if source.is_constant:
+                            info += [
+                                source.name,
+                                f" is constant and so the {rorb} address cannot be upgraded.\n"
+                            ]
                     json = self.generate_result(info)
                     results.append(json)
         return results
