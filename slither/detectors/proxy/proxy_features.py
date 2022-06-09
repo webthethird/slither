@@ -290,6 +290,7 @@ class ProxyFeatureExtraction:
                 elif node.type == NodeType.ASSEMBLY:
                     print(f"find_impl_slot_from_sload: ASSEMBLY node: {node.inline_asm}")
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
+                        print(node.inline_asm)
                         for statement in node.inline_asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulExpressionStatement":
                                 statement = statement["expression"]
@@ -297,7 +298,7 @@ class ProxyFeatureExtraction:
                                 statement = statement["value"]
                             if statement["nodeType"] == "YulFunctionCall":
                                 if statement["functionName"]["name"] == "sload":
-                                    if statement["arguments"][1] == delegate.name:
+                                    if statement["arguments"][0] == delegate.name:
                                         slot = statement["arguments"][0]
                     else:
                         asm_split = node.inline_asm.split("\n")
@@ -311,11 +312,19 @@ class ProxyFeatureExtraction:
                         lv = node.function.get_local_variable_from_name(slot)
                         if lv is not None and lv.expression is not None:
                             exp = lv.expression
+                            while isinstance(exp, Identifier) and isinstance(exp.value, LocalVariable):
+                                exp = exp.value.expression
                             if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                 sv = exp.value
-                    if sv is not None and sv.expression is not None and sv.is_constant:
+                    if sv is not None and sv.expression is not None and (sv.is_constant or str(sv.type) == "bytes32"):
                         slot = str(sv.expression)
                         break
+                    elif sv is not None and sv.expression is None:
+                        print(f"{sv} is missing an expression")
+                    else:
+                        print(f"Could not find StateVariable from {slot}")
+                elif slot is not None:
+                    break
         return slot
 
     def proxy_only_contains_fallback(self) -> bool:
