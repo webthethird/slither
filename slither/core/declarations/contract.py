@@ -1286,8 +1286,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
                         delegate_contract = self._delegate_variable.contract
                     elif isinstance(self._delegate_variable, LocalVariable) and\
-                                isinstance(self._delegate_variable.function, FunctionContract) and\
-                                self._delegate_variable.function.contract != self:
+                            isinstance(self._delegate_variable.function, FunctionContract) and\
+                            self._delegate_variable.function.contract != self:
                         delegate_contract = self._delegate_variable.function.contract
                     elif isinstance(self._delegate_variable, StructureVariable) and\
                             isinstance(self._delegate_variable.structure, StructureContract) and \
