@@ -243,3 +243,55 @@
     'nodeType': 'InlineAssembly', 
     'src': '1184:698:0'
 }
+
+// Second example, for sload
+{
+    'AST': {
+        'nodeType': 'YulBlock',
+        'src': '14550:35:0',
+        'statements':
+        [{
+            'nodeType': 'YulAssignment',
+            'src': '14558:21:0',
+            'value': {
+                'arguments':
+                [{
+                    'name': 'slot',
+                    'nodeType': 'YulIdentifier',
+                    'src': '14574:4:0'
+                }],
+                'functionName': {
+                    'name': 'sload',
+                    'nodeType': 'YulIdentifier',
+                    'src': '14566:5:0'
+                },
+                'nodeType': 'YulFunctionCall',
+                'src': '14566:13:0'
+            },
+            'variableNames':
+            [{
+                'name': 'impl',
+                'nodeType': 'YulIdentifier',
+                'src': '14558:4:0'
+            }]
+        }]
+    },
+    'evmVersion': 'istanbul',
+    'externalReferences':
+    [{
+        'declaration': 570,
+        'isOffset': False,
+        'isSlot': False,
+        'src': '14558:4:0',
+        'valueSize': 1
+    }, {
+        'declaration': 573,
+        'isOffset': False,
+        'isSlot': False,
+        'src': '14574:4:0',
+        'valueSize': 1
+    }],
+    'id': 576,
+    'nodeType': 'InlineAssembly',
+    'src': '14541:44:0'
+}
