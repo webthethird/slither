@@ -542,7 +542,7 @@ class ProxyFeatureExtraction:
         print(f"impl_address_from_contract_call: {e}")
         ret_exp = None
         c_type = None
-        b = False
+        is_cross_contract = False
         if isinstance(delegate, StateVariable) and delegate.contract != self.contract:
             """
             This indicates that cross-contract analysis during the initial execution of
@@ -623,17 +623,17 @@ class ProxyFeatureExtraction:
                         ret_exp = exp
                 if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
                                                                       Contract) and c_type.type != self:
-                    b = True
+                    is_cross_contract = True
                     if c_type.type.is_interface:
                         for c in self.compilation_unit.contracts:
                             if c_type.type in c.inheritance:
                                 c_type = UserDefinedType(c)
                 elif str(c_type) == "address":
-                    b = True
+                    is_cross_contract = True
                     getter = self.contract.proxy_implementation_getter
                     if getter is not None and getter.contract != self.contract:
                         c_type = UserDefinedType(getter.contract)
-        return b, ret_exp, c_type
+        return is_cross_contract, ret_exp, c_type
 
     def find_registry_address_source(self, call: CallExpression) -> Optional[Variable]:
         """
@@ -644,6 +644,7 @@ class ProxyFeatureExtraction:
         """
         print(f"find_registry_address_source: {call}")
         exp = call.called
+        value = None
         if isinstance(exp, MemberAccess):
             print(f"MemberAccess: {exp}")
             exp = exp.expression
@@ -729,8 +730,7 @@ class ProxyFeatureExtraction:
                                                     if isinstance(exp, Identifier) and isinstance(exp.value,
                                                                                                   StateVariable):
                                                         value = exp.value
-            if isinstance(value, Variable):
-                return value
+        return value
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         """
