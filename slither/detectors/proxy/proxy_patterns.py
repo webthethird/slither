@@ -237,6 +237,11 @@ or one of the proxy patterns developed by OpenZeppelin.
         delegate = proxy_features.impl_address_variable
         b, exp, t = proxy_features.impl_address_from_contract_call()
         if b:
+            """
+            b is a boolean returned by proxy_features.impl_address_from_contract_call()
+            which indicates whether or not a cross contract call was found.
+            exp is the CallExpression that was found, t is the type of the contract called.
+            """
             info = [
                 delegate,
                 " value is retrieved from a function call to another contract: ",
@@ -246,6 +251,11 @@ or one of the proxy patterns developed by OpenZeppelin.
             json = self.generate_result(info)
             results.append(json)
             if isinstance(exp, CallExpression) and isinstance(t, UserDefinedType):
+                """
+                We use the presence or absence of arguments in the CallExpression
+                to classify the contract as a Registry or a Beacon.
+                A Beacon should have no arguments, while a Registry should have at least one.
+                """
                 if len(exp.arguments) > 0 and str(exp.arguments[0]) != "":
                     rorb = "Registry"
                 else:
@@ -259,7 +269,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                 json = self.generate_result(info)
                 results.append(json)
                 """
-                Check where the Registry/Beacon address comes from
+                Check where the Registry/Beacon address comes from, 
+                i.e. from a storage slot or a state variable
                 """
                 source = proxy_features.find_registry_address_source(exp)
                 if source is not None:
@@ -557,9 +568,22 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Should not be reachable, but print a result for debugging
                         """
                 """
-                Check if proxy contains external functions 
+                Check if the proxy is transparent, i.e., if all external functions other than
+                the fallback and receive are only callable by a specific address, and whether 
+                the fallback and receive functions are only callable by addresses other than 
+                the same specific address
                 """
-
+                is_transparent, admin_str = proxy_features.external_functions_require_specific_sender()
+                if is_transparent:
+                    info = [
+                        proxy,
+                        " uses the Transparent Proxy pattern, making all external functions"
+                        " (other than fallback and receive) callable only by ",
+                        admin_str if admin_str is not None else "an admin address",
+                        " and restricting that address from calling the fallback/receive functions.\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
