@@ -1205,7 +1205,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} "
                                                   f"(Slither line:{getframeinfo(currentframe()).lineno})")
                             for c in self.compilation_unit.contracts:
-                                if c == self or c == self._delegate_variable.contract:
+                                if c == self or c == self._delegate_variable.contract or self in c.inheritance:
                                     continue
                                 if self._delegate_variable.contract in c.inheritance:
                                     if print_debug: print(f"Looking for setter in {c} "
@@ -1226,7 +1226,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                   f"{self._delegate_variable.function.contract} "
                                                   f"(Slither line:{getframeinfo(currentframe()).lineno})")
                             for c in self.compilation_unit.contracts:
-                                if c == self or c == self._delegate_variable.function.contract:
+                                if c == self or c == self._delegate_variable.function.contract or self in c.inheritance:
                                     continue
                                 if self._delegate_variable.function.contract in c.inheritance:
                                     if print_debug: print(f"Looking for setter in {c} "
@@ -1297,7 +1297,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug: print(f"or in {delegate_contract.name} "
                                               f"(Slither line:{getframeinfo(currentframe()).lineno})")
                         for c in self.compilation_unit.contracts:
-                            if delegate_contract in c.inheritance and c != self:
+                            if delegate_contract in c.inheritance and c != self and self not in c.inheritance:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
                                                                                        print_debug)
                                 self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
