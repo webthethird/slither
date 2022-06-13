@@ -1377,7 +1377,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable_proxy
 
     @property
-    def is_proxy(self,) -> bool:
+    def is_proxy(self) -> bool:
         """
         Checks for 'delegatecall' in the fallback function CFG, setting self._is_proxy = True if found.
         Also tries to set self._delegates_to: Variable in the process.
