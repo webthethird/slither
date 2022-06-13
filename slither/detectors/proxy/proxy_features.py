@@ -160,7 +160,7 @@ class ProxyFeatureExtraction:
 
     def all_mappings(self) -> Optional[List["MappingType"]]:
         """
-        :return:
+        :return: List of all MappingType state variables found in the contract, or None if empty
         """
         mappings = []
         for v in self.contract.state_variables:
