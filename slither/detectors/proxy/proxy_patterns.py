@@ -82,86 +82,96 @@ or one of the proxy patterns developed by OpenZeppelin.
         if proxy_features.is_eternal_storage():
             info = [
                 proxy,
-                " appears to use Eternal Storage\n"
+                " uses Eternal Storage\n"
             ]
             json = self.generate_result(info)
             results.append(json)
-        if not isinstance(delegate.type, MappingType):
-            return results
-        elif f"{delegate.type.type_from}" == "bytes4":  # and f"{delegate.type.type_to}" == "address":
-            """
-            Check to confirm that `msg.sig` is used as the key in the mapping
-            """
-            if proxy_features.is_mapping_from_msg_sig(delegate):
-                info = [
-                    delegate,
-                    " maps function signatures (i.e. `msg.sig`) to addresses where the functions"
-                    " are implemented, suggesting that ",
-                    proxy,
-                    " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
-                ]
-                json = self.generate_result(info)
-                results.append(json)
+        if isinstance(delegate.type, MappingType):
+            if f"{delegate.type.type_from}" == "bytes4":  # and f"{delegate.type.type_to}" == "address":
                 """
-                Check if the mapping is stored in a struct, i.e. DiamondStorage for EIP-2535
+                Check to confirm that `msg.sig` is used as the key in the mapping
                 """
-                if isinstance(delegate, StructureVariable):
-                    struct = delegate.structure
-                    if struct.name == "DiamondStorage":
-                        if struct.canonical_name == "LibDiamond.DiamondStorage":
+                if proxy_features.is_mapping_from_msg_sig(delegate):
+                    info = [
+                        delegate,
+                        " maps function signatures (i.e. `msg.sig`) to addresses where the functions"
+                        " are implemented, suggesting that ",
+                        proxy,
+                        " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
+                    """
+                    Check if the mapping is stored in a struct, i.e. DiamondStorage for EIP-2535
+                    """
+                    if isinstance(delegate, StructureVariable):
+                        struct = delegate.structure
+                        if struct.name == "DiamondStorage":
+                            if struct.canonical_name == "LibDiamond.DiamondStorage":
+                                info = [
+                                    delegate,
+                                    " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                    struct,
+                                    " which is declared in the standard's LibDiamond library.\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                            elif isinstance(struct, StructureContract):
+                                info = [
+                                    delegate,
+                                    " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                    struct,
+                                    " but not the one declared in the LibDiamond library. It is declared in ",
+                                    struct.contract,
+                                    "\n"
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                            """
+                            Search for the Loupe functions required by EIP-2535.
+                            """
+                            loupe_facets = proxy_features.find_diamond_loupe_functions()
+                            if len(loupe_facets) == 4:
+                                info = [
+                                    f"The Loupe function {f} is located in {c}\n" for f,c in loupe_facets
+                                ]
+                                json = self.generate_result(info)
+                                results.append(json)
+                            """
+                            Check if function for adding/removing/replacing functions (i.e. DiamondCut) added in constructor
+                            to determine if the Diamond is actually upgradeable
+                            """
+                        else:
                             info = [
                                 delegate,
-                                " is stored in the DiamondStorage structure specified by EIP-2535: ",
-                                struct,
-                                " which is declared in the standard's LibDiamond library.\n"
+                                " is declared as part of a user-defined structure: ",
+                                struct, "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
-                        elif isinstance(struct, StructureContract):
-                            info = [
-                                delegate,
-                                " is stored in the DiamondStorage structure specified by EIP-2535: ",
-                                struct,
-                                " but not the one declared in the LibDiamond library. It is declared in ",
-                                struct.contract,
-                                "\n"
-                            ]
-                            json = self.generate_result(info)
-                            results.append(json)
-                        """
-                        Search for the Loupe functions required by EIP-2535.
-                        """
-                        loupe_facets = proxy_features.find_diamond_loupe_functions()
-                        if len(loupe_facets) == 4:
-                            info = [
-                                f"The Loupe function {f} is located in {c}\n" for f,c in loupe_facets
-                            ]
-                            json = self.generate_result(info)
-                            results.append(json)
-                        """
-                        Check if function for adding/removing/replacing functions (i.e. DiamondCut) added in constructor
-                        to determine if the Diamond is actually upgradeable
-                        """
                     else:
-                        info = [
-                            delegate,
-                            " is declared as part of a user-defined structure: ",
-                            struct, "\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
+                        """
+                        Mapping not stored in a struct
+                        """
                 else:
-                    """
-                    Mapping not stored in a struct
-                    """
+                    info = [
+                        delegate,
+                        " probably maps function signatures (i.e. the key is of type `bytes4`) to"
+                        " addresses where the functions are implemented, but the detector could not"
+                        " find the index access expression using `msg.sig` and cannot say for sure if ",
+                        proxy,
+                        " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
             else:
                 info = [
                     delegate,
-                    " probably maps function signatures (i.e. the key is of type `bytes4`) to"
-                    " addresses where the functions are implemented, but the detector could not"
-                    " find the index access expression using `msg.sig` and cannot say for sure if ",
-                    proxy,
-                    " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                    " is a mapping from type ",
+                    str(delegate.type.type_from),
+                    " to type ",
+                    str(delegate.type.type_to),
+                    "\n"
                 ]
                 json = self.generate_result(info)
                 results.append(json)
@@ -238,7 +248,7 @@ or one of the proxy patterns developed by OpenZeppelin.
         is_cross_contract, call_exp, contract_type = proxy_features.impl_address_from_contract_call()
         if is_cross_contract:
             """
-            b is a boolean returned by proxy_features.impl_address_from_contract_call()
+            is_cross_contract is a boolean returned by proxy_features.impl_address_from_contract_call()
             which indicates whether or not a cross contract call was found.
             exp is the CallExpression that was found, t is the type of the contract called.
             """
@@ -494,6 +504,20 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             json = self.generate_result(info)
                             results.append(json)
+                        else:
+                            """
+                            Unexpected variable type
+                            Print result for debugging
+                            """
+                            info = [
+                                proxy,
+                                " stores implementation address in a state variable of type ",
+                                delegate.type,
+                                " declared in another contract: ",
+                                delegate, "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                         map_results = self.detect_mappings(proxy_features, delegate)
                         for r in map_results:
                             results.append(r)
@@ -523,13 +547,23 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Check where the local variable gets the value of the implementation address from, i.e., 
                         is it loaded from a storage slot, or by a call to a different contract, or something else?
                         """
+                        mapping, exp = ProxyFeatureExtraction.find_mapping_in_var_exp(delegate,
+                                                                                      delegate.function.contract)
                         slot_results = self.detect_storage_slot(proxy_features)
-                        for r in slot_results:
-                            results.append(r)
-                        if len(slot_results) == 0:
+                        if mapping is not None:
+                            map_results = self.detect_mappings(proxy_features, mapping)
+                            for r in map_results:
+                                results.append(r)
+                        elif len(slot_results) > 0:
+                            for r in slot_results:
+                                results.append(r)
+                        else:
                             """
-                            Do something else
+                            Check for call to a different contract in delegate.expression
                             """
+                            cross_contract_results = self.detect_cross_contract_call(proxy_features)
+                            for r in cross_contract_results:
+                                results.append(r)
                     elif isinstance(delegate, StructureVariable):
                         """
                         Check the type of the structure variable, i.e. an address, a mapping, or something else
@@ -538,12 +572,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                         if f"{delegate.type}" == "address":
                             info = [
                                 proxy,
-                                " stores implementation address as a variable called ",
+                                " stores implementation address as an address variable called ",
                                 delegate,
                                 " found in the structure called ",
                                 struct,
-                                " which is declared in the contract: ",
-                                proxy_features.impl_address_location
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -563,6 +596,20 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, delegate)
                             for r in map_results:
                                 results.append(r)
+                        else:
+                            """
+                            Unexpected variable type
+                            Print result for debugging
+                            """
+                            info = [
+                                proxy,
+                                " stores implementation address in a variable of type ",
+                                delegate.type,
+                                " declared in a structure in another contract: ",
+                                delegate, "\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                     else:
                         """
                         Should not be reachable, but print a result for debugging

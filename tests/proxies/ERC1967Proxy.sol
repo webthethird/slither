@@ -264,7 +264,7 @@ abstract contract Proxy {
 
             // Call the implementation.
             // out and outsize are 0 because we don't know the size yet.
-            let result := delegatecall(gas(0, 1), implementation, 0, calldatasize(), 0, 0)
+            let result := delegatecall(gas(), implementation, 0, calldatasize(), 0, 0)
 
             // Copy the returned data.
             returndatacopy(0, 0, returndatasize())
@@ -370,7 +370,6 @@ library StorageSlot {
      * @dev Returns an `AddressSlot` with member `value` located at `slot`.
      */
     function getAddressSlot(bytes32 slot) internal pure returns (AddressSlot storage r) {
-        r = b
         assembly {
             r.slot := slot
         }

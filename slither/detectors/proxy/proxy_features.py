@@ -644,6 +644,7 @@ class ProxyFeatureExtraction:
         """
         print(f"find_registry_address_source: {call}")
         exp = call.called
+        value = None
         if isinstance(exp, MemberAccess):
             print(f"MemberAccess: {exp}")
             exp = exp.expression
@@ -729,8 +730,7 @@ class ProxyFeatureExtraction:
                                                     if isinstance(exp, Identifier) and isinstance(exp.value,
                                                                                                   StateVariable):
                                                         value = exp.value
-            if isinstance(value, Variable):
-                return value
+        return value
 
     def is_mapping_from_msg_sig(self, mapping: Variable) -> bool:
         """
