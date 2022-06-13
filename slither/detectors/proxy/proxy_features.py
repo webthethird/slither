@@ -116,23 +116,23 @@ class ProxyFeatureExtraction:
                  and the Contract in which the variable (and its setter) is also declared,
                  or else return -1 and None if this is not the case.
         """
-        i = -1
-        c = None
+        ret_index = -1
+        ret_contract = None
         if isinstance(self._impl_address_variable, StateVariable):
             delegate = self._impl_address_variable
             setter = self.contract.proxy_implementation_setter
             if setter is not None and setter.contract != self.contract:
-                c = setter.contract
+                ret_contract = setter.contract
                 for idx, var in enumerate(self.contract.state_variables_ordered):
                     if var == delegate:
                         index = idx
                         break
-                if index >= 0 and len(c.state_variables_ordered) >= index + 1:
-                    var = c.state_variables_ordered[index]
+                if index >= 0 and len(ret_contract.state_variables_ordered) >= index + 1:
+                    var = ret_contract.state_variables_ordered[index]
                     if var is not None:
                         if var.name == delegate.name and var.type == delegate.type:
-                            i = index
-        return i, c
+                            ret_index = index
+        return ret_index, ret_contract
 
     def find_slot_in_setter_asm(self) -> Optional[str]:
         slot = None
@@ -340,17 +340,17 @@ class ProxyFeatureExtraction:
         :return: False if any other external/public function is found, or if the
                  fallback function is missing, otherwise True
         """
-        i = 0
+        is_true = False
         for function in self.contract.functions:
             if function.is_fallback:
                 print(f"Found {function.name}")
-                i += 1
+                is_true = True
             elif function.visibility in ["external", "public"]:
                 print(f"Found {function.visibility} function: {function.name}")
                 if function.is_receive or function.is_constructor:
                     continue
                 return False
-        return i == 1
+        return is_true
 
     def external_functions_require_specific_sender(self) -> (bool, str):
         """
@@ -542,7 +542,7 @@ class ProxyFeatureExtraction:
         print(f"impl_address_from_contract_call: {e}")
         ret_exp = None
         c_type = None
-        b = False
+        is_cross_contract = False
         if isinstance(delegate, StateVariable) and delegate.contract != self.contract:
             """
             This indicates that cross-contract analysis during the initial execution of
@@ -623,17 +623,17 @@ class ProxyFeatureExtraction:
                         ret_exp = exp
                 if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
                                                                       Contract) and c_type.type != self:
-                    b = True
+                    is_cross_contract = True
                     if c_type.type.is_interface:
                         for c in self.compilation_unit.contracts:
                             if c_type.type in c.inheritance:
                                 c_type = UserDefinedType(c)
                 elif str(c_type) == "address":
-                    b = True
+                    is_cross_contract = True
                     getter = self.contract.proxy_implementation_getter
                     if getter is not None and getter.contract != self.contract:
                         c_type = UserDefinedType(getter.contract)
-        return b, ret_exp, c_type
+        return is_cross_contract, ret_exp, c_type
 
     def find_registry_address_source(self, call: CallExpression) -> Optional[Variable]:
         """

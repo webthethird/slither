@@ -235,8 +235,8 @@ or one of the proxy patterns developed by OpenZeppelin.
         results = []
         proxy = proxy_features.contract
         delegate = proxy_features.impl_address_variable
-        b, exp, t = proxy_features.impl_address_from_contract_call()
-        if b:
+        is_cross_contract, call_exp, contract_type = proxy_features.impl_address_from_contract_call()
+        if is_cross_contract:
             """
             b is a boolean returned by proxy_features.impl_address_from_contract_call()
             which indicates whether or not a cross contract call was found.
@@ -245,23 +245,23 @@ or one of the proxy patterns developed by OpenZeppelin.
             info = [
                 delegate,
                 " value is retrieved from a function call to another contract: ",
-                str(exp),
+                str(call_exp),
                 "\n"
             ]
             json = self.generate_result(info)
             results.append(json)
-            if isinstance(exp, CallExpression) and isinstance(t, UserDefinedType):
+            if isinstance(call_exp, CallExpression) and isinstance(contract_type, UserDefinedType):
                 """
                 We use the presence or absence of arguments in the CallExpression
                 to classify the contract as a Registry or a Beacon.
                 A Beacon should have no arguments, while a Registry should have at least one.
                 """
-                if len(exp.arguments) > 0 and str(exp.arguments[0]) != "":
+                if len(call_exp.arguments) > 0 and str(call_exp.arguments[0]) != "":
                     rorb = "Registry"
                 else:
                     rorb = "Beacon"
                 info = [
-                    t.type,
+                    contract_type.type,
                     f" appears to serve as a {rorb} contract for the proxy ",
                     proxy.name,
                     "\n"
@@ -272,12 +272,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Check where the Registry/Beacon address comes from, 
                 i.e. from a storage slot or a state variable
                 """
-                source = proxy_features.find_registry_address_source(exp)
+                source = proxy_features.find_registry_address_source(call_exp)
                 if source is not None:
                     if source.is_constant and str(source.type) == "bytes32":
                         info = [
                             "The address of ",
-                            t.type,
+                            contract_type.type,
                             " appears to be loaded from the storage slot ",
                             source,
                             " which is ",
@@ -287,7 +287,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     elif isinstance(source, StateVariable):
                         info = [
                             "The address of ",
-                            t.type,
+                            contract_type.type,
                             " appears to be stored as a state variable: ",
                             source,
                             "\n"
