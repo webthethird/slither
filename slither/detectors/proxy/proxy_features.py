@@ -214,12 +214,12 @@ class ProxyFeatureExtraction:
         initial execution of Contract.is_upgradeable_proxy().
         Commented out for now to ensure the rest of the code here works without it.
         """
-        # slot = self.contract.proxy_impl_storage_offset
-        # if slot is not None:
-        #     if len(slot.name) == 66 and slot.name.startswith("0x"):
-        #         return slot.name
-        #     else:
-        #         return str(slot.expression)
+        slot = self.contract.proxy_impl_storage_offset
+        if slot is not None:
+            if len(slot.name) == 66 and slot.name.startswith("0x"):
+                return slot.name
+            else:
+                return str(slot.expression)
         if delegate.expression is not None:
             """
             Means the variable was assigned a value when it was first declared. 
@@ -267,7 +267,10 @@ class ProxyFeatureExtraction:
             In this case we must search for where it was assigned a value. 
             """
             print(f"Expression for {delegate} is None")
-            for node in fallback.all_nodes():
+            func = self.contract.proxy_implementation_getter
+            if func is None:
+                func = fallback
+            for node in func.all_nodes():
                 if node.type == NodeType.VARIABLE:
                     if node.variable_declaration != delegate:
                         continue
