@@ -43,24 +43,12 @@ class ProxyFeatureExtraction:
         self._is_admin_only_proxy: Optional[bool] = None
         self._impl_address_variable: Optional["Variable"] = contract.delegate_variable
         self._impl_address_location: Optional["Contract"] = None
-        self._proxy_impl_setter: Optional["Function"] = None
-        self._proxy_impl_getter: Optional["Function"] = None
-        self._proxy_impl_slot: Optional["Variable"] = None
-        self._proxy_storage_slots: Optional[List["Variable"]] = None
-        self._proxy_storage_contract: Optional["Contract"] = None
-        self._proxy_registry_contract: Optional["Contract"] = None
-        self._proxy_admin_contract: Optional["Contract"] = None
-        self._has_multiple_implementations: Optional[bool] = None
-        self._is_storage_inherited: Optional[bool] = None
-        self._is_storage_eternal: Optional[bool] = None
-        self._is_storage_unstructured: Optional[bool] = None
 
     ###################################################################################
     ###################################################################################
     # region general properties
     ###################################################################################
     ###################################################################################
-
 
     @property
     def is_proxy(self) -> bool:
