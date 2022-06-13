@@ -28,6 +28,7 @@ from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType, Type
 from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
+import slither.analyses.data_dependency.data_dependency as dataDependency
 
 
 class ProxyFeatureExtraction:
@@ -212,6 +213,14 @@ class ProxyFeatureExtraction:
         fallback = self.contract.fallback_function
         delegate = self.contract.delegate_variable
         slot = None
+        """
+        Use slither.analysis.data_dependency to expedite analysis if possible.
+        """
+        for sv in self.contract.state_variables:
+            if dataDependency.is_dependent(delegate, sv, self.contract):
+                print(f"{delegate} is dependent on {sv}")
+                if str(sv.type) == "bytes32" and sv.is_constant:
+                    return str(sv.expression)
         """
         Uncomment the lines below to check if the slot was found during the 
         initial execution of Contract.is_upgradeable_proxy().
