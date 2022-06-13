@@ -1300,8 +1300,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if delegate_contract in c.inheritance and c != self and self not in c.inheritance:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
                                                                                        print_debug)
-                                self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                       None, print_debug)
+                                if self._proxy_impl_setter is None:
+                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                           None, print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
                                     self._is_upgradeable_proxy_confirmed = True
@@ -1332,9 +1333,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if var is not None:
                                     if print_debug: print(f"Found {var} at slot {index} in contract {c}"
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                    if var.name == self._delegate_variable.name and var.type == self._delegate_variable.type:
+                                    if var.name == self._delegate_variable.name and \
+                                            var.type == self._delegate_variable.type:
                                         self._proxy_impl_getter = self.find_getter_in_contract(c, var, print_debug)
-                                        self._proxy_impl_setter = self.find_setter_in_contract(c, var,None, print_debug)
+                                        if self._proxy_impl_setter is None:
+                                            self._proxy_impl_setter = self.find_setter_in_contract(c, var,
+                                                                                                   None, print_debug)
                                         if self._proxy_impl_setter is not None:
                                             self._is_upgradeable_proxy = True
                                             self._is_upgradeable_proxy_confirmed = True
@@ -1346,9 +1350,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if c != self and self not in c.inheritance:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
                                                                                        print_debug)
-                                self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                       self._proxy_impl_slot,
-                                                                                       print_debug)
+                                if self._proxy_impl_setter is None:
+                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                           self._proxy_impl_slot,
+                                                                                           print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
                                     self._is_upgradeable_proxy_confirmed = True
