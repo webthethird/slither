@@ -2897,12 +2897,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         setter = None
-        exp = (var_to_set.expression if isinstance(var_to_set, Variable) else None)
+        var_exp = (var_to_set.expression if isinstance(var_to_set, Variable) else None)
         if print_debug:
             print(f"\nBegin {contract.name}.find_setter_in_contract"
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-            if exp is not None:
-                print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
+            if var_exp is not None:
+                print(f"Expression: {var_exp} (Slither line:{getframeinfo(currentframe()).lineno})")
         for f in contract.functions:
             if setter is not None:
                 break
@@ -2984,14 +2984,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             l = exp.expression_left
                             if print_debug: print(f"is an Assignment Operation"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if var_to_set.expression is not None:
-                                vexp = var_to_set.expression
-                                if print_debug: print(vexp)
-                                if vexp == l or str(vexp) == str(l):    # Expression.__eq__() not implemented
+                            if var_exp is not None:
+                                if print_debug: print(var_exp)
+                                if var_exp == l or str(var_exp) == str(l):    # Expression.__eq__() not implemented
                                     setter = f
                                     break
-                                elif isinstance(l, IndexAccess) and isinstance(vexp, IndexAccess):
-                                    if l.expression_left == vexp.expression_left:
+                                elif isinstance(l, IndexAccess) and isinstance(var_exp, IndexAccess):
+                                    if l.expression_left == var_exp.expression_left:
                                         setter = f
                                         break
                             elif isinstance(l, IndexAccess):
