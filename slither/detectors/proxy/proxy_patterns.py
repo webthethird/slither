@@ -145,7 +145,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info = [
                                 delegate,
                                 " is declared as part of a user-defined structure: ",
-                                struct, "\n"
+                                struct,
+                                " which is consistent with the Diamond Storage pattern but not EIP-2535\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -186,59 +187,57 @@ or one of the proxy patterns developed by OpenZeppelin.
             print(f"slot is not None: {slot}")
             info = [
                 proxy,
-                " appears to use Unstructured Storage\n"
+                " uses Unstructured Storage\n"
             ]
             json = self.generate_result(info)
             results.append(json)
             setter = proxy_features.contract.proxy_implementation_setter
-            if isinstance(setter, ChildContract):
-                print(f"Setter found in contract {setter.contract}")
-                if setter.contract == proxy or setter.contract in proxy.inheritance:
-                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-                        print("EIP-1967")
-                        info = [
-                            proxy,
-                            " implements EIP-1967: Standard Proxy Storage Slots\n"
-                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
-                    else:
-                        info = [
-                            proxy,
-                            " looks like an early implementation of unstructured storage (i.e. ZeppelinOS) "
-                            "Using slot: ",
-                            slot, "\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
-                elif setter.contract != proxy and proxy_features.proxy_only_contains_fallback():
-                    if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-                        info = [
-                            proxy,
-                            " implements EIP-1822 using the standard storage slot defined by ERC-1967: "
-                            "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
-                            "(OpenZeppelin UUPS implementation)\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
+            print(f"Setter found in contract {setter.contract}")
+            if setter.contract == proxy or setter.contract in proxy.inheritance:
+                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                    info = [
+                        proxy,
+                        " implements EIP-1967: Standard Proxy Storage Slots\n"
+                        "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
+                else:
+                    info = [
+                        proxy,
+                        " looks like an early implementation of unstructured storage (i.e. ZeppelinOS)"
+                        " using slot: ",
+                        slot, "\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
+            elif setter.contract != proxy and proxy_features.proxy_only_contains_fallback():
+                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                    info = [
+                        proxy,
+                        " implements EIP-1822 using the standard storage slot defined by ERC-1967: "
+                        "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
+                        "(OpenZeppelin UUPS implementation)\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
 
-                    elif slot == "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7":
-                        info = [
-                            proxy,
-                            " implements EIP-1822 (UUPS) with the storage slot = keccak256('PROXIABLE')\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
-                    else:
-                        info = [
-                            proxy,
-                            " looks like an early implementation of unstructured storage (i.e. ZeppelinOS) "
-                            "Using slot: ",
-                            slot, "\n"
-                        ]
-                        json = self.generate_result(info)
-                        results.append(json)
+                elif slot == "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7":
+                    info = [
+                        proxy,
+                        " implements EIP-1822 (UUPS) with the storage slot = keccak256('PROXIABLE')\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
+                else:
+                    info = [
+                        proxy,
+                        " looks like an early implementation of unstructured storage (i.e. ZeppelinOS) "
+                        "Using slot: ",
+                        slot, "\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
         return results
 
     def detect_cross_contract_call(self, proxy_features: ProxyFeatureExtraction):
@@ -305,7 +304,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         if source.is_constant:
                             info += [
                                 source.name,
-                                f" is constant and so the {rorb} address cannot be upgraded.\n"
+                                f" is constant, so the {rorb} address cannot be upgraded.\n"
                             ]
                     json = self.generate_result(info)
                     results.append(json)
@@ -320,8 +319,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 delegate = proxy_features.impl_address_variable
                 info = [proxy, " appears to ",
                         "maybe " if not proxy_features.is_upgradeable_proxy_confirmed else "",
-                        "be an upgradeable proxy contract.\nIt delegates to a variable of type ",
-                        f"{delegate.type} called {delegate.name}.\n"]
+                        "be an upgradeable proxy contract.\n"]
                 json = self.generate_result(info)
                 results.append(json)
                 """
@@ -624,10 +622,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 if is_transparent:
                     info = [
                         proxy,
-                        " uses the Transparent Proxy pattern, making all external functions"
-                        " (other than fallback and receive) callable only by ",
-                        admin_str if admin_str is not None else "an admin address",
-                        " and restricting that address from calling the fallback/receive functions.\n"
+                        " uses the Transparent Proxy pattern\n"
                     ]
                     json = self.generate_result(info)
                     results.append(json)
