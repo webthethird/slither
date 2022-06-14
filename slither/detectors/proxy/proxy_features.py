@@ -368,155 +368,40 @@ class ProxyFeatureExtraction:
                 """
                 Check for msg.sender == comparison in all external functions besides fallback, receive and constructor
                 """
-                if function.visibility in ["external", "public"]:
-                    b = False
-                    has_external_functions = True
-                    print(f"Checking {function.visibility} function {function}")
-                    if len(function.modifiers) > 0:
-                        print(f"{function} has the following modifier(s): "
-                              f"{[m.name for m in function.modifiers]}")
-                        for modifier in function.modifiers:
-                            for node in modifier.nodes:
-                                print(f"{node.type}: {node.expression}")
-                                if node.type == NodeType.EXPRESSION and node.contains_require_or_assert():
-                                    exp = node.expression
-                                    if 'msg.sender ==' in str(exp):
-                                        print(f"Found 'msg.sender' comparison in expression: {exp}")
-                                        if str(exp).startswith("require(bool,string)"):
-                                            if admin_exp is None:
-                                                admin_exp = str(exp).split("==")[1].split(",")[0].replace(" ", "")
-                                                b = True
-                                            elif str(exp).split("==")[1].split(",")[0].replace(" ", "") == admin_exp:
-                                                b = True
-                                            print(admin_exp)
-                                        elif str(exp).startswith("require(bool)") or str(exp).startswith("assert(bool"):
-                                            if admin_exp is None:
-                                                admin_exp = str(exp).split("==")[1].replace("))", ")").replace(" ", "")
-                                                b = True
-                                            elif str(exp).split("==")[1].replace("))", ")").replace(" ", "")==admin_exp:
-                                                b = True
-                                            print(admin_exp)
-                                elif node.type == NodeType.IF:
-                                    exp = node.expression
-                                    if 'msg.sender' in str(exp):
-                                        print(f"Found 'msg.sender' in expression: {exp}")
-                                        if isinstance(exp, BinaryOperation) and str(exp.type) == "==":
-                                            if str(exp.expression_left) == "msg.sender":
-                                                if admin_exp is None:
-                                                    admin_exp = str(exp.expression_right)
-                                                    b = True
-                                                elif str(exp.expression_right) == admin_exp:
-                                                    b = True
-                                                print(admin_exp)
-                    else:
-                        for node in function.all_nodes():
-                            if node.type == NodeType.EXPRESSION and node.contains_require_or_assert():
-                                exp = node.expression
-                                if 'msg.sender ==' in str(exp):
-                                    print(f"Found 'msg.sender' comparison in expression: {exp}")
-                                    if str(exp).startswith("require(bool,string)"):
-                                        if admin_exp is None:
-                                            admin_exp = str(exp).split("==")[1].split(",")[0].replace(" ", "")
-                                            b = True
-                                        elif str(exp).split("==")[1].split(",")[0].replace(" ", "") == admin_exp:
-                                            b = True
-                                        print(admin_exp)
-                                    elif str(exp).startswith("require(bool)") or str(exp).startswith("assert(bool"):
-                                        if admin_exp is None:
-                                            admin_exp = str(exp).split("==")[1].replace("))", ")").replace(" ", "")
-                                            b = True
-                                        elif str(exp).split("==")[1].replace("))", ")").replace(" ", "") == admin_exp:
-                                            b = True
-                                        print(admin_exp)
-                            elif node.type == NodeType.IF:
-                                exp = node.expression
-                                if 'msg.sender' in str(exp):
-                                    print(f"Found 'msg.sender' in expression: {exp}")
-                                    if isinstance(exp, BinaryOperation) and str(exp.type) == "==":
-                                        if str(exp.expression_left) == "msg.sender":
-                                            if admin_exp is None:
-                                                admin_exp = str(exp.expression_right)
-                                                b = True
-                                            elif str(exp.expression_right) == admin_exp:
-                                                b = True
-                                            print(admin_exp)
-                    checks.append(b)
+                comparator = "=="
             elif not function.is_constructor:
-                """
-                Check for msg.sender != comparison in fallback and receive
-                """
-                if function.visibility in ["external", "public"]:
-                    b = False
-                    print(f"Checking {function.visibility} function {function}")
-                    if len(function.modifiers) > 0:
-                        print(f"{function} has the following modifier(s): "
-                              f"{[m.name for m in function.modifiers]}")
-                        for modifier in function.modifiers:
-                            for node in modifier.nodes:
-                                print(f"{node.type}: {node.expression}")
-                                if node.type == NodeType.EXPRESSION and node.contains_require_or_assert():
-                                    exp = node.expression
-                                    if 'msg.sender !=' in str(exp):
-                                        print(f"Found 'msg.sender' comparison in expression: {exp}")
-                                        if str(exp).startswith("require(bool,string)"):
-                                            if admin_exp is None:
-                                                admin_exp = str(exp).split("!=")[1].split(",")[0].replace(" ", "")
-                                                b = True
-                                            elif str(exp).split("!=")[1].split(",")[0].replace(" ", "") == admin_exp:
-                                                b = True
-                                            print(admin_exp)
-                                        elif str(exp).startswith("require(bool)") or str(exp).startswith("assert(bool"):
-                                            if admin_exp is None:
-                                                admin_exp = str(exp).split("!=")[1].replace("))", ")").replace(" ", "")
-                                                b = True
-                                            elif str(exp).split("!=")[1].replace("))", ")").replace(" ",
-                                                                                                    "") == admin_exp:
-                                                b = True
-                                            print(admin_exp)
-                                elif node.type == NodeType.IF:
-                                    exp = node.expression
-                                    if 'msg.sender' in str(exp):
-                                        print(f"Found 'msg.sender' in expression: {exp}")
-                                        if isinstance(exp, BinaryOperation) and str(exp.type) == "!=":
-                                            if str(exp.expression_left) == "msg.sender":
-                                                if admin_exp is None:
-                                                    admin_exp = str(exp.expression_right)
-                                                    b = True
-                                                elif str(exp.expression_right) == admin_exp:
-                                                    b = True
-                                                print(admin_exp)
-                    else:
-                        for node in function.all_nodes():
-                            if node.type == NodeType.EXPRESSION and node.contains_require_or_assert():
-                                exp = node.expression
-                                if 'msg.sender !=' in str(exp):
-                                    print(f"Found 'msg.sender' comparison in expression: {exp}")
-                                    if str(exp).startswith("require(bool,string)"):
-                                        if admin_exp is None:
-                                            admin_exp = str(exp).split("!=")[1].split(",")[0].replace(" ", "")
-                                            b = True
-                                        elif str(exp).split("!=")[1].split(",")[0].replace(" ", "") == admin_exp:
-                                            b = True
-                                        print(admin_exp)
-                                    elif str(exp).startswith("require(bool)") or str(exp).startswith("assert(bool"):
-                                        if admin_exp is None:
-                                            admin_exp = str(exp).split("!=")[1].replace("))", ")").replace(" ", "")
-                                            b = True
-                                        elif str(exp).split("!=")[1].replace("))", ")").replace(" ", "") == admin_exp:
-                                            b = True
-                                        print(admin_exp)
-                            elif node.type == NodeType.IF:
-                                exp = node.expression
-                                if 'msg.sender' in str(exp):
-                                    print(f"Found 'msg.sender' in expression: {exp}")
-                                    if isinstance(exp, BinaryOperation) and str(exp.type) == "!=":
-                                        if str(exp.expression_left) == "msg.sender":
-                                            if admin_exp is None:
-                                                admin_exp = str(exp.expression_right)
-                                                b = True
-                                            elif str(exp.expression_right) == admin_exp:
-                                                b = True
-                                            print(admin_exp)
+                comparator = "!="
+            else:
+                continue
+            if function.visibility in ["external", "public"]:
+                check = False
+                has_external_functions = True
+                print(f"Checking {function.visibility} function {function}")
+                func_list = [function]
+                if len(function.modifiers) > 0:
+                    for modifier in function.modifiers:
+                        if isinstance(modifier, FunctionContract):
+                            func_list.append(modifier)
+                    print(f"{function} has the following modifier(s): "
+                          f"{[m.name for m in function.modifiers]}")
+                for func in func_list:
+                    for exp in func.all_expressions():
+                        if ('msg.sender ' + comparator) in str(exp):
+                            print(f"Found 'msg.sender {comparator}' in expression: {exp}")
+                        if "require" in str(exp) or "assert" in str(exp):
+                            if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
+                                exp = exp.arguments[0]
+                        if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
+                            if str(exp.expression_left) == "msg.sender":
+                                if admin_exp is None:
+                                    admin_exp = str(exp.expression_right)
+                                    check = True
+                                    break
+                                elif str(exp.expression_right) == admin_exp:
+                                    check = True
+                                    break
+                                print(admin_exp)
+                checks.append(check)
         return (all(checks) and has_external_functions), admin_exp
 
     def impl_address_from_contract_call(self) -> (bool, Optional[Expression], Optional[Type]):
