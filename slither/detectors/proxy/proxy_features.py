@@ -377,30 +377,22 @@ class ProxyFeatureExtraction:
                 check = False
                 has_external_functions = True
                 print(f"Checking {function.visibility} function {function}")
-                func_list = [function]
-                if len(function.modifiers) > 0:
-                    for modifier in function.modifiers:
-                        if isinstance(modifier, FunctionContract):
-                            func_list.append(modifier)
-                    print(f"{function} has the following modifier(s): "
-                          f"{[m.name for m in function.modifiers]}")
-                for func in func_list:
-                    for exp in func.all_expressions():
-                        if ('msg.sender ' + comparator) in str(exp):
-                            print(f"Found 'msg.sender {comparator}' in expression: {exp}")
-                        if "require" in str(exp) or "assert" in str(exp):
-                            if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
-                                exp = exp.arguments[0]
-                        if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
-                            if str(exp.expression_left) == "msg.sender":
-                                if admin_exp is None:
-                                    admin_exp = str(exp.expression_right)
-                                    check = True
-                                    break
-                                elif str(exp.expression_right) == admin_exp:
-                                    check = True
-                                    break
-                                print(admin_exp)
+                for exp in function.all_expressions():
+                    if ('msg.sender ' + comparator) in str(exp):
+                        print(f"Found 'msg.sender {comparator}' in expression: {exp}")
+                    if "require" in str(exp) or "assert" in str(exp):
+                        if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
+                            exp = exp.arguments[0]
+                    if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
+                        if str(exp.expression_left) == "msg.sender":
+                            if admin_exp is None:
+                                admin_exp = str(exp.expression_right)
+                                check = True
+                                break
+                            elif str(exp.expression_right) == admin_exp:
+                                check = True
+                                break
+                            print(admin_exp)
                 checks.append(check)
         return (all(checks) and has_external_functions), admin_exp
 
