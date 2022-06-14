@@ -28,6 +28,7 @@ from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType, Type
 from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
+from slither.utils.function import get_function_id
 import slither.analyses.data_dependency.data_dependency as dataDependency
 
 
@@ -685,6 +686,38 @@ class ProxyFeatureExtraction:
                     loupe_sigs.remove(f.signature_str)
                     loupe_facets.append((f.signature_str, c))
         return loupe_facets
+
+    def is_diamond_upgradeable(self) -> bool:
+        """
+        For EIP-2535 Diamonds, determine if a function for adding/removing/updating
+        function implementations is added in the constructor, making it upgradeable.
+
+        """
+        is_diamond_upgradeable = False
+        delegate = self._impl_address_variable
+        if delegate.expression is None:
+            return is_diamond_upgradeable
+        else:
+            d_exp = delegate.expression
+            if not isinstance(d_exp, MemberAccess) or not isinstance(d_exp.expression, IndexAccess):
+                return is_diamond_upgradeable
+        setter = self.contract.proxy_implementation_setter
+        constructor = self.contract.constructor
+        if setter is not None:
+            setter_sig = get_function_id(setter.signature_str)
+            for exp in constructor.calls_as_expressions:
+                if isinstance(exp, CallExpression):
+                    called = exp.called
+                    if isinstance(called, MemberAccess):
+                        accessed = called.expression
+                        if isinstance(accessed, Identifier) and isinstance(accessed.value, Contract):
+                            """
+                            Figure out what to do here.
+                            Might also need to fix Diamond corner case handling in
+                            Contract.find_setter_in_contract, since it specifically
+                            looks for call to 'diamondCut' in the constructor, but 
+                            """
+        return is_diamond_upgradeable
 
     # endregion
     ###################################################################################
