@@ -210,9 +210,8 @@ class ProxyFeatureExtraction:
                 if str(sv.type) == "bytes32" and sv.is_constant:
                     return str(sv.expression)
         """
-        Uncomment the lines below to check if the slot was found during the 
-        initial execution of Contract.is_upgradeable_proxy().
-        Commented out for now to ensure the rest of the code here works without it.
+        Check if the slot was found during the initial execution of Contract.is_upgradeable_proxy().
+        Comment out to ensure the rest of the code here works without it.
         """
         slot = self.contract.proxy_impl_storage_offset
         if slot is not None:
