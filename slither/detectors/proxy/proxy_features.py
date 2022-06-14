@@ -226,7 +226,7 @@ class ProxyFeatureExtraction:
             exp = delegate.expression
             print(f"Expression for {delegate}: {exp}")
             if isinstance(exp, Identifier):
-                v = exp.value
+                v = self.unwrap_identifiers(exp)
                 if v.expression is not None:
                     exp = v.expression
                 else:
@@ -242,19 +242,15 @@ class ProxyFeatureExtraction:
                     if len(str(arg)) == 66 and str(arg).startswith("0x"):
                         return str(arg)
                     elif isinstance(arg, Identifier):
-                        v = arg.value
+                        v = self.unwrap_identifiers(arg)
                         if v.expression is not None:
                             exp = v.expression
-                            if isinstance(exp, Identifier):
-                                if exp.value.is_constant:
-                                    return str(exp.value.expression)
-                                else:
-                                    if str(exp.value.type) == "bytes32":
-                                        return str(exp.value)
-                            else:
-                                print(f"{exp} is not an Identifier")
-                                if isinstance(exp, Literal):
-                                    return str(exp)
+                            if v.is_constant:
+                                return str(v.expression)
+                            elif str(v.type) == "bytes32":
+                                return str(v)
+                            elif isinstance(exp, Literal):
+                                return str(exp)
                         else:
                             print(f"{v}.expression is None")
                     else:
@@ -668,6 +664,16 @@ class ProxyFeatureExtraction:
     # region Static methods
     ###################################################################################
     ###################################################################################
+
+    @staticmethod
+    def unwrap_identifiers(
+            exp: Expression
+    ) -> Optional[Variable]:
+        ret_val = None
+        while isinstance(exp, Identifier):
+            ret_val = exp.value
+            exp = ret_val.expression
+        return ret_val
 
     @staticmethod
     def find_slot_string_from_assert(
