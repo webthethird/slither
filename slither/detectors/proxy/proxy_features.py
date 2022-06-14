@@ -362,24 +362,44 @@ class ProxyFeatureExtraction:
         for function in self.contract.functions:
             if not function.is_fallback and not function.is_constructor and not function.is_receive:
                 """
-                Check for msg.sender == comparison in all external functions besides fallback, receive and constructor
+                Check for 'msg.sender ==' comparison in all external/public functions 
+                besides fallback, receive and constructor
                 """
                 comparator = "=="
             elif not function.is_constructor:
+                """
+                Check for 'msg.sender !=' comparison in fallback and receive functions
+                """
                 comparator = "!="
             else:
+                """
+                Skip the constructor
+                """
                 continue
             if function.visibility in ["external", "public"]:
                 check = False
                 has_external_functions = True
                 print(f"Checking {function.visibility} function {function}")
                 for exp in function.all_expressions():
+                    """
+                    function.all_expressions() is a recursive getter which includes
+                    expressions from all functions/modifiers called in given function.
+                    """
                     if ('msg.sender ' + comparator) in str(exp):
                         print(f"Found 'msg.sender {comparator}' in expression: {exp}")
                     if "require" in str(exp) or "assert" in str(exp):
+                        """
+                        'require' and 'assert' are Solidity functions which always
+                        take a boolean expression as the first argument.
+                        """
                         if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
                             exp = exp.arguments[0]
                     if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
+                        """
+                        For this method to return true, we must find a comparison expression,
+                        i.e., a BinaryOperation, with 'msg.sender' on one side and the
+                        admin_exp on the other side, where admin_exp must be the same in all.
+                        """
                         if str(exp.expression_left) == "msg.sender":
                             if admin_exp is None:
                                 admin_exp = str(exp.expression_right)
