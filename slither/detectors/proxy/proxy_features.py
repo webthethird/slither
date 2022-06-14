@@ -394,6 +394,9 @@ class ProxyFeatureExtraction:
                         """
                         if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
                             exp = exp.arguments[0]
+                    if isinstance(exp, Identifier):
+                        value = self.unwrap_identifiers(exp)
+                        exp = value.expression
                     if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
                         """
                         For this method to return true, we must find a comparison expression,
@@ -401,14 +404,19 @@ class ProxyFeatureExtraction:
                         admin_exp on the other side, where admin_exp must be the same in all.
                         """
                         if str(exp.expression_left) == "msg.sender":
-                            if admin_exp is None:
-                                admin_exp = str(exp.expression_right)
-                                check = True
-                                break
-                            elif str(exp.expression_right) == admin_exp:
-                                check = True
-                                break
-                            print(admin_exp)
+                            exp = exp.expression_right
+                        elif str(exp.expression_right) == "msg.sender":
+                            exp = exp.expression_left
+                        else:
+                            continue
+                        if admin_exp is None:
+                            admin_exp = str(exp)
+                            check = True
+                            break
+                        elif str(exp) == admin_exp:
+                            check = True
+                            break
+                        print(admin_exp)
                 checks.append(check)
         return (all(checks) and has_external_functions), admin_exp
 
