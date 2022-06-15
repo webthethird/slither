@@ -191,8 +191,14 @@ or one of the proxy patterns developed by OpenZeppelin.
             ]
             json = self.generate_result(info)
             results.append(json)
-            setter = proxy_features.contract.proxy_implementation_setter
-            print(f"Setter found in contract {setter.contract}")
+            setter = proxy.proxy_implementation_setter
+            if setter is None:
+                """
+                Use the getter instead
+                """
+                setter = proxy.proxy_implementation_getter
+            else:
+                print(f"Setter found in contract {setter.contract}")
             if setter.contract == proxy or setter.contract in proxy.inheritance:
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                     info = [
