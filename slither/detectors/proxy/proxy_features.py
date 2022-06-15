@@ -670,7 +670,7 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
-    def has_compatability_checks(self) -> bool:
+    def has_compatibility_checks(self) -> bool:
         has_checks = False
         delegate = self.impl_address_variable
         setters = self.functions_writing_to_delegate(delegate)
@@ -689,7 +689,6 @@ class ProxyFeatureExtraction:
         setters = []
         slot = self.contract.proxy_impl_storage_offset
         for func in self.contract.functions:
-            print(f"functions_writing_to_variable: checking function {func}")
             if func.is_writing(delegate) and delegate not in func.returns:
                 setters.append(func)
                 print(f"functions_writing_to_variable: {func} writes to {delegate}")
