@@ -445,6 +445,7 @@ class ProxyFeatureExtraction:
         c_type = None
         is_cross_contract = False
         if isinstance(delegate, StateVariable) and delegate.contract != self.contract:
+            print(f"impl_address_from_contract_call: StateVariable {delegate}")
             """
             This indicates that cross-contract analysis during the initial execution of
             contract.is_upgradeable_proxy() was able to identify the variable which is
@@ -452,11 +453,16 @@ class ProxyFeatureExtraction:
             CallExpression which returned this value, we need to re-find it first.
             """
             getter = self.contract.proxy_implementation_getter
+            print(f"impl_address_from_contract_call: getter is {getter}")
             if getter is None and delegate.visibility in ["public", "external"]:
                 getter = delegate
             for node in self.contract.fallback_function.all_nodes():
                 exp = node.expression
+                if isinstance(exp, AssignmentOperation):
+                    exp = exp.expression_right
+                    """Fall through to below"""
                 if isinstance(exp, CallExpression):
+                    print(f"impl_address_from_contract_call: CallExpression {exp}")
                     called = exp.called
                     if isinstance(called, Identifier):
                         f = called.value
@@ -525,7 +531,7 @@ class ProxyFeatureExtraction:
                 if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
                                                                       Contract) and c_type.type != self:
                     is_cross_contract = True
-                    if c_type.type.is_interface:
+                    if c_type.type.is_interface or (getter is not None and c_type.type != getter.contract):
                         for c in self.compilation_unit.contracts:
                             if c_type.type in c.inheritance:
                                 c_type = UserDefinedType(c)
