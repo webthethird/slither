@@ -769,6 +769,3 @@ contract TransparentUpgradeableProxy is ERC1967Proxy {
 
 
 // File contracts/upgradeable/TransparentUpgradeableProxy.sol
-
-
-pragma solidity 0.8.7;
