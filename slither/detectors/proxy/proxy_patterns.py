@@ -536,10 +536,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 delegate,
                                 " which is declared in the contract: ",
                                 proxy_features.impl_address_location,
-                                "\nThe getter is ",
-                                proxy.proxy_implementation_getter,
-                                " and the setter is ",
-                                proxy.proxy_implementation_setter,
                                 "\n"
                             ]
                             json = self.generate_result(info)
