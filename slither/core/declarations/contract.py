@@ -3024,6 +3024,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                         if isinstance(exp, CallExpression):
                             print(exp.called)
+                            # TODO: Remove dependence on function name "diamondCut"
                             if "diamondCut" in str(exp.called):
                                 diamond_cut = exp.arguments[0]
                                 if isinstance(diamond_cut, Identifier) and "DiamondCut" in str(diamond_cut.value.type):
