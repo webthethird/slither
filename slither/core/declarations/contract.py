@@ -2399,7 +2399,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                         delegate: LocalVariable = LocalVariable()
                                         delegate.expression = e
-                                        delegate.set_function(f)
+                                        delegate.set_function(ret_node.function)
                                     if delegate.name is None:
                                         delegate.name = str(e)
                                     if delegate.type is None:
