@@ -670,6 +670,51 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
+    def has_compatability_checks(self) -> bool:
+        has_checks = False
+        delegate = self.impl_address_variable
+        setters = self.functions_writing_to_delegate(delegate)
+
+        return has_checks
+
+    def functions_writing_to_delegate(self, delegate: Variable) -> Optional[List[FunctionContract]]:
+        """
+        Contract.get_functions_writing_to_variable doesn't always work for us,
+        for instance when a function writes to a storage slot in assembly.
+        So this helper method finds all functions writing to the delegate variable.
+
+        :param delegate: The Variable we are interested in
+        :return: List of FunctionContract objects which write to delegate
+        """
+        setters = []
+        slot = self.contract.proxy_impl_storage_offset
+        for func in self.contract.functions:
+            print(f"functions_writing_to_variable: checking function {func}")
+            if func.is_writing(delegate) and delegate not in func.returns:
+                setters.append(func)
+                print(f"functions_writing_to_variable: {func} writes to {delegate}")
+            elif slot is not None and func.is_reading(slot):
+                print(f"functions_writing_to_variable: {func} reads from slot {slot}")
+                for node in func.all_nodes():
+                    if node.type == NodeType.ASSEMBLY:
+                        if "sstore" in str(node.inline_asm):
+                            setters.append(func)
+                            print(f"functions_writing_to_variable: {func} writes to {delegate} via sstore")
+                            break
+                    elif node.type == NodeType.EXPRESSION:
+                        exp = node.expression
+                        if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
+                            setters.append(func)
+                            print(f"functions_writing_to_variable: {func} writes to {delegate}")
+                            break
+            else:
+                for exp in func.all_expressions():
+                    if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
+                        setters.append(func)
+                        print(f"functions_writing_to_variable: {func} writes to {delegate}")
+                        break
+        return setters
+
     def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
         """
         For EIP-2535 Diamonds, determine if all four Loupe functions are
