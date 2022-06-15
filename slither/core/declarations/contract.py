@@ -2253,7 +2253,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     interface = None
                     if print_debug: print(f"{member_name} is a member of the contract type: {contract.name}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    if contract.is_interface:
+                    if contract.is_interface or not contract.get_function_from_name(member_name).is_implemented:
                         if print_debug: print(f"Which is an interface"
                                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
                         interface = contract
