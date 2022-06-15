@@ -2253,7 +2253,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     interface = None
                     if print_debug: print(f"{member_name} is a member of the contract type: {contract.name}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    if contract.is_interface:
+                    if contract.is_interface or not contract.get_function_from_name(member_name).is_implemented:
                         if print_debug: print(f"Which is an interface"
                                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
                         interface = contract
@@ -2769,6 +2769,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.identifier import Identifier
         from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.call_expression import CallExpression
 
         getter = None
@@ -2820,18 +2821,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             break
                         if n.type == NodeType.RETURN:
                             e = n.expression
-
+                            if isinstance(e, MemberAccess):
+                                e = e.expression
+                                """Fall through to below"""
+                            if isinstance(e, IndexAccess):
+                                if isinstance(exp, IndexAccess):
+                                    if print_debug: print(f"e.expression_left = {e.expression_left}\n"
+                                                          f"exp.expression_left = {exp.expression_left}"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                    if isinstance(e.expression_left, Identifier) and isinstance(exp.expression_left,
+                                                                                                Identifier):
+                                        if e.expression_left.value == exp.expression_left.value:
+                                            getter = f
+                                            break
+                                else:
+                                    e = e.expression_left
+                                    """Fall through to below"""
                             if isinstance(e, Identifier) and e.value == var_to_get:
                                 getter = f
                                 break
-                            elif isinstance(e, IndexAccess) and isinstance(exp, IndexAccess):
-                                if print_debug: print(f"e.expression_left = {e.expression_left}\n"
-                                                      f"exp.expression_left = {exp.expression_left}"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                if isinstance(e.expression_left, Identifier) and isinstance(exp.expression_left, Identifier):
-                                    if e.expression_left.value == exp.expression_left.value:
-                                        getter = f
-                                        break
                         if contract.proxy_impl_storage_offset is not None and f.contains_assembly:
                             slot = contract.proxy_impl_storage_offset
                             if print_debug: print(f"{f.name} contains assembly"

@@ -298,7 +298,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             "The address of ",
                             contract_type.type,
                             " appears to be stored as a state variable: ",
-                            source,
+                            source.canonical_name,
                             "\n"
                         ]
                         if source.is_constant:
@@ -306,6 +306,23 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 source.name,
                                 f" is constant, so the {rorb} address cannot be upgraded.\n"
                             ]
+                        else:
+                            setters = proxy.get_functions_writing_to_variable(source)
+                            if len(setters) > 0:
+                                info += [
+                                    source.name,
+                                    " can be updated by the following function(s): ",
+                                    str([setter.name for setter in setters if not setter.is_constructor]),
+                                    "\n"
+                                ]
+                    else:
+                        info = [
+                            "The address of ",
+                            contract_type.type,
+                            " comes from the value of ",
+                            source,
+                            "\n"
+                        ]
                     json = self.generate_result(info)
                     results.append(json)
         return results
@@ -348,6 +365,23 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             Check if the implementation address setter is in the proxy contract. 
                             """
+                            if proxy.proxy_implementation_setter is not None:
+                                if proxy.proxy_implementation_setter.contract == proxy:
+                                    info = [
+                                        "Implementation setter ",
+                                        proxy.proxy_implementation_setter,
+                                        " was found in the proxy contract.\n"
+                                    ]
+                                else:
+                                    info = [
+                                        "Implementation setter ",
+                                        proxy.proxy_implementation_setter,
+                                        " was found in another contract: ",
+                                        proxy.proxy_implementation_setter.contract,
+                                        "\n"
+                                    ]
+                                json = self.generate_result(info)
+                                results.append(json)
                             """
                             Check if logic contract has same variable declared in same slot, i.e. Singleton/MasterCopy
                             """
@@ -423,16 +457,15 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, mapping)
                             for r in map_results:
                                 results.append(r)
-                        elif len(slot_results) > 0:
+                        if len(slot_results) > 0:
                             for r in slot_results:
                                 results.append(r)
-                        else:
-                            """
-                            Check for call to a different contract in delegate.expression
-                            """
-                            cross_contract_results = self.detect_cross_contract_call(proxy_features)
-                            for r in cross_contract_results:
-                                results.append(r)
+                        """
+                        Check for call to a different contract in delegate.expression
+                        """
+                        cross_contract_results = self.detect_cross_contract_call(proxy_features)
+                        for r in cross_contract_results:
+                            results.append(r)
                     elif isinstance(delegate, StructureVariable):
                         """
                         Check the type of the structure variable, i.e. an address, a mapping, or something else
@@ -463,10 +496,26 @@ or one of the proxy patterns developed by OpenZeppelin.
                             map_results = self.detect_mappings(proxy_features, delegate)
                             for r in map_results:
                                 results.append(r)
+                        else:
+                            info = [
+                                delegate,
+                                " is a local variable of type ",
+                                str(delegate.type),
+                                " which is unexpected!\n"
+                            ]
+                            json = self.generate_result(info)
+                            results.append(json)
                     else:
                         """
                         Should not be reachable, but print a result for debugging
                         """
+                        info = [
+                            delegate,
+                            " is not a StateVariable, a LocalVariable, or a StructureVariable."
+                            " This should not be possible!\n"
+                        ]
+                        json = self.generate_result(info)
+                        results.append(json)
                 else:   # Location of delegate is in a different contract
                     info = [delegate, " was found in a different contract: ",
                             proxy_features.impl_address_location, "\n"]
@@ -487,10 +536,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 delegate,
                                 " which is declared in the contract: ",
                                 proxy_features.impl_address_location,
-                                "\nThe getter is ",
-                                proxy.proxy_implementation_getter,
-                                " and the setter is ",
-                                proxy.proxy_implementation_setter,
                                 "\n"
                             ]
                             json = self.generate_result(info)
@@ -602,7 +647,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info = [
                                 proxy,
                                 " stores implementation address in a variable of type ",
-                                delegate.type,
+                                str(delegate.type),
                                 " declared in a structure in another contract: ",
                                 delegate, "\n"
                             ]
@@ -612,6 +657,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         Should not be reachable, but print a result for debugging
                         """
+                        info = [
+                            delegate,
+                            " is not a StateVariable, a LocalVariable, or a StructureVariable."
+                            " This should not be possible!\n"
+                        ]
+                        json = self.generate_result(info)
+                        results.append(json)
                 """
                 Check if the proxy is transparent, i.e., if all external functions other than
                 the fallback and receive are only callable by a specific address, and whether 
