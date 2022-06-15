@@ -8,7 +8,7 @@ from slither.core.declarations.contract import Contract
 from slither.core.compilation_unit import SlitherCompilationUnit
 from slither.core.declarations.structure import Structure
 from slither.core.declarations.structure_contract import StructureContract
-from slither.core.declarations.solidity_variables import SolidityVariable
+from slither.core.declarations.solidity_variables import SolidityVariable, SolidityFunction
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
@@ -500,6 +500,8 @@ class ProxyFeatureExtraction:
                 if isinstance(f, FunctionContract):
                     e = f.return_node().expression
                     print(f"{called} returns {e}")
+                elif isinstance(f, SolidityFunction):
+                    break
                 else:
                     e = f.expression
             elif isinstance(called, MemberAccess):
