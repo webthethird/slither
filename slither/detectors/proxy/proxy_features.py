@@ -8,6 +8,7 @@ from slither.core.declarations.contract import Contract
 from slither.core.compilation_unit import SlitherCompilationUnit
 from slither.core.declarations.structure import Structure
 from slither.core.declarations.structure_contract import StructureContract
+from slither.core.declarations.solidity_variables import SolidityVariable
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
@@ -397,6 +398,8 @@ class ProxyFeatureExtraction:
                             exp = exp.arguments[0]
                     if isinstance(exp, Identifier):
                         value = self.unwrap_identifiers(exp)
+                        if value is None:
+                            continue
                         exp = value.expression
                     if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
                         """
@@ -693,22 +696,36 @@ class ProxyFeatureExtraction:
                     loupe_facets.append((f.signature_str, c))
         return loupe_facets
 
+    def unwrap_identifiers(
+            self,
+            exp: Expression
+    ) -> Optional[Variable]:
+        ret_val = None
+        while isinstance(exp, Identifier):
+            val = exp.value
+            if isinstance(val, SolidityVariable):
+                """
+                The SolidityVariable class does not inherit Variable, 
+                so we cannot immediately set exp = val.expression.
+                If the name ends with _slot or _offset, it indicates
+                a property of the StateVariable with the same name,
+                minus the suffix. The _ here is like dot notation.
+                (i.e. delegate_slot = the slot where delegate is stored)
+                """
+                if val.name.endswith("_slot") or val.name.endswith("_offset"):
+                    val = self.impl_address_location.get_state_variable_from_name(val.state_variable)
+                else:
+                    return ret_val
+            ret_val = val
+            exp = ret_val.expression
+        return ret_val
+
     # endregion
     ###################################################################################
     ###################################################################################
     # region Static methods
     ###################################################################################
     ###################################################################################
-
-    @staticmethod
-    def unwrap_identifiers(
-            exp: Expression
-    ) -> Optional[Variable]:
-        ret_val = None
-        while isinstance(exp, Identifier):
-            ret_val = exp.value
-            exp = ret_val.expression
-        return ret_val
 
     @staticmethod
     def find_slot_string_from_assert(
