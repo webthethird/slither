@@ -1,6 +1,7 @@
 from abc import ABC
 
 import sha3
+from inspect import currentframe, getframeinfo
 from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
@@ -23,7 +24,8 @@ from slither.core.expressions.literal import Literal
 from slither.core.expressions.call_expression import CallExpression
 from slither.core.expressions.type_conversion import TypeConversion
 from slither.core.expressions.assignment_operation import AssignmentOperation
-from slither.core.expressions.binary_operation import BinaryOperation
+from slither.core.expressions.conditional_expression import ConditionalExpression
+from slither.core.expressions.binary_operation import BinaryOperation, BinaryOperationType
 from slither.core.expressions.member_access import MemberAccess
 from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType, Type
@@ -670,49 +672,257 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
-    def has_compatibility_checks(self) -> bool:
-        has_checks = False
+    def has_compatibility_checks(self) -> (bool, Optional[List[Tuple[FunctionContract, Expression]]]):
+        """
+        For every function that can update the implementation address,
+        determines whether it contains a compatibility check expression.
+
+        Examples of compatibility checks:
+        for ERC-1967, require that the new implementation is a contract:
+            require(OpenZeppelinUpgradesAddress.isContract(newImplementation),
+                           "Cannot set a proxy implementation to a non-contract address");
+        for EIP-1822 (UUPS), require the new implementation uses the correct slot:
+            require(bytes32(0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7)
+                           == Proxiable(newAddress).proxiableUUID(), "Not compatible");
+
+        :return: True if all update functions have checks,
+                 plus a list of each Function and check Expression
+        """
+        all_checks = []
+        func_exp_list = []
         delegate = self.impl_address_variable
         setters = self.functions_writing_to_delegate(delegate)
+        for (setter, var_written) in setters:
+            print(f"has_compatibility_checks: checking function {setter}")
+            check_exp = None
+            has_check = False
+            for exp in setter.all_expressions():
+                """
+                Search each upgrade function's expressions for a condition that will 
+                revert if the new implementation is not compatible with the proxy.
+                """
+                if isinstance(exp, CallExpression):
+                    """
+                    Only CallExpressions we care about are revert, require and assert
+                    """
+                    if str(exp.called).startswith("revert"):
+                        """
+                        I'm not sure how/if we want to handle revert calls yet
+                        """
+                        # print(f"has_compatibility_checks: found {exp}")
+                    elif str(exp.called).startswith("require") or str(exp.called).startswith("assert"):
+                        condition = exp.arguments[0]
+                        if str(var_written) not in str(condition) and not isinstance(condition, Identifier):
+                            """
+                            The boolean result of the condition should depend 
+                            on the new implementation address value
+                            """
+                            continue
+                        else:
+                            if isinstance(condition, Identifier):
+                                print(f"has_compatibility_checks: Identifier {condition}")
+                                if condition.value.expression is not None:
+                                    print(f"has_compatibility_checks: Identifier.value.expression "
+                                          f"{condition.value.expression}")
+                                    condition = condition.value.expression
+                                else:
+                                    for e in setter.all_expressions():
+                                        if isinstance(e, AssignmentOperation) and \
+                                                str(condition) in str(e.expression_left):
+                                            condition = e.expression_right
+                                            break
+                            print(f"has_compatibility_checks: found {exp}")
+                        if isinstance(condition, CallExpression):
+                            """
+                            i.e., OpenZeppelinUpgradesAddress.isContract(newImplementation)
+                            Probably need to search this function for the condition it returns.
+                            What we really want is the BinaryExpression I think.
+                            """
+                            called = condition.called
+                            call_func = None
+                            if isinstance(called, MemberAccess):
+                                member_of = called.expression
+                                if isinstance(member_of, Identifier) and isinstance(member_of.value, Contract):
+                                    call_func = member_of.value.get_function_from_name(called.member_name)
+                                elif isinstance(member_of, Identifier) and member_of.value == var_written:
+                                    check_exp = CallExpression(exp.called,
+                                                               [condition, exp.arguments[1]],
+                                                               exp.type_call)
+                                    has_check = True
+                                    func_exp_list.append((setter, check_exp))
+                            elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract):
+                                call_func = called.value
+                            if isinstance(call_func, FunctionContract) \
+                                    and "bool" in [str(_type) for _type in call_func.return_type]:
+                                if call_func.return_node() is not None:
+                                    ret_exp = call_func.return_node().expression
+                                    if isinstance(ret_exp, Identifier) and ret_exp.value.expression is not None:
+                                        ret_exp = ret_exp.value.expression
+                                    if isinstance(ret_exp, BinaryOperation):
+                                        condition = ret_exp
+                        if isinstance(condition, BinaryOperation):
+                            """
+                            If either side of the BinaryOperation is a local variable, use the
+                            expression assigned to it to replace the variable's Identifier.
+                            i.e., if we have the following:
+                            function isContract(address account) internal view returns (bool) {
+                                uint256 size;
+                                assembly { size := extcodesize(account) }
+                                return size > 0;
+                            }   
+                            then we want the final condition expression to be:
+                                extcodesize(account) > 0
+                            """
+                            left = condition.expression_left
+                            right = condition.expression_right
+                            call_func = (exp.called.value if isinstance(exp.called, Identifier) else None)
+                            if isinstance(left, Identifier):
+                                if left.value.expression is not None:
+                                    condition = BinaryOperation(left.value.expression, right, condition.type)
+                                elif isinstance(left.value, LocalVariable) and isinstance(call_func, FunctionContract):
+                                    for e in call_func.all_expressions():
+                                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(left):
+                                            condition = BinaryOperation(e.expression_right, right, condition.type)
+                            elif isinstance(right, Identifier):
+                                if right.value.expression is not None:
+                                    condition = BinaryOperation(left, right.value.expression, condition.type)
+                                elif isinstance(right.value, LocalVariable) and isinstance(call_func, FunctionContract):
+                                    for e in call_func.all_expressions():
+                                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(right):
+                                            condition = BinaryOperation(left, e.expression_right, condition.type)
+                            print(f"has_compatibility_checks: condition {condition}")
+                            has_check = True
+                            check_exp = exp
+                            func_exp_list.append((setter, check_exp))
+                elif isinstance(exp, ConditionalExpression):
+                    """
+                    Not many examples of compatibility checks that don't use require/assert.
+                    For testing purposes, we might need to craft our own, as in a modifier
+                    similar to ifAdmin() in TransparentUpgradeableProxy.sol
+                    """
+            if check_exp is None:
+                """ Didn't find check in this function """
+                func_exp_list.append((setter, None))
+            all_checks.append(has_check)
+        return all(all_checks), func_exp_list
 
-        return has_checks
-
-    def functions_writing_to_delegate(self, delegate: Variable) -> Optional[List[FunctionContract]]:
+    def functions_writing_to_delegate(
+            self,
+            delegate: Variable
+    ) -> Optional[List[Tuple[FunctionContract, LocalVariable]]]:
         """
         Contract.get_functions_writing_to_variable doesn't always work for us,
         for instance when a function writes to a storage slot in assembly.
         So this helper method finds all functions writing to the delegate variable.
 
         :param delegate: The Variable we are interested in
-        :return: List of FunctionContract objects which write to delegate
+        :return: List of FunctionContract objects and the values they write to delegate
         """
         setters = []
+        setter = self.contract.proxy_implementation_setter
         slot = self.contract.proxy_impl_storage_offset
-        for func in self.contract.functions:
+        to_search = self.contract.functions
+        print(f"functions_writing_to_variable: {delegate}")
+        if setter is not None and setter.contract != self.contract:
+            to_search += setter.contract.functions
+        for func in to_search:
+            if isinstance(delegate, LocalVariable) and delegate.function == func:
+                continue
+            var_to_write = delegate
+            value_written = None
+            # print(f"functions_writing_to_variable: checking function {func}")
             if func.is_writing(delegate) and delegate not in func.returns:
-                setters.append(func)
-                print(f"functions_writing_to_variable: {func} writes to {delegate}")
-            elif slot is not None and func.is_reading(slot):
-                print(f"functions_writing_to_variable: {func} reads from slot {slot}")
+                for exp in func.variables_written_as_expression:
+                    if isinstance(exp, AssignmentOperation):
+                        left = exp.expression_left
+                        right = exp.expression_right
+                        if isinstance(left, Identifier) and left.value == delegate:
+                            value_written = self.get_value_assigned(exp)
+                setters.append([func, value_written])
+                print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                      f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+            elif slot is not None:
                 for node in func.all_nodes():
                     if node.type == NodeType.ASSEMBLY:
-                        if "sstore" in str(node.inline_asm):
-                            setters.append(func)
-                            print(f"functions_writing_to_variable: {func} writes to {delegate} via sstore")
-                            break
+                        if isinstance(node.inline_asm, str) and "sstore" in node.inline_asm:
+                            asm_split = node.inline_asm.split("\n")
+                            if node.function.is_reading(slot) or slot.name in node.inline_asm:
+                                for asm in asm_split:
+                                    if "sstore" in asm:
+                                        val_str = asm.split("sstore")[1].split(",")[1].strip(")").strip()
+                                        value_written = node.function.get_local_variable_from_name(val_str)
+                                        setters.append([func, value_written])
+                                        print(f"functions_writing_to_variable: {func} writes {value_written}"
+                                              f" to {slot} w/ sstore"
+                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                        break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
-                        if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
-                            setters.append(func)
-                            print(f"functions_writing_to_variable: {func} writes to {delegate}")
-                            break
+                        if node.function.is_reading(slot) or slot.name in str(exp):
+                            if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
+                                if "sload" in str(exp.expression_right):
+                                    continue
+                                value_written = self.get_value_assigned(exp)
+                                setters.append([func, value_written])
+                                print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                                      f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                break
+                            elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
+                                value_written = self.get_value_assigned(exp)
+                                setters.append([func, value_written])
+                                print(f"functions_writing_to_variable: {func} writes {value_written} to {slot}"
+                                      f" using sstore (proxy_features line:{getframeinfo(currentframe()).lineno}")
             else:
                 for exp in func.all_expressions():
-                    if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
-                        setters.append(func)
-                        print(f"functions_writing_to_variable: {func} writes to {delegate}")
-                        break
+                    if isinstance(exp, AssignmentOperation):
+                        left = exp.expression_left
+                        if str(left) == delegate.name:
+                            value_written = self.get_value_assigned(exp)
+                            setters.append([func, value_written])
+                            print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                            break
+                        elif delegate.expression is not None:
+                            d_exp = delegate.expression
+                            """
+                            Code below is necessary in some cases, such as when the delegate is a 
+                            LocalVariable with a complicated expression which we were unable to trace
+                            to its source. 
+                            i.e., for Diamonds this is the value of `delegate`:
+                                address facet = ds.selectorToFacetAndPosition[msg.sig].facetAddress;
+                            and this is the expression where it is ultimately set, in LibDiamond.addFunction:
+                                ds.selectorToFacetAndPosition[_selector].facetAddress = _facetAddress;
+                            """
+                            if isinstance(d_exp, MemberAccess) and isinstance(left, MemberAccess) \
+                                    and d_exp.member_name == left.member_name:
+                                member_exp = left
+                                d_exp = d_exp.expression
+                                left = left.expression
+                                if isinstance(d_exp, IndexAccess) and isinstance(left, IndexAccess):
+                                    d_exp = d_exp.expression_left
+                                    left = left.expression_left
+                                    if str(d_exp) == str(left):
+                                        value_written = self.get_value_assigned(exp)
+                                        setters.append([func, value_written])
+                                        print(f"functions_writing_to_variable: {func} writes {value_written}"
+                                              f" to {member_exp}"
+                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                        break
         return setters
+
+    @staticmethod
+    def get_value_assigned(exp: Expression) -> Optional[Variable]:
+        print(f"get_value_assigned: {exp}")
+        value = None
+        id_exp = None
+        if isinstance(exp, AssignmentOperation):
+            id_exp = exp.expression_right
+        elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
+            id_exp = exp.arguments[1]
+        while isinstance(id_exp, Identifier):
+            value = id_exp.value
+            id_exp = value.expression
+        return value
 
     def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
         """

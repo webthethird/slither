@@ -684,6 +684,27 @@ or one of the proxy patterns developed by OpenZeppelin.
                     ]
                     json = self.generate_result(info)
                     results.append(json)
+                """
+                
+                """
+                has_checks, func_exp_list = proxy_features.has_compatibility_checks()
+                info = []
+                if not has_checks:
+                    funcs_missing_check = [func for func, check in func_exp_list if check is None]
+                    for func in funcs_missing_check:
+                        info += [
+                            "Missing compatibility check in ",
+                            func, "\n"
+                        ]
+                else:
+                    info = ["Found the following compatibility checks in all upgrade functions: \n"]
+                    for func, exp in func_exp_list:
+                        info += [
+                            "In ", func, ": ", str(exp), "\n"
+                        ]
+                if len(info) > 0:
+                    json = self.generate_result(info)
+                    results.append(json)
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
