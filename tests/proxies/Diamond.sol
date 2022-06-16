@@ -366,6 +366,17 @@ contract DiamondCutFacet is IDiamondCut {
         LibDiamond.enforceIsContractOwner();
         LibDiamond.diamondCut(_diamondCut, _init, _calldata);
     }
+
+    /// @notice Bad/incorrect method for adding functions w/o calling diamondCut,
+    ///         added here for testing purposes only
+    function badAddFunction(
+        bytes4 _selector,
+        uint96 _selectorPosition,
+        address _facetAddress
+    ) external {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        LibDiamond.addFunction(ds, _selector, _selectorPosition, _facetAddress);
+    }
 }
 
 contract DiamondLoupeFacet is IDiamondLoupe, IERC165 {
