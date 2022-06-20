@@ -4,7 +4,7 @@ import sha3
 from inspect import currentframe, getframeinfo
 from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
-from slither.core.cfg.node import NodeType
+from slither.core.cfg.node import Node, NodeType
 from slither.core.declarations.contract import Contract
 from slither.core.compilation_unit import SlitherCompilationUnit
 from slither.core.declarations.structure import Structure
@@ -677,7 +677,7 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
-    def has_compatibility_checks(self) -> (bool, Optional[List[Tuple[FunctionContract, Expression]]]):
+    def has_compatibility_checks(self) -> (bool, List[Tuple[FunctionContract, Expression]]):
         """
         For every function that can update the implementation address,
         determines whether it contains a compatibility check expression.
@@ -698,7 +698,11 @@ class ProxyFeatureExtraction:
         delegate = self.impl_address_variable
         setters = self.functions_writing_to_delegate(delegate)
         for (setter, var_written) in setters:
-            print(f"has_compatibility_checks: checking function {setter}")
+            if setter.visibility in ["internal", "private"]:
+                print(f"has_compatibility_checks: skipping {setter.visibility} function {setter}")
+                continue
+            else:
+                print(f"has_compatibility_checks: checking {setter.visibility} function {setter}")
             check_exp = None
             has_check = False
             for exp in setter.all_expressions():
@@ -707,104 +711,63 @@ class ProxyFeatureExtraction:
                 revert if the new implementation is not compatible with the proxy.
                 """
                 if isinstance(exp, CallExpression):
-                    """
-                    Only CallExpressions we care about are revert, require and assert
-                    """
-                    if str(exp.called).startswith("revert"):
+                    called = exp.called
+                    if isinstance(called, Identifier):
                         """
-                        I'm not sure how/if we want to handle revert calls yet
+                        For some early versions of Solidity, like 0.4.21, Slither wraps
+                        SolidityFunctions in an Identifier when found in a CallExpression.
+                        i.e., exp.called.value is the SolidityFunction object.
+                        For later versions, exp.called is the SolidityFunction.
                         """
-                        # print(f"has_compatibility_checks: found {exp}")
-                    elif str(exp.called).startswith("require") or str(exp.called).startswith("assert"):
-                        condition = exp.arguments[0]
-                        if str(var_written) not in str(condition) and not isinstance(condition, Identifier):
-                            """
-                            The boolean result of the condition should depend 
-                            on the new implementation address value
-                            """
-                            continue
-                        else:
-                            if isinstance(condition, Identifier):
-                                print(f"has_compatibility_checks: Identifier {condition}")
-                                if condition.value.expression is not None:
-                                    print(f"has_compatibility_checks: Identifier.value.expression "
-                                          f"{condition.value.expression}")
-                                    condition = condition.value.expression
-                                else:
-                                    for e in setter.all_expressions():
-                                        if isinstance(e, AssignmentOperation) and \
-                                                str(condition) in str(e.expression_left):
-                                            condition = e.expression_right
-                                            break
-                            print(f"has_compatibility_checks: found {exp}")
-                        if isinstance(condition, CallExpression):
-                            """
-                            i.e., OpenZeppelinUpgradesAddress.isContract(newImplementation)
-                            Probably need to search this function for the condition it returns.
-                            What we really want is the BinaryExpression I think.
-                            """
-                            called = condition.called
-                            call_func = None
-                            if isinstance(called, MemberAccess):
-                                member_of = called.expression
-                                if isinstance(member_of, Identifier) and isinstance(member_of.value, Contract):
-                                    call_func = member_of.value.get_function_from_name(called.member_name)
-                                elif isinstance(member_of, Identifier) and member_of.value == var_written:
-                                    check_exp = CallExpression(exp.called,
-                                                               [condition, exp.arguments[1]],
-                                                               exp.type_call)
-                                    has_check = True
-                                    func_exp_list.append((setter, check_exp))
-                            elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract):
-                                call_func = called.value
-                            if isinstance(call_func, FunctionContract) \
-                                    and "bool" in [str(_type) for _type in call_func.return_type]:
-                                if call_func.return_node() is not None:
-                                    ret_exp = call_func.return_node().expression
-                                    if isinstance(ret_exp, Identifier) and ret_exp.value.expression is not None:
-                                        ret_exp = ret_exp.value.expression
-                                    if isinstance(ret_exp, BinaryOperation):
-                                        condition = ret_exp
-                        if isinstance(condition, BinaryOperation):
-                            """
-                            If either side of the BinaryOperation is a local variable, use the
-                            expression assigned to it to replace the variable's Identifier.
-                            i.e., if we have the following:
-                            function isContract(address account) internal view returns (bool) {
-                                uint256 size;
-                                assembly { size := extcodesize(account) }
-                                return size > 0;
-                            }   
-                            then we want the final condition expression to be:
-                                extcodesize(account) > 0
-                            """
-                            left = condition.expression_left
-                            right = condition.expression_right
-                            call_func = (exp.called.value if isinstance(exp.called, Identifier) else None)
-                            if isinstance(left, Identifier):
-                                if left.value.expression is not None:
-                                    condition = BinaryOperation(left.value.expression, right, condition.type)
-                                elif isinstance(left.value, LocalVariable) and isinstance(call_func, FunctionContract):
-                                    for e in call_func.all_expressions():
-                                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(left):
-                                            condition = BinaryOperation(e.expression_right, right, condition.type)
-                            elif isinstance(right, Identifier):
-                                if right.value.expression is not None:
-                                    condition = BinaryOperation(left, right.value.expression, condition.type)
-                                elif isinstance(right.value, LocalVariable) and isinstance(call_func, FunctionContract):
-                                    for e in call_func.all_expressions():
-                                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(right):
-                                            condition = BinaryOperation(left, e.expression_right, condition.type)
+                        called = called.value
+                    if isinstance(called, SolidityFunction):
+                        """
+                        Only CallExpressions we care about here are require and assert
+                        """
+                        if called.name in ["require(bool)", "require(bool,string)", "assert(bool)"]:
+                            print(exp)
+                            condition = exp.arguments[0]
                             print(f"has_compatibility_checks: condition {condition}")
-                            has_check = True
-                            check_exp = exp
-                            func_exp_list.append((setter, check_exp))
+                            check_, func_exp_list = self.check_condition_from_expression(
+                                condition, setter, var_written, func_exp_list, exp
+                            )
+                            if check_ is not None:
+                                check_exp = check_
+                                has_check = True
                 elif isinstance(exp, ConditionalExpression):
                     """
                     Not many examples of compatibility checks that don't use require/assert.
                     For testing purposes, we might need to craft our own, as in a modifier
                     similar to ifAdmin() in TransparentUpgradeableProxy.sol
                     """
+                    print(f"has_compatibility_checks: ConditionalExpression {exp}")
+            if check_exp is None and isinstance(setter, FunctionContract):
+                """
+                We used Function.all_expressions() above to find require and assert,
+                because they are not captured correctly by Function.all_nodes().
+                However, in order to detect compatibility checks in the form of an
+                if statement followed by a revert, we need to use the CFG information
+                accessed from Function.all_nodes(), because Function.all_expressions() 
+                does not handle conditional expressions well, and unfortunately there
+                is no way to get from an Expression object to the Node that contains it.
+                """
+                for node in setter.all_nodes():
+                    if node.type == NodeType.IF:
+                        exp = node.expression
+                        print(f"has_compatibility_checks: IF node exp = {exp}")
+                        if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
+                            print("has_compatibility_checks: IF node can lead to revert"
+                                  f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                            conditional_exp = ConditionalExpression(exp,
+                                                                    node.sons[0].expression,
+                                                                    node.sons[1].expression)
+                            print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
+                            check_, func_exp_list = self.check_condition_from_expression(
+                                exp, setter, var_written, func_exp_list, conditional_exp
+                            )
+                            if check_ is not None:
+                                check_exp = check_
+                                has_check = True
             if check_exp is None:
                 """ Didn't find check in this function """
                 func_exp_list.append((setter, None))
@@ -814,7 +777,7 @@ class ProxyFeatureExtraction:
     def functions_writing_to_delegate(
             self,
             delegate: Variable
-    ) -> Optional[List[Tuple[FunctionContract, LocalVariable]]]:
+    ) -> List[Tuple[FunctionContract, LocalVariable]]:
         """
         Contract.get_functions_writing_to_variable doesn't always work for us,
         for instance when a function writes to a storage slot in assembly.
@@ -915,20 +878,6 @@ class ProxyFeatureExtraction:
                                         break
         return setters
 
-    @staticmethod
-    def get_value_assigned(exp: Expression) -> Optional[Variable]:
-        print(f"get_value_assigned: {exp}")
-        value = None
-        id_exp = None
-        if isinstance(exp, AssignmentOperation):
-            id_exp = exp.expression_right
-        elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
-            id_exp = exp.arguments[1]
-        while isinstance(id_exp, Identifier):
-            value = id_exp.value
-            id_exp = value.expression
-        return value
-
     def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
         """
         For EIP-2535 Diamonds, determine if all four Loupe functions are
@@ -987,6 +936,122 @@ class ProxyFeatureExtraction:
     # region Static methods
     ###################################################################################
     ###################################################################################
+
+    @staticmethod
+    def check_condition_from_expression(
+            condition: Expression,
+            in_function: FunctionContract,
+            var_written: LocalVariable,
+            func_exp_list: List[Tuple[FunctionContract, Expression]],
+            original: Optional[Union[CallExpression, ConditionalExpression]]
+    ):
+        check_exp = None
+        if var_written.name not in str(condition) and not isinstance(condition, Identifier):
+            """
+            The boolean result of the condition should depend on
+            the new implementation address value.
+            """
+            return check_exp, func_exp_list
+        elif isinstance(condition, Identifier):
+            print(f"has_compatibility_checks: Identifier {condition}")
+            if condition.value.expression is not None:
+                print(f"has_compatibility_checks: Identifier.value.expression "
+                      f"{condition.value.expression}")
+                condition = condition.value.expression
+            else:
+                for e in in_function.all_expressions():
+                    if isinstance(e, AssignmentOperation) and \
+                            str(condition) in str(e.expression_left):
+                        condition = e.expression_right
+                        break
+        call_func = None
+        if isinstance(condition, CallExpression):
+            """
+            i.e., OpenZeppelinUpgradesAddress.isContract(newImplementation)
+            Probably need to search this function for the condition it returns.
+            What we really want is the BinaryExpression I think.
+            """
+            called = condition.called
+            if isinstance(called, MemberAccess):
+                member_of = called.expression
+                if isinstance(member_of, Identifier) and isinstance(member_of.value, Contract):
+                    call_func = member_of.value.get_function_from_name(called.member_name)
+                elif isinstance(member_of, Identifier) and member_of.value == var_written:
+                    if isinstance(original, CallExpression):
+                        args = [condition]
+                        if len(original.arguments) > 1:
+                            args.append(original.arguments[1])
+                        check_exp = CallExpression(original.called, args, original.type_call)
+                        print(f"Appending to list: {check_exp} at line 900")
+                        func_exp_list.append((in_function, check_exp))
+            elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract):
+                call_func = called.value
+            if isinstance(call_func, FunctionContract) \
+                    and "bool" in [str(_type) for _type in call_func.return_type]:
+                if call_func.return_node() is not None:
+                    ret_exp = call_func.return_node().expression
+                    if isinstance(ret_exp, Identifier) and ret_exp.value.expression is not None:
+                        ret_exp = ret_exp.value.expression
+                    if isinstance(ret_exp, BinaryOperation):
+                        condition = ret_exp
+        if isinstance(condition, BinaryOperation):
+            """
+            If either side of the BinaryOperation is a local variable, use the
+            expression assigned to it to replace the variable's Identifier.
+            i.e., if we have the following:
+            function isContract(address account) internal view returns (bool) {
+                uint256 size;
+                assembly { size := extcodesize(account) }
+                return size > 0;
+            }
+            then we want the final condition expression to be:
+                extcodesize(account) > 0
+            """
+            left = condition.expression_left
+            right = condition.expression_right
+            if isinstance(left, Identifier):
+                if left.value.expression is not None:
+                    condition = BinaryOperation(left.value.expression, right, condition.type)
+                elif isinstance(left.value, LocalVariable) and isinstance(call_func, FunctionContract):
+                    for e in call_func.all_expressions():
+                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(left):
+                            condition = BinaryOperation(e.expression_right, right, condition.type)
+            elif isinstance(right, Identifier):
+                if right.value.expression is not None:
+                    condition = BinaryOperation(left, right.value.expression, condition.type)
+                elif isinstance(right.value, LocalVariable) and isinstance(call_func, FunctionContract):
+                    for e in call_func.all_expressions():
+                        if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(right):
+                            condition = BinaryOperation(left, e.expression_right, condition.type)
+            print(f"has_compatibility_checks: condition {condition}")
+            if isinstance(original, CallExpression) and call_func is not None:
+                args = [condition]
+                if len(original.arguments) > 1:
+                    args.append(original.arguments[1])
+                check_exp = CallExpression(original.called, args, original.type_call)
+            elif isinstance(original, ConditionalExpression) and call_func is not None:
+                check_exp = ConditionalExpression(condition,
+                                                  original.then_expression,
+                                                  original.else_expression)
+            else:
+                check_exp = original
+            print(f"Appending to list: {check_exp} at line 950")
+            func_exp_list.append((in_function, check_exp))
+        return check_exp, func_exp_list
+
+    @staticmethod
+    def get_value_assigned(exp: Expression) -> Optional[Variable]:
+        print(f"get_value_assigned: {exp}")
+        value = None
+        id_exp = None
+        if isinstance(exp, AssignmentOperation):
+            id_exp = exp.expression_right
+        elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
+            id_exp = exp.arguments[1]
+        while isinstance(id_exp, Identifier):
+            value = id_exp.value
+            id_exp = value.expression
+        return value
 
     @staticmethod
     def find_slot_string_from_assert(
