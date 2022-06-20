@@ -1172,7 +1172,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
                                 f = e.called.value
                                 if isinstance(f, Function):
-                                    e = f.return_node().expression
+                                    ret_node = f.return_node()
+                                    if ret_node is not None:
+                                        e = f.return_node().expression
+                                    else:
+                                        ret_val = f.returns[0]
+                                        e = Identifier(ret_val)
                             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                                 ctype = e.type
                                 if isinstance(e, Identifier):
@@ -1883,6 +1888,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         For expediency, check #2 first
 
         :param exp: a CallExpression in which we want to find the source of the return value
+        :param var: a Variable to fall back on if tracing it to it's source fails
         :param print_debug: if True, print debugging information
         :return: the corresponding Variable object, if found
         """
@@ -1939,6 +1945,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
                     if ret_node is not None:
                         rex = ret_node.expression
+                        if var.expression is None:
+                            var.expression = rex
                         if isinstance(rex, Identifier) and isinstance(rex.value, Variable):
                             if print_debug: print(f"{rex} (Slither line:{getframeinfo(currentframe()).lineno})")
                             ret = rex.value

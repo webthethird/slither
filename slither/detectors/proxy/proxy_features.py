@@ -518,7 +518,12 @@ class ProxyFeatureExtraction:
             if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
                 f = e.called.value
                 if isinstance(f, FunctionContract):
-                    e = f.return_node().expression
+                    ret_node = f.return_node()
+                    if ret_node is not None:
+                        e = f.return_node().expression
+                    else:
+                        ret_val = f.returns[0]
+                        e = Identifier(ret_val)
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 c_type = e.type
                 if isinstance(e, Identifier):
