@@ -2238,7 +2238,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 f = e.called.value
                 if isinstance(f, Function):
-                    e = f.return_node().expression
+                    ret_node = f.return_node()
+                    if ret_node is not None:
+                        e = f.return_node().expression
+                    else:
+                        ret_val = f.returns[0]
+                        e = Identifier(ret_val)
                     if print_debug: print(f"Call to function {f} returns {e}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
