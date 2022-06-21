@@ -230,7 +230,7 @@ class ProxyFeatureExtraction:
             exp = delegate.expression
             print(f"Expression for {delegate}: {exp}")
             if isinstance(exp, Identifier):
-                v = self.unwrap_identifiers(exp)
+                v = self.unwrap_identifiers(self.impl_address_location, exp)
                 if v.expression is not None:
                     exp = v.expression
                 else:
@@ -246,7 +246,7 @@ class ProxyFeatureExtraction:
                     if len(str(arg)) == 66 and str(arg).startswith("0x"):
                         return str(arg)
                     elif isinstance(arg, Identifier):
-                        v = self.unwrap_identifiers(arg)
+                        v = self.unwrap_identifiers(self.impl_address_location, arg)
                         if v.expression is not None:
                             exp = v.expression
                             if v.is_constant:
@@ -399,7 +399,7 @@ class ProxyFeatureExtraction:
                         if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
                             exp = exp.arguments[0]
                     if isinstance(exp, Identifier):
-                        value = self.unwrap_identifiers(exp)
+                        value = self.unwrap_identifiers(function.contract, exp)
                         if value is None:
                             continue
                         exp = value.expression
@@ -922,10 +922,40 @@ class ProxyFeatureExtraction:
                     loupe_facets.append((f.signature_str, c))
         return loupe_facets
 
+    # endregion
+    ###################################################################################
+    ###################################################################################
+    # region Static methods
+    ###################################################################################
+    ###################################################################################
+
+    @staticmethod
     def unwrap_identifiers(
-            self,
-            exp: Expression
+            contract: Contract,
+            exp: Identifier
     ) -> Optional[Variable]:
+        """
+        Given an Identifier expression, which is essentially a wrapper for a Variable (or
+        sometimes a Function or Contract) object, unwrap it to find the `source` of its value.
+
+        For example, in the expression ``bytes32 slot = IMPLEMENTATION_SLOT`` we have an Identifier
+        on either side of the assignment expression. If we passed the left side into this method
+        as ``exp``, the first Variable found in ``exp.value`` is the LocalVariable ``slot``. Because
+        it is assigned a value in the same line as its declaration, ``exp.value.expression`` is
+        the right side of the assignment, which in this case is also an Identifier for the
+        StateVariable ``IMPLEMENTATION_SLOT``. But once ``exp`` has been updated to this Identifier,
+        then ``exp.value.expression`` is no longer an Identifier, because ``IMPLEMENTATION_SLOT``
+        was assigned a value as a Literal expression, namely the 32 byte storage slot.
+
+        Note: This method does not unwrap CallExpressions to find a value's source in another function.
+        For example, given the left side of the expression ``address impl = implementation()``,
+        ``exp.value`` is the LocalVariable ``impl`` and ``exp.value.expression`` is a CallExpression.
+        Tracing this CallExpression to find its return value should be done elsewhere.
+
+        :param contract: The Contract in which the expression is found.
+        :param exp: The Identifier expression to unwrap.
+        :return: The unwrapped Variable object.
+        """
         ret_val = None
         while isinstance(exp, Identifier):
             val = exp.value
@@ -939,19 +969,12 @@ class ProxyFeatureExtraction:
                 (i.e. delegate_slot = the slot where delegate is stored)
                 """
                 if val.name.endswith("_slot") or val.name.endswith("_offset"):
-                    val = self.impl_address_location.get_state_variable_from_name(val.state_variable)
+                    val = contract.get_state_variable_from_name(val.state_variable)
                 else:
                     return ret_val
             ret_val = val
             exp = ret_val.expression
         return ret_val
-
-    # endregion
-    ###################################################################################
-    ###################################################################################
-    # region Static methods
-    ###################################################################################
-    ###################################################################################
 
     @staticmethod
     def check_condition_from_expression(
