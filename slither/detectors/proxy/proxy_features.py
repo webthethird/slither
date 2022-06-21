@@ -836,7 +836,7 @@ class ProxyFeatureExtraction:
             then we must also search all of the functions in that contract.
             """
             to_search += setter.contract.functions
-        for func in to_search:
+        for func in set(to_search):
             if isinstance(delegate, LocalVariable) and delegate.function == func:
                 """
                 If the implementation address variable extracted during the initial analysis
@@ -845,8 +845,9 @@ class ProxyFeatureExtraction:
                 """
                 continue
             value_written = None
-            # print(f"functions_writing_to_variable: checking function {func}")
             if func.is_writing(delegate) and delegate not in func.returns:
+                print(f"functions_writing_to_variable: checking function {func.contract.name}.{func}"
+                      f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                 """
                 Function.is_writing only works in the simplest cases, i.e., when writing to
                 a typical StateVariable or LocalVariable. This does not work for patterns
@@ -856,10 +857,10 @@ class ProxyFeatureExtraction:
                 """
                 for exp in func.expressions:
                     print(f"functions_writing_to_variable: exp = {exp}"
-                          f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                     if isinstance(exp, AssignmentOperation):
                         print(f"functions_writing_to_variable: AssignmentOperation: {exp}"
-                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                         left = exp.expression_left
                         right = exp.expression_right
                         if isinstance(left, IndexAccess):
@@ -867,16 +868,16 @@ class ProxyFeatureExtraction:
                             If the delegate variable is a mapping, then we expect an IndexAccess
                             """
                             print(f"functions_writing_to_variable: IndexAccess: {left}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             left = left.expression_left
                         if isinstance(left, Identifier) and left.value == delegate:
                             print(f"functions_writing_to_variable: Identifier: {left}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             value_written = self.get_value_assigned(exp)
                 if value_written is not None:
                     setters.append([func, value_written])
                     print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                          f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
             elif slot is not None:
                 """
                 If the implementation address storage slot was detected during the initial analysis,
@@ -900,14 +901,14 @@ class ProxyFeatureExtraction:
                                 for asm in asm_split:
                                     if "sstore" in asm:
                                         print(f"functions_writing_to_variable: found sstore:\n{asm}\n"
-                                              f"(proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                              f"(proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         val_str = asm.split("sstore")[1].split(",")[1].split(")")[0].strip()
                                         print(val_str)
                                         value_written = node.function.get_local_variable_from_name(val_str)
                                         setters.append([func, value_written])
                                         print(f"functions_writing_to_variable: {func} writes {value_written}"
                                               f" to {slot} w/ sstore"
-                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
@@ -933,13 +934,13 @@ class ProxyFeatureExtraction:
                                 value_written = self.get_value_assigned(exp)
                                 setters.append([func, value_written])
                                 print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                                      f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                      f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                 break
                             elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
                                 value_written = self.get_value_assigned(exp)
                                 setters.append([func, value_written])
                                 print(f"functions_writing_to_variable: {func} writes {value_written} to {slot}"
-                                      f" using sstore (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                      f" using sstore (proxy_features line:{getframeinfo(currentframe()).lineno})")
             else:
                 for exp in func.all_expressions():
                     if isinstance(exp, AssignmentOperation):
@@ -948,7 +949,7 @@ class ProxyFeatureExtraction:
                             value_written = self.get_value_assigned(exp)
                             setters.append([func, value_written])
                             print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             break
                         elif delegate.expression is not None:
                             d_exp = delegate.expression
@@ -974,7 +975,7 @@ class ProxyFeatureExtraction:
                                         setters.append([func, value_written])
                                         print(f"functions_writing_to_variable: {func} writes {value_written}"
                                               f" to {member_exp}"
-                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         break
         return setters
 
@@ -1181,7 +1182,8 @@ class ProxyFeatureExtraction:
             else:
                 check_exp = original
             print(f"Appending to list: {check_exp} at line 950")
-            func_exp_list.append((in_function, check_exp))
+            if not (in_function, check_exp) in func_exp_list:
+                func_exp_list.append((in_function, check_exp))
         return check_exp, func_exp_list
 
     @staticmethod

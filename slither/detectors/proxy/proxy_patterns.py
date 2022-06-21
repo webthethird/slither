@@ -568,7 +568,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info = [
                                 proxy,
                                 " stores implementation address in a state variable of type ",
-                                delegate.type,
+                                str(delegate.type),
                                 " declared in another contract: ",
                                 delegate, "\n"
                             ]
