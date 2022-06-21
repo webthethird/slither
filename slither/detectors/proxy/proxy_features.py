@@ -728,17 +728,33 @@ class ProxyFeatureExtraction:
                             print(exp)
                             condition = exp.arguments[0]
                             print(f"has_compatibility_checks: condition {condition}")
+                            """
+                            The static helper method check_condition_from_expression will return an
+                            Expression object if exp is a compatibility check, and will append any
+                            newly found checks to the list of (function, compatibility check) pairs.
+                            """
                             check_, func_exp_list = self.check_condition_from_expression(
                                 condition, setter, var_written, func_exp_list, exp
                             )
+                            """
+                            Since there may be more than one valid compatibility check in the same function,
+                            it is possible for the call above to return a check expression the first time,
+                            setting has_check = True, and then return None after checking another expression
+                            in the same function. Therefore, we do not want to overwrite check_exp above 
+                            if the subsequent call to check_condition_from_expression returned None.
+                            """
                             if check_ is not None:
                                 check_exp = check_
                                 has_check = True
                 elif isinstance(exp, ConditionalExpression):
                     """
-                    Not many examples of compatibility checks that don't use require/assert.
-                    For testing purposes, we might need to craft our own, as in a modifier
-                    similar to ifAdmin() in TransparentUpgradeableProxy.sol
+                    Even when there is clearly an if-else block in the source code, Function.all_expressions()
+                    never seems to contain any ConditionalExpression objects. Rather, only the condition itself,
+                    often a BinaryOperation or an Identifier for a boolean variable, and the expressions within
+                    the `then` and `else` blocks appear in the list of all expressions. Therefore we need to use
+                    Function.all_nodes() instead to find the IF nodes in the CFG. Unfortunately we cannot use 
+                    all_nodes() instead of all_expressions() for the section above, because all_nodes() does not
+                    handle Solidity function CallExpressions correctly.
                     """
                     print(f"has_compatibility_checks: ConditionalExpression {exp}")
             if check_exp is None and isinstance(setter, FunctionContract):
@@ -755,16 +771,39 @@ class ProxyFeatureExtraction:
                     if node.type == NodeType.IF:
                         exp = node.expression
                         print(f"has_compatibility_checks: IF node exp = {exp}")
+                        """
+                        Found an IF node, so check if it can lead to a revert.
+                        Node.sons only gives us the immediate children of the IF node,
+                        i.e., the first node in the `then` block and the `else` block.
+                        """
+                        # TODO: It may be better to implement a recursive getter for Node children.
+                        # TODO: Use Dominators / Control Dependency Graph instead
                         if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
                             print("has_compatibility_checks: IF node can lead to revert"
                                   f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                            """
+                            Unfortunately the IF Node does not contain a ConditionalExpression
+                            already, so we must construct one using the CFG info from the Node. 
+                            """
                             conditional_exp = ConditionalExpression(exp,
                                                                     node.sons[0].expression,
                                                                     node.sons[1].expression)
                             print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
+                            """
+                            The static helper method check_condition_from_expression will return an
+                            Expression object if exp is a compatibility check, and will append any
+                            newly found checks to the list of (function, compatibility check) pairs.
+                            """
                             check_, func_exp_list = self.check_condition_from_expression(
                                 exp, setter, var_written, func_exp_list, conditional_exp
                             )
+                            """
+                            Since there may be more than one valid compatibility check in the same function,
+                            it is possible for the call above to return a check expression the first time,
+                            setting has_check = True, and then return None after checking another expression
+                            in the same function. Therefore, we do not want to overwrite check_exp above 
+                            if the subsequent call to check_condition_from_expression returned None.
+                            """
                             if check_ is not None:
                                 check_exp = check_
                                 has_check = True
@@ -792,11 +831,19 @@ class ProxyFeatureExtraction:
         to_search = self.contract.functions
         print(f"functions_writing_to_variable: {delegate}")
         if setter is not None and setter.contract != self.contract:
+            """
+            If the implementation setter was found in a different contract, 
+            then we must also search all of the functions in that contract.
+            """
             to_search += setter.contract.functions
         for func in to_search:
             if isinstance(delegate, LocalVariable) and delegate.function == func:
+                """
+                If the implementation address variable extracted during the initial analysis
+                is a LocalVariable, then the function in which it was declared is likely the 
+                implementation getter, which we are not interested in.
+                """
                 continue
-            var_to_write = delegate
             value_written = None
             # print(f"functions_writing_to_variable: checking function {func}")
             if func.is_writing(delegate) and delegate not in func.returns:
@@ -811,6 +858,8 @@ class ProxyFeatureExtraction:
                     print(f"functions_writing_to_variable: exp = {exp}"
                           f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                     if isinstance(exp, AssignmentOperation):
+                        print(f"functions_writing_to_variable: AssignmentOperation: {exp}"
+                              f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                         left = exp.expression_left
                         right = exp.expression_right
                         if isinstance(left, IndexAccess):
@@ -821,15 +870,31 @@ class ProxyFeatureExtraction:
                                   f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                             left = left.expression_left
                         if isinstance(left, Identifier) and left.value == delegate:
+                            print(f"functions_writing_to_variable: Identifier: {left}"
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                             value_written = self.get_value_assigned(exp)
                 setters.append([func, value_written])
                 print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
                       f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
             elif slot is not None:
+                """
+                If the implementation address storage slot was detected during the initial analysis,
+                then we need to search the CFG to find where the slot is used to store a new value.
+                """
                 for node in func.all_nodes():
                     if node.type == NodeType.ASSEMBLY:
+                        """
+                        Only search an ASSEMBLY Node if the Solidity version is < 0.6.0, because
+                        in that case the assembly code is not also captured in EXPRESSION Nodes.
+                        We can tell if it is < 0.6.0 if node.inline_asm is a string, not a Dict. 
+                        """
                         if isinstance(node.inline_asm, str) and "sstore" in node.inline_asm:
                             asm_split = node.inline_asm.split("\n")
+                            """
+                            Only bother extracting the sstore if the function is actually using
+                            the implementation slot. Without the line below, this would return any
+                            function that uses sstore, even if it is using the admin or beacon slot.
+                            """
                             if node.function.is_reading(slot) or slot.name in node.inline_asm:
                                 for asm in asm_split:
                                     if "sstore" in asm:
@@ -842,8 +907,23 @@ class ProxyFeatureExtraction:
                                         break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
+                        """
+                        Only bother extracting the sstore if the function is actually using
+                        the implementation slot. Without the line below, this would return any
+                        function that uses sstore, even if it is using the admin or beacon slot.
+                        """
                         if node.function.is_reading(slot) or slot.name in str(exp):
                             if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
+                                """
+                                This case handles the recent versions of ERC-1967, which use the StorageSlot library.
+                                In this case, when extracting the implementation variable during initial analysis,
+                                we encounter the following return statement in the getter:
+                                    return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;
+                                Due to the complexity of unraveling this expression, we default to returning a new
+                                LocalVariable containing this expression. So in the setter, we expect to find the
+                                following AssignmentOperation:
+                                    StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation; 
+                                """
                                 if "sload" in str(exp.expression_right):
                                     continue
                                 value_written = self.get_value_assigned(exp)
@@ -983,7 +1063,29 @@ class ProxyFeatureExtraction:
             var_written: LocalVariable,
             func_exp_list: List[Tuple[FunctionContract, Expression]],
             original: Optional[Union[CallExpression, ConditionalExpression]]
-    ):
+    ) -> Tuple[Optional[Expression], List[Tuple[FunctionContract, Expression]]]:
+        """
+        Helper method specifically intended for use by ``ProxyFeatureExtraction.has_compatibility_checks()``,
+        which requires two separate loops to find Solidity function calls and if statements, but which needs
+        to perform the same analysis on each condition regardless of which loop finds it.
+
+        Checks whether the condition depends in any way on the same variable that is being written to the
+        implementation address variable in a function found by ``Contract.functions_writing_to_delegate()``.
+
+        :param condition: An Expression, extracted either from an if statement condition or from the first
+            argument in a call to one of the Solidity functions ``require(bool)``, ``require(bool,string)``
+            or ``assert(bool)``.
+        :param in_function: The FunctionContract in which this expression was found.
+        :param var_written: The LocalVariable being written to the implementation address variable,
+            found by ``Contract.functions_writing_to_delegate()``.
+        :param func_exp_list: The list of (FunctionContract, Expression) pairs found so far, where Expression
+            is a compatibility check found in the FunctionContract, to which to append any newly found checks.
+        :param original: The Expression in which the condition expression was found, i.e., a CallExpression
+            for require and assert, or a ConditionalExpression in the case of an if condition.
+        :return: The full expression in which the compatibility check was found, or None if not found,
+            as well as the original list of (FunctionContract, Expression) pairs with any newly found checks
+            appended to it.
+        """
         check_exp = None
         if var_written.name not in str(condition) and not isinstance(condition, Identifier):
             """
@@ -1021,7 +1123,6 @@ class ProxyFeatureExtraction:
                         if len(original.arguments) > 1:
                             args.append(original.arguments[1])
                         check_exp = CallExpression(original.called, args, original.type_call)
-                        print(f"Appending to list: {check_exp} at line 900")
                         func_exp_list.append((in_function, check_exp))
             elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract):
                 call_func = called.value
