@@ -1091,7 +1091,8 @@ class ProxyFeatureExtraction:
             appended to it.
         """
         check_exp = None
-        if var_written.name not in str(condition) and not isinstance(condition, Identifier):
+        if var_written is None or (var_written.name not in str(condition)
+                                   and not isinstance(condition, Identifier)):
             """
             The boolean result of the condition should depend on
             the new implementation address value.
