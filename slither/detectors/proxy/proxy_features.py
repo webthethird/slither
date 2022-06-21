@@ -873,9 +873,10 @@ class ProxyFeatureExtraction:
                             print(f"functions_writing_to_variable: Identifier: {left}"
                                   f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                             value_written = self.get_value_assigned(exp)
-                setters.append([func, value_written])
-                print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                      f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                if value_written is not None:
+                    setters.append([func, value_written])
+                    print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                          f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
             elif slot is not None:
                 """
                 If the implementation address storage slot was detected during the initial analysis,
