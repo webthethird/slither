@@ -899,7 +899,10 @@ class ProxyFeatureExtraction:
                             if node.function.is_reading(slot) or slot.name in node.inline_asm:
                                 for asm in asm_split:
                                     if "sstore" in asm:
-                                        val_str = asm.split("sstore")[1].split(",")[1].strip(")").strip()
+                                        print(f"functions_writing_to_variable: found sstore:\n{asm}\n"
+                                              f"(proxy_features line:{getframeinfo(currentframe()).lineno}")
+                                        val_str = asm.split("sstore")[1].split(",")[1].split(")")[0].strip()
+                                        print(val_str)
                                         value_written = node.function.get_local_variable_from_name(val_str)
                                         setters.append([func, value_written])
                                         print(f"functions_writing_to_variable: {func} writes {value_written}"
