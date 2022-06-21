@@ -800,10 +800,26 @@ class ProxyFeatureExtraction:
             value_written = None
             # print(f"functions_writing_to_variable: checking function {func}")
             if func.is_writing(delegate) and delegate not in func.returns:
-                for exp in func.variables_written_as_expression:
+                """
+                Function.is_writing only works in the simplest cases, i.e., when writing to
+                a typical StateVariable or LocalVariable. This does not work for patterns
+                like Unstructured Storage or Diamond Storage.
+                We still need to search the Expressions in func.expressions in order to 
+                find the AssignmentOperation and extract the value being written.
+                """
+                for exp in func.expressions:
+                    print(f"functions_writing_to_variable: exp = {exp}"
+                          f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
                     if isinstance(exp, AssignmentOperation):
                         left = exp.expression_left
                         right = exp.expression_right
+                        if isinstance(left, IndexAccess):
+                            """
+                            If the delegate variable is a mapping, then we expect an IndexAccess
+                            """
+                            print(f"functions_writing_to_variable: IndexAccess: {left}"
+                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno}")
+                            left = left.expression_left
                         if isinstance(left, Identifier) and left.value == delegate:
                             value_written = self.get_value_assigned(exp)
                 setters.append([func, value_written])
