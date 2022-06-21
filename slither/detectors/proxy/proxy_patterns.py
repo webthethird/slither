@@ -314,11 +314,18 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                         else:
                             setters = proxy.get_functions_writing_to_variable(source)
+                            setters = [str(setter) for setter in setters if not setter.is_constructor]
                             if len(setters) > 0:
                                 info += [
                                     source.name,
                                     " can be updated by the following function(s): ",
-                                    str([setter.name for setter in setters if not setter.is_constructor]),
+                                    str(setters),
+                                    "\n"
+                                ]
+                            else:
+                                info += [
+                                    "Could not find setter for ",
+                                    source.name,
                                     "\n"
                                 ]
                     else:
@@ -696,6 +703,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                             "Missing compatibility check in ",
                             func, "\n"
                         ]
+                elif len(func_exp_list) == 0:
+                    info = ["Could not find any setter functions in which to look for compatibility checks.\n"]
                 else:
                     info = ["Found the following compatibility checks in all upgrade functions: \n"]
                     for func, exp in func_exp_list:
