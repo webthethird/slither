@@ -1203,9 +1203,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
                         if print_debug: print(f"Looking for setter in {self._delegate_variable.contract} "
                                               f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                        self._proxy_impl_setter = self.find_setter_in_contract(self._delegate_variable.contract,
-                                                                               self._delegate_variable,
-                                                                               self._proxy_impl_slot, print_debug)
+                        # Whenever we call find_setter_in_contract, we should also update _delegate_variable, in case
+                        # find_setter_in_contract found an AssignmentOperation and updated _delegate_variable.expression
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.contract,
+                                                                                 self._delegate_variable,
+                                                                                 self._proxy_impl_slot, print_debug)
                         if self._proxy_impl_setter is None:
                             if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} "
                                                   f"(Slither line:{getframeinfo(currentframe()).lineno})")
@@ -1215,17 +1218,19 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if self._delegate_variable.contract in c.inheritance:
                                     if print_debug: print(f"Looking for setter in {c} "
                                                           f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                           self._proxy_impl_slot,
-                                                                                           print_debug)
+                                    (self._proxy_impl_setter,
+                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                             self._proxy_impl_slot,
+                                                                                             print_debug)
                     elif isinstance(self._delegate_variable, LocalVariable) and\
                             isinstance(self._delegate_variable.function, FunctionContract) and\
                             self._delegate_variable.function.contract != self:
                         if print_debug: print(f"Looking for setter in {self._delegate_variable.function.contract} "
                                               f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                        self._proxy_impl_setter = self.find_setter_in_contract(self._delegate_variable.function.contract,
-                                                                               self._delegate_variable,
-                                                                               self._proxy_impl_slot, print_debug)
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.function.contract,
+                                                                                 self._delegate_variable,
+                                                                                 self._proxy_impl_slot, print_debug)
                         if self._proxy_impl_setter is None:
                             if print_debug: print(f"\nCould not find setter in "
                                                   f"{self._delegate_variable.function.contract} "
@@ -1236,12 +1241,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if self._delegate_variable.function.contract in c.inheritance:
                                     if print_debug: print(f"Looking for setter in {c} "
                                                           f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                           self._proxy_impl_slot,
-                                                                                           print_debug)
+                                    (self._proxy_impl_setter,
+                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                             self._proxy_impl_slot,
+                                                                                             print_debug)
                     if self._proxy_impl_setter is None:
-                        self._proxy_impl_setter = self.find_setter_in_contract(self, self._delegate_variable,
-                                                                               self._proxy_impl_slot, print_debug)
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(self, self._delegate_variable,
+                                                                                 self._proxy_impl_slot, print_debug)
                 if self._proxy_impl_setter is not None:
                     if print_debug and isinstance(self._proxy_impl_setter, FunctionContract):
                         print(f"\nImplementation set by function: {self._proxy_impl_setter.name} in contract: "
@@ -1306,8 +1313,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
                                                                                        print_debug)
                                 if self._proxy_impl_setter is None:
-                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                           None, print_debug)
+                                    (self._proxy_impl_setter,
+                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                             None, print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
                                     self._is_upgradeable_proxy_confirmed = True
@@ -1342,8 +1350,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             var.type == self._delegate_variable.type:
                                         self._proxy_impl_getter = self.find_getter_in_contract(c, var, print_debug)
                                         if self._proxy_impl_setter is None:
-                                            self._proxy_impl_setter = self.find_setter_in_contract(c, var,
-                                                                                                   None, print_debug)
+                                            (self._proxy_impl_setter,
+                                             self._delegate_variable) = self.find_setter_in_contract(c, var,
+                                                                                                     None, print_debug)
                                         if self._proxy_impl_setter is not None:
                                             self._is_upgradeable_proxy = True
                                             self._is_upgradeable_proxy_confirmed = True
@@ -1356,9 +1365,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
                                                                                        print_debug)
                                 if self._proxy_impl_setter is None:
-                                    self._proxy_impl_setter = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                           self._proxy_impl_slot,
-                                                                                           print_debug)
+                                    (self._proxy_impl_setter,
+                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                             self._proxy_impl_slot,
+                                                                                             print_debug)
                                 if self._proxy_impl_setter is not None:
                                     self._is_upgradeable_proxy = True
                                     self._is_upgradeable_proxy_confirmed = True
@@ -2912,13 +2922,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.expressions.expression_typed import ExpressionTyped
-        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.assignment_operation import AssignmentOperation, AssignmentOperationType
         from slither.core.expressions.call_expression import CallExpression
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.identifier import Identifier
 
         setter = None
+        assignment = None
         var_exp = (var_to_set.expression if isinstance(var_to_set, Variable) else None)
         if print_debug:
             print(f"\nBegin {contract.name}.find_setter_in_contract"
@@ -2940,17 +2951,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug: print(f"Visibility: {f.visibility}")
                 if f.visibility == "internal" or f.visibility == "private":
                     continue
-                for v in f.variables_written:
-                    if isinstance(v, LocalVariable) and v in f.returns:
-                        if print_debug: print(f"{f.name} returns local variable: {v.name}"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        continue
-                    elif isinstance(v, StateVariable):
-                        if print_debug: print(f"{f.name} writes to state variable: {v.name}"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        if str(var_to_set) == v.name:
-                            setter = f
-                            break
+                # # Commented out because the remaining code can handle any cases this one would catch,
+                # # but we need to check for an AssignmentOperation that writes to var_to_set
+                # # in case we find that the value being written comes from a cross-contract call.
+                # for v in f.variables_written:
+                #     if isinstance(v, LocalVariable) and v in f.returns:
+                #         if print_debug: print(f"{f.name} returns local variable: {v.name}"
+                #                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                #         continue
+                #     elif isinstance(v, StateVariable):
+                #         if print_debug: print(f"{f.name} writes to state variable: {v.name}"
+                #                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                #         if str(var_to_set) == v.name:
+                #             setter = f
+                #             break
                 if f.contains_assembly:
                     if print_debug: print(f"{f.name} contains assembly"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -2963,23 +2977,30 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for asm in inline.split("\n"):
                                 if "sstore" in asm:
                                     if print_debug: print(f"{asm} (Slither line:{getframeinfo(currentframe()).lineno})")
-                                    slotname = asm.split("sstore(")[1].split(",")[0]
-                                    if slotname == str(storage_slot):
+                                    slot_name = asm.split("sstore(")[1].split(",")[0]
+                                    written_name = name = asm.split("sstore(")[1].split(",")[1].split(")")[0].strip()
+                                    if slot_name == str(storage_slot):
                                         setter = f
                                         break
                                     for v in node.function.variables_read_or_written:
                                         print(f"{f} reads and/or writes to variable {v} "
                                               f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                                        if v.name == slotname:
+                                        if v.name == slot_name:
                                             if v in [storage_slot, var_to_set]:
                                                 setter = f
-                                                break
                                             elif isinstance(v, LocalVariable):
                                                 exp = v.expression
                                                 if isinstance(exp, Identifier) and exp.value in [storage_slot,
                                                                                                  var_to_set]:
                                                     setter = f
-                                                    break
+                                        elif v.name == written_name and isinstance(v, LocalVariable):
+                                            exp = v.expression
+                                            if isinstance(exp, AssignmentOperation):
+                                                assignment = exp
+                                            elif isinstance(exp, CallExpression) or isinstance(exp, MemberAccess):
+                                                v_id = Identifier(v)
+                                                assignment = AssignmentOperation(v_id, exp,
+                                                                                 AssignmentOperationType.ASSIGN)
                                     if setter is not None:
                                         break
                     elif node.type == NodeType.EXPRESSION:
@@ -2987,42 +3008,68 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if print_debug: print(exp)
                         if isinstance(exp, CallExpression) and "sstore" in str(exp.called):
                             if print_debug: print(exp.called)
-                            arg = exp.arguments[0]
-                            if isinstance(arg, Identifier):
-                                v = arg.value
+                            slot_arg = exp.arguments[0]
+                            written_arg = exp.arguments[1]
+                            if isinstance(slot_arg, Identifier):
+                                v = slot_arg.value
                                 if v in [storage_slot, var_to_set]:
                                     setter = f
-                                    break
                                 elif isinstance(v, LocalVariable):
                                     exp = v.expression
                                     if isinstance(exp, Identifier) and exp.value in [storage_slot, var_to_set]:
                                         setter = f
-                                        break
-                            elif str(arg) == storage_slot.name:
+                            elif str(slot_arg) == storage_slot.name:
                                 setter = f
-                                break
+                            if isinstance(written_arg, Identifier) and isinstance(written_arg.value, LocalVariable):
+                                exp = written_arg.value.expression
+                                if isinstance(exp, AssignmentOperation):
+                                    assignment = exp
+                                elif isinstance(exp, CallExpression) or isinstance(exp, MemberAccess):
+                                    assignment = AssignmentOperation(written_arg, exp,
+                                                                     AssignmentOperationType.ASSIGN)
                         elif isinstance(exp, AssignmentOperation):
-                            r = exp.expression_right
-                            l = exp.expression_left
+                            left = exp.expression_left
                             if print_debug: print(f"is an Assignment Operation"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             if var_exp is not None:
                                 if print_debug: print(var_exp)
-                                if var_exp == l or str(var_exp) == str(l):    # Expression.__eq__() not implemented
+                                if var_exp == left or str(var_exp) == str(left):    # Expression.__eq__() not implemented
                                     setter = f
-                                    break
-                                elif isinstance(l, IndexAccess) and isinstance(var_exp, IndexAccess):
-                                    if l.expression_left == var_exp.expression_left:
+                                    assignment = exp
+                                elif isinstance(left, IndexAccess) and isinstance(var_exp, IndexAccess):
+                                    if left.expression_left == var_exp.expression_left:
                                         setter = f
-                                        break
-                            elif isinstance(l, IndexAccess):
-                                l = l.expression_left
-                                if isinstance(l, MemberAccess) and l.member_name == var_to_set.name:
+                                        assignment = exp
+                            elif isinstance(left, IndexAccess):
+                                left = left.expression_left
+                                if isinstance(left, MemberAccess) and left.member_name == var_to_set.name:
                                     setter = f
-                                    break
-                            elif str(l) == var_to_set.name:
+                                    assignment = exp
+                            elif str(left) == var_to_set.name:
                                 setter = f
-                                break
+                                assignment = exp
+        if setter is not None and assignment is not None:
+            """
+            Found setter in the given contract, and the AssignmentOperation doing the setting.
+            But what is the new value that is being assigned, and where does it come from?
+            Most likely it is just an address variable that comes from the setter's arguments,
+            but the right side of the AssignmentOperation could include a CallExpression, which
+            could be a cross-contract call. 
+            For example (tests/proxies/ContributionTriggerRegistry.sol):
+                function upgradeTo(uint256 _version) public {
+                    require(msg.sender == address(registry),"ERR_ONLY_REGISTRERY_CAN_CALL");
+                    _implementation = registry.getVersion(_version);
+                }
+            In this case, _implementation is a StateVariable which is inherited by the proxy,
+            and this is accessed directly (without a contract call) when delegating. 
+            Therefore it doesn't make sense to change self._delegate_variable to reference 
+            whatever gets returned by registry.getVersion(_version) instead of _implementation.
+            So, rather than check for a CallExpression here and trace it to its source if found,
+            we leave that to be done later by the ProxyFeatureExtraction class, and simply
+            update var_to_set here by giving assigning it an expression.
+            """
+            right = assignment.expression_right
+            var_to_set.expression = right
         if setter is None and "facet" in str(var_to_set):
             """
             Handle the corner case for EIP-2535 Diamond proxy
@@ -3066,7 +3113,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         if print_debug:
             print(f"\nEnd {contract.name}.find_setter_in_contract"
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-        return setter
+        return setter, var_to_set
 
     # endregion
     ###################################################################################
