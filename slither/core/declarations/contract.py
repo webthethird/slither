@@ -2906,7 +2906,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             var_to_set: Union[str, "Variable"],
             storage_slot: Optional["Variable"],
             print_debug: bool
-    ) -> Optional[Function]:
+    ) -> (Optional[Function], Union[str, "Variable"]):
         """
         Tries to find the setter function for a given variable.
         Static because we can use this for cross-contract implementation setters, i.e. EIP 1822 Proxy/Proxiable
@@ -2915,7 +2915,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param var_to_set: the Variable to look for, or at least its name as a string
         :param storage_slot: an optional, constant variable containing a storage offset (for setting via sstore)
         :param print_debug: True to print debugging statements, False to mute
-        :return: the function in contract which sets var_to_set, if found
+        :return: the function in contract which sets var_to_set, if found, and var_to_set, which may have been changed
         """
         from slither.core.cfg.node import NodeType
         from slither.core.variables.variable import Variable
