@@ -8,6 +8,7 @@ from slither.core.declarations import (
     Contract,
     Enum,
     Function,
+    FunctionContract,
     SolidityFunction,
     SolidityVariable,
     SolidityVariableComposed,
@@ -26,6 +27,11 @@ from slither.slithir.variables import (
     TupleVariableSSA,
 )
 from slither.core.solidity_types.type import Type
+from slither.core.expressions import (
+    CallExpression,
+    MemberAccess,
+    Identifier
+)
 
 if TYPE_CHECKING:
     from slither.core.compilation_unit import SlitherCompilationUnit
@@ -167,6 +173,61 @@ def get_dependencies(
     if only_unprotected:
         return context.context[KEY_NON_SSA_UNPROTECTED].get(variable, set())
     return context.context[KEY_NON_SSA].get(variable, set())
+
+
+def get_dependencies_recursive(
+    variable: Variable,
+    context: Union[Contract, Function],
+    only_unprotected: bool = False,
+) -> Set[Variable]:
+    """
+        Return the variables for which `variable` depends on, including those from other contexts
+
+        :param variable: The target
+        :param context: Either a function (interprocedural) or a contract (inter transactional)
+        :param only_unprotected: True if consider only protected functions
+        :return: set(Variable)
+        """
+    assert isinstance(context, (Contract, Function))
+    assert isinstance(only_unprotected, bool)
+    if only_unprotected:
+        key = KEY_NON_SSA_UNPROTECTED
+    else:
+        key = KEY_NON_SSA
+    explored = []
+    to_explore = list(context.context[key].get(variable, set()))
+    while to_explore:
+        var: Variable = to_explore[0]
+        to_explore = to_explore[1:]
+        if var in explored:
+            continue
+        print(f"Exploring {var}")
+        explored.append(var)
+
+        if var.expression is not None:
+            exp = var.expression
+            print(f"Expression: {exp}")
+            if isinstance(exp, CallExpression):
+                called = exp.called
+                if isinstance(called, Identifier):
+                    call_val = called.value
+                elif isinstance(called, MemberAccess) and isinstance(called.expression, Identifier):  # \
+                        # and isinstance(called.expression.value.type, Contract):
+                    print(f"MemberAccess.expression.value = {called.expression.value}")
+                else:
+                    continue
+                if isinstance(call_val, FunctionContract) and len(call_val.returns) > 0:
+                    for ret in call_val.returns:
+                        to_explore.append(ret)
+                        if isinstance(context, Contract):
+                            new_context = call_val.contract
+                        else:
+                            new_context = call_val
+                        to_explore += [
+                            v for v in list(new_context.context[key].get(ret, set()))
+                            if v not in to_explore and v not in explored
+                        ]
+    return set(explored)
 
 
 def get_all_dependencies(
