@@ -698,16 +698,26 @@ or one of the proxy patterns developed by OpenZeppelin.
                 info = []
                 if not has_checks:
                     funcs_missing_check = [func for func, check in func_exp_list if check is None]
+                    funcs_with_check = [(func, check) for func, check in func_exp_list if check is not None]
                     for func in funcs_missing_check:
                         info += [
                             "Missing compatibility check in ",
                             func, "\n"
+                        ]
+                    for func, check in funcs_with_check:
+                        info += [
+                            "Found compatibility check in ",
+                            func,
+                            ": ",
+                            str(check),
+                            "\n"
                         ]
                 elif len(func_exp_list) == 0:
                     info = ["Could not find any setter functions in which to look for compatibility checks.\n"]
                 else:
                     info = ["Found the following compatibility checks in all upgrade functions: \n"]
                     for func, exp in func_exp_list:
+                        print(f"func: {func}  exp: {exp}")
                         info += [
                             "In ", func, ": ", str(exp), "\n"
                         ]
