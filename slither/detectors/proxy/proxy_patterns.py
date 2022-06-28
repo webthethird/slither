@@ -597,7 +597,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
-
+                                break
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
