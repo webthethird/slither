@@ -1913,6 +1913,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.identifier import Identifier
+        from slither.core.expressions.literal import Literal
         from slither.core.declarations.function_contract import FunctionContract
         from slither.analyses.data_dependency import data_dependency
 
@@ -2038,6 +2039,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                     if print_debug: print(f"Found storage slot: {e.value.name} (Slither"
                                                                           f" line:{getframeinfo(currentframe()).lineno}"
                                                                           f")")
+                                        elif isinstance(arg, Literal):
+                                            slot_var = StateVariable()
+                                            slot_var.name = str(arg.value)
+                                            slot_var.type = arg.type
+                                            slot_var.is_constant = True
+                                            slot_var.expression = arg
+                                            slot_var.set_contract(func.contract if isinstance(func, FunctionContract)
+                                                                  else self)
+                                            self._proxy_impl_slot = slot_var
+                                            if print_debug: print(f"Found storage slot: {slot_var.name} (Slither line:"
+                                                                  f"{getframeinfo(currentframe()).lineno})")
                                     elif str(r.called) == "abi.decode":
                                         arg = r.arguments[0]
                                         if print_debug: print(f"Value of {ret} comes from decoding the value of {arg}"
@@ -3018,7 +3030,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     exp = v.expression
                                     if isinstance(exp, Identifier) and exp.value in [storage_slot, var_to_set]:
                                         setter = f
-                            elif str(slot_arg) == storage_slot.name:
+                            elif storage_slot is not None and str(slot_arg) == storage_slot.name:
                                 setter = f
                             if isinstance(written_arg, Identifier) and isinstance(written_arg.value, LocalVariable):
                                 exp = written_arg.value.expression
