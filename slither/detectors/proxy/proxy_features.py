@@ -31,8 +31,9 @@ from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType, Type
 from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
+from slither.slithir.variables.temporary import TemporaryVariable
 from slither.utils.function import get_function_id
-import slither.analyses.data_dependency.data_dependency as dataDependency
+import slither.analyses.data_dependency.data_dependency as data_dependency
 
 
 class ProxyFeatureExtraction:
@@ -209,7 +210,7 @@ class ProxyFeatureExtraction:
         Use slither.analysis.data_dependency to expedite analysis if possible.
         """
         for sv in self.contract.state_variables:
-            if dataDependency.is_dependent(delegate, sv, self.contract):
+            if data_dependency.is_dependent(delegate, sv, self.contract):
                 print(f"{delegate} is dependent on {sv}")
                 if str(sv.type) == "bytes32" and sv.is_constant:
                     return str(sv.expression)
@@ -579,18 +580,18 @@ class ProxyFeatureExtraction:
         if isinstance(exp, Identifier):
             print(f"Identifier: {exp}")
             value = exp.value
-            while isinstance(value, LocalVariable):
-                print(f"LocalVariable: {value}")
-                exp = value.expression
-                if exp is not None:
-                    if isinstance(exp, CallExpression):
-                        """recursive call with new expression"""
-                        return self.find_registry_address_source(exp)
-                    elif isinstance(exp, Identifier):
-                        value = exp.value
-                        """fall-through to below, or repeat for another LocalVariable"""
-                else:
-                    break
+            if isinstance(value, LocalVariable):
+                func = value.function
+                if isinstance(func, FunctionContract):
+                    dependencies = data_dependency.get_dependencies_recursive(value, func.contract)
+                    print(f"dependencies for {value} in context {func.contract}: "
+                          f"{[str(dep) for dep in dependencies]}")
+                    for dep in dependencies:
+                        if isinstance(dep, TemporaryVariable):
+                            print(f"TemporaryVariable expression: {dep.expression}")
+                        elif isinstance(dep, StateVariable) and str(dep.type) == "bytes32":
+                            value = dep
+                            break
             if isinstance(value, FunctionContract):
                 func = value
                 if len(func.returns) > 0:
