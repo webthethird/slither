@@ -59,6 +59,8 @@ def get(expression):
 
 def set_val(expression, val):
     expression.context[key] = val
+    if isinstance(val, TemporaryVariable):
+        val.expression = expression
 
 
 _binary_to_binary = {
