@@ -588,7 +588,10 @@ class ProxyFeatureExtraction:
                           f"{[str(dep) for dep in dependencies]}")
                     for dep in dependencies:
                         if isinstance(dep, TemporaryVariable):
-                            print(f"TemporaryVariable expression: {dep.expression}")
+                            dep_exp = dep.expression
+                            print(f"TemporaryVariable expression: {dep_exp}")
+                            if isinstance(dep_exp, CallExpression) and isinstance(dep_exp.called, Identifier):
+                                value = dep_exp.called.value
                         elif isinstance(dep, StateVariable) and str(dep.type) == "bytes32":
                             value = dep
                             break
