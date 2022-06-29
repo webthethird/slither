@@ -245,7 +245,7 @@ def get_dependencies_recursive(
                     continue
                 if isinstance(call_val, FunctionContract) and len(call_val.returns) > 0:
                     returns = call_val.returns
-                    if len(call_val.return_nodes()) > 0:
+                    if call_val.return_nodes() is not None and len(call_val.return_nodes()) > 0:
                         for ret_node in call_val.return_nodes():
                             ret_exp = ret_node.expression
 
