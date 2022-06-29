@@ -2859,6 +2859,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             break
                         if n.type == NodeType.RETURN:
                             e = n.expression
+                            if print_debug: print(f"RETURN node expression: {e}"
+                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             if isinstance(e, MemberAccess):
                                 e = e.expression
                                 """Fall through to below"""
