@@ -2401,6 +2401,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if f.name == member_name:
                     if print_debug: print(f"Found the function called {f.name}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                    if f.is_implemented:
+                        self._proxy_impl_getter = f
                     ret = f.returns[0]
                     if print_debug: print(f"Returns a variable of type {ret.type}"
                                           f"{(' called ' + ret.name) if ret.name != '' else ''}"
