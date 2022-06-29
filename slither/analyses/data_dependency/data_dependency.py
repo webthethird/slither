@@ -207,7 +207,7 @@ def get_dependencies_recursive(
     while to_explore:
         var: Variable = to_explore[0]
         to_explore = to_explore[1:]
-        if var in explored:
+        if var in explored or isinstance(var, SolidityVariable):
             continue
         print(f"Exploring {var}")
         explored.append(var)
