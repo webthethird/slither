@@ -849,9 +849,9 @@ class ProxyFeatureExtraction:
                 """
                 continue
             value_written = None
+            print(f"functions_writing_to_variable: checking function {func.contract.name}.{func}"
+                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
             if func.is_writing(delegate) and delegate not in func.returns:
-                print(f"functions_writing_to_variable: checking function {func.contract.name}.{func}"
-                      f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                 """
                 Function.is_writing only works in the simplest cases, i.e., when writing to
                 a typical StateVariable or LocalVariable. This does not work for patterns
