@@ -1215,6 +1215,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for c in self.compilation_unit.contracts:
                                 if c == self or c == self._delegate_variable.contract or self in c.inheritance:
                                     continue
+                                if self._proxy_impl_setter is not None:
+                                    break
                                 if self._delegate_variable.contract in c.inheritance:
                                     if print_debug: print(f"Looking for setter in {c} "
                                                           f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
