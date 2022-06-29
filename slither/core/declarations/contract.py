@@ -2948,11 +2948,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
             if var_exp is not None:
                 print(f"Expression: {var_exp} (Slither line:{getframeinfo(currentframe()).lineno})")
-        for f in contract.functions:
+        for f in contract.functions_declared + contract.functions_inherited:
             if setter is not None:
                 break
             if f.name is not None:
-                if print_debug: print(f"Checking function: {f.name}"
+                if print_debug: print(f"Checking function: {f.signature_str}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
             else:   # I don't know why but I occasionally run into unnamed functions that would crash an unchecked print
                 if print_debug: print(f"Unnamed function of type: {f.function_type}"
@@ -3015,7 +3015,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                  AssignmentOperationType.ASSIGN)
                                     if setter is not None:
                                         break
-                    elif node.type == NodeType.EXPRESSION:
+                    elif node.type == NodeType.EXPRESSION or node.type == NodeType.RETURN:
                         exp = node.expression
                         if print_debug: print(exp)
                         if isinstance(exp, CallExpression) and "sstore" in str(exp.called):
@@ -3045,7 +3045,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             if var_exp is not None:
                                 if print_debug: print(var_exp)
-                                if var_exp == left or str(var_exp) == str(left):    # Expression.__eq__() not implemented
+                                if var_exp == left or str(var_exp) == str(left):   # Expression.__eq__() not implemented
                                     setter = f
                                     assignment = exp
                                 elif isinstance(left, IndexAccess) and isinstance(var_exp, IndexAccess):
@@ -3053,8 +3053,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         setter = f
                                         assignment = exp
                             elif isinstance(left, IndexAccess):
+                                if print_debug: print(f"Left side is an IndexAccess"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 left = left.expression_left
-                                if isinstance(left, MemberAccess) and left.member_name == var_to_set.name:
+                                if (isinstance(left, MemberAccess) and left.member_name == var_to_set.name) \
+                                        or (isinstance(left, Identifier) and left.value == var_to_set):
                                     setter = f
                                     assignment = exp
                             elif str(left) == var_to_set.name:
