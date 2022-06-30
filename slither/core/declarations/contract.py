@@ -2811,6 +2811,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.solidity_types.user_defined_type import UserDefinedType
 
         getter = None
         exp = (var_to_get.expression if isinstance(var_to_get, Variable) else None)
@@ -2846,6 +2847,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 # if f.visibility == "internal" or f.visibility == "private":
                 #     continue
                 if len(f.returns) > 0:
+                    skip_f = False
                     for v in f.returns:
                         if print_debug:
                             print(f"{f.name} returns {v.type} variable"
@@ -2856,10 +2858,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                             getter = f
                             break
+                        if (isinstance(v.type, UserDefinedType) and isinstance(v.type.type, Contract)) \
+                                or isinstance(v.type, Contract):
+                            """ Not interested in functions that return a new Contract """
+                            skip_f = True
+                    if skip_f:
+                        continue
                     for n in f.all_nodes():
                         if getter is not None:
                             break
-                        if n.type == NodeType.RETURN:
+                        if n.type == NodeType.RETURN and n.function == f:
+                            """ Not interested in RETURN nodes in functions called by f """
                             e = n.expression
                             if print_debug: print(f"RETURN node expression: {e}"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
