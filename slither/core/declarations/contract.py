@@ -3063,8 +3063,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if var_exp == left or str(var_exp) == str(left):   # Expression.__eq__() not implemented
                                     setter = f
                                     assignment = exp
+                                elif isinstance(left, Identifier) and var_to_set == left.value:
+                                    setter = f
+                                    assignment = exp
                                 elif isinstance(left, IndexAccess) and isinstance(var_exp, IndexAccess):
-                                    if left.expression_left == var_exp.expression_left:
+                                    if print_debug: print(f"{left} is an IndexAccess and {var_exp} is an IndexAccess"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                    if str(left.expression_left) == str(var_exp.expression_left):
                                         setter = f
                                         assignment = exp
                             elif isinstance(left, IndexAccess):
