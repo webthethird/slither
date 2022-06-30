@@ -94,10 +94,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                 if proxy_features.is_mapping_from_msg_sig(delegate):
                     info = [
                         delegate,
-                        " maps function signatures (i.e. `msg.sig`) to addresses where the functions"
-                        " are implemented, suggesting that ",
-                        proxy,
-                        " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                        " maps function signatures to addresses, suggesting ",
+                        proxy.name,
+                        " uses multiple implementations.\n"
                     ]
                     json = self.generate_result(info)
                     results.append(json)
@@ -110,19 +109,17 @@ or one of the proxy patterns developed by OpenZeppelin.
                             if struct.canonical_name == "LibDiamond.DiamondStorage":
                                 info = [
                                     delegate,
-                                    " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                    " is stored in the structure specified by EIP-2535: ",
                                     struct,
-                                    " which is declared in the standard's LibDiamond library.\n"
+                                    "\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
                             elif isinstance(struct, StructureContract):
                                 info = [
                                     delegate,
-                                    " is stored in the DiamondStorage structure specified by EIP-2535: ",
+                                    " is stored in the structure specified by EIP-2535 but not the one in LibDiamond: ",
                                     struct,
-                                    " but not the one declared in the LibDiamond library. It is declared in ",
-                                    struct.contract,
                                     "\n"
                                 ]
                                 json = self.generate_result(info)
@@ -133,7 +130,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             loupe_facets = proxy_features.find_diamond_loupe_functions()
                             if len(loupe_facets) == 4:
                                 info = [
-                                    f"The Loupe function {f} is located in {c}\n" for f,c in loupe_facets
+                                    f"Loupe functions are located in {', '.join(set(c.name for f,c in loupe_facets))}\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
@@ -144,9 +141,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                         else:
                             info = [
                                 delegate,
-                                " is declared as part of a user-defined structure: ",
+                                " is stored in a structure: ",
                                 struct,
-                                " which is consistent with the Diamond Storage pattern but not EIP-2535\n"
+                                ", consistent with Diamond Storage but not EIP-2535\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -155,23 +152,22 @@ or one of the proxy patterns developed by OpenZeppelin.
                         Mapping not stored in a struct
                         """
                 else:
+                    # TODO: Find a way to make this more concise
                     info = [
                         delegate,
-                        " probably maps function signatures (i.e. the key is of type `bytes4`) to"
+                        " probably maps function signatures (the key is of type `bytes4`) to"
                         " addresses where the functions are implemented, but the detector could not"
-                        " find the index access expression using `msg.sig` and cannot say for sure if ",
+                        " confirm if ",
                         proxy,
-                        " uses a multiple implementation pattern such as EIP-1538 or EIP-2535.\n"
+                        " uses multiple implementations as in EIP-1538 or EIP-2535.\n"
                     ]
                     json = self.generate_result(info)
                     results.append(json)
             else:
                 info = [
                     delegate,
-                    " is a mapping from type ",
-                    str(delegate.type.type_from),
-                    " to type ",
-                    str(delegate.type.type_to),
+                    " is a mapping of type ",
+                    str(delegate.type),
                     "\n"
                 ]
                 json = self.generate_result(info)
@@ -203,8 +199,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                     info = [
                         proxy,
-                        " implements EIP-1967: Standard Proxy Storage Slots\n"
-                        "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)\n"
+                        " implements EIP-1967\n"
                     ]
                     json = self.generate_result(info)
                     results.append(json)
@@ -221,9 +216,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                     info = [
                         proxy,
-                        " implements EIP-1822 using the standard storage slot defined by ERC-1967: "
-                        "IMPLEMENTATION_SLOT == bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1) "
-                        "(OpenZeppelin UUPS implementation)\n"
+                        " implements EIP-1822 using the standard storage slot defined by ERC-1967"
+                        " (like the OpenZeppelin UUPS implementation)\n"
                     ]
                     json = self.generate_result(info)
                     results.append(json)
@@ -255,11 +249,11 @@ or one of the proxy patterns developed by OpenZeppelin.
             """
             is_cross_contract is a boolean returned by proxy_features.impl_address_from_contract_call()
             which indicates whether or not a cross contract call was found.
-            exp is the CallExpression that was found, t is the type of the contract called.
+            exp is the CallExpression that was found, contract_type is the type of the contract called.
             """
             info = [
                 delegate,
-                " value is retrieved from a function call to another contract: ",
+                " gets value from a call to another contract: ",
                 str(call_exp),
                 "\n"
             ]
@@ -277,7 +271,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     rorb = "Beacon"
                 info = [
                     contract_type.type,
-                    f" appears to serve as a {rorb} contract for the proxy ",
+                    f" appears to be a {rorb} contract for the proxy ",
                     proxy.name,
                     "\n"
                 ]
@@ -293,9 +287,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                         info = [
                             "The address of ",
                             contract_type.type,
-                            " appears to be loaded from the storage slot ",
+                            " is loaded from storage slot ",
                             source,
-                            " which is ",
+                            " = ",
                             str(source.expression),
                             "\n"
                         ]
@@ -303,7 +297,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         info = [
                             "The address of ",
                             contract_type.type,
-                            " appears to be stored as a state variable: ",
+                            " is stored as a state variable: ",
                             source.canonical_name,
                             "\n"
                         ]
@@ -347,9 +341,9 @@ or one of the proxy patterns developed by OpenZeppelin.
             if proxy_features.is_upgradeable_proxy:
                 proxy = contract
                 delegate = proxy_features.impl_address_variable
-                info = [proxy, " appears to ",
-                        "maybe " if not proxy_features.is_upgradeable_proxy_confirmed else "",
-                        "be an upgradeable proxy contract.\n"]
+                info = [proxy,
+                        " may be" if not proxy_features.is_upgradeable_proxy_confirmed else " is",
+                        " an upgradeable proxy.\n"]
                 json = self.generate_result(info)
                 results.append(json)
                 """
@@ -361,62 +355,64 @@ or one of the proxy patterns developed by OpenZeppelin.
                     Check the scope of the implementation address variable,
                     i.e., StateVariable or LocalVariable.
                     """
+                    info = [
+                        delegate,
+                        " is declared in the proxy.\n"
+                    ]
+                    json = self.generate_result(info)
+                    results.append(json)
                     if isinstance(delegate, StateVariable):
                         """
                         Check the type of the state variable, i.e. an address, a mapping, or something else
                         """
                         if f"{delegate.type}" == "address":
                             info = [
-                                proxy,
-                                " stores implementation address as a state variable: ",
                                 delegate,
-                                "\nAvoid declaring state variables in the proxy. Better to use a standard storage slot,"
-                                " e.g. as proposed in EIP-1967, EIP-1822, EIP-2535 or another well-audited pattern.\n"
+                                " is an address state variable\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
                             """
                             Check if the implementation address setter is in the proxy contract. 
                             """
-                            if proxy.proxy_implementation_setter is not None:
-                                if proxy.proxy_implementation_setter.contract == proxy:
-                                    info = [
-                                        "Implementation setter ",
-                                        proxy.proxy_implementation_setter,
-                                        " was found in the proxy contract.\n"
-                                    ]
-                                else:
-                                    info = [
-                                        "Implementation setter ",
-                                        proxy.proxy_implementation_setter,
-                                        " was found in another contract: ",
-                                        proxy.proxy_implementation_setter.contract,
-                                        "\n"
-                                    ]
-                                json = self.generate_result(info)
-                                results.append(json)
+                            # if proxy.proxy_implementation_setter is not None:
+                            #     if proxy.proxy_implementation_setter.contract == proxy:
+                            #         info = [
+                            #             "Implementation setter ",
+                            #             proxy.proxy_implementation_setter,
+                            #             " was found in the proxy contract.\n"
+                            #         ]
+                            #     else:
+                            #         info = [
+                            #             "Implementation setter ",
+                            #             proxy.proxy_implementation_setter,
+                            #             " was found in another contract: ",
+                            #             proxy.proxy_implementation_setter.contract,
+                            #             "\n"
+                            #         ]
+                            #     json = self.generate_result(info)
+                            #     results.append(json)
                             """
                             Check if logic contract has same variable declared in same slot, i.e. Singleton/MasterCopy
                             """
                             idx, logic = proxy_features.is_impl_address_also_declared_in_logic()
                             if idx >= 0 and logic is not None:
-                                if idx == 0:
+                                if idx % 10 == 0 and idx != 10:
+                                    """ 1st, 21st, 31st, etc. but not 11st """
                                     suffix = "st"
-                                elif idx == 1:
+                                elif idx % 10 == 1 and idx != 11:
+                                    """ 2nd, 22nd, 32nd, etc. but not 12nd """
                                     suffix = "nd"
-                                elif idx == 2:
+                                elif idx % 10 == 2 and idx != 12:
+                                    """ 3rd, 23rd, 33rd, etc. but not 13rd """
                                     suffix = "rd"
                                 else:
                                     suffix = "th"
                                 info = [
-                                    "The state variable ",
                                     delegate,
-                                    " is declared in both the proxy and the logic contract (",
-                                    logic,
-                                    f") in the {idx + 1}{suffix} position, i.e. storage slot {idx}."
-                                    " This is akin to the GnosisSafeProxy, and is similar to Inherited Storage, as"
-                                    " there is strong coupling between the storage layouts of the proxy and logic"
-                                    " contracts.\n"
+                                    " is declared in both the proxy and logic contract (",
+                                    logic.name,
+                                    f") in the {idx + 1}{suffix} position (storage slot {idx}).\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
@@ -429,11 +425,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                             the proxy could still use mappings to store all other variables.
                             """
                             info = [
-                                proxy,
-                                " stores implementation(s) in a mapping of type ",
-                                delegate.type,
-                                " declared in the proxy contract: ",
-                                delegate, "\n"
+                                delegate,
+                                " is a mapping of type ",
+                                str(delegate.type),
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -443,11 +438,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                             Print result for debugging
                             """
                             info = [
-                                proxy,
-                                " stores implementation address in a state variable of type ",
-                                delegate.type,
-                                " declared in the proxy contract: ",
-                                delegate, "\n"
+                                delegate,
+                                " is a state variable of type ",
+                                str(delegate.type),
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -486,23 +480,19 @@ or one of the proxy patterns developed by OpenZeppelin.
                         struct = delegate.structure
                         if f"{delegate.type}" == "address":
                             info = [
-                                proxy,
-                                " stores implementation address as a variable called ",
                                 delegate,
-                                " found in the structure called ",
+                                " is an address stored in a structure: ",
                                 struct,
-                                " which is declared in the proxy contract\n"
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
                         elif isinstance(delegate.type, MappingType):
                             info = [
-                                proxy,
-                                " stores implementation address in a mapping called ",
                                 delegate,
-                                " found in the structure called ",
+                                " is a mapping found in a structure: ",
                                 struct,
-                                " which is declared in the proxy contract\n"
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -512,7 +502,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         else:
                             info = [
                                 delegate,
-                                " is a local variable of type ",
+                                " is a structure variable of type ",
                                 str(delegate.type),
                                 " which is unexpected!\n"
                             ]
@@ -524,14 +514,16 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         info = [
                             delegate,
-                            " is not a StateVariable, a LocalVariable, or a StructureVariable."
+                            " is not a StateVariable, LocalVariable, or StructureVariable."
                             " This should not be possible!\n"
                         ]
                         json = self.generate_result(info)
                         results.append(json)
                 else:   # Location of delegate is in a different contract
-                    info = [delegate, " was found in a different contract: ",
-                            proxy_features.impl_address_location, "\n"]
+                    info = [
+                        delegate,
+                        " was found in a different contract.\n"
+                    ]
                     json = self.generate_result(info)
                     results.append(json)
                     """
@@ -544,19 +536,17 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         if f"{delegate.type}" == "address":
                             info = [
-                                proxy,
-                                " stores implementation address as a state variable called ",
                                 delegate,
-                                " which is declared in the contract: ",
-                                proxy_features.impl_address_location,
-                                "\n"
+                                " is an address state variable.\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
                         elif isinstance(delegate.type, MappingType):
                             info = [
-                                contract, " stores implementation(s) in a mapping declared in another contract: ",
-                                delegate, "\n"
+                                delegate,
+                                " is a mapping of type ",
+                                str(delegate.type),
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -566,11 +556,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                             Print result for debugging
                             """
                             info = [
-                                proxy,
-                                " stores implementation address in a state variable of type ",
+                                delegate,
+                                " is a state variable of type ",
                                 str(delegate.type),
-                                " declared in another contract: ",
-                                delegate, "\n"
+                                "\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -593,8 +582,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                     proxy_features.impl_address_location in c.inheritance and \
                                     proxy not in c.inheritance and c not in proxy.inheritance:
                                 info = [
-                                    proxy,
-                                    " appears to be using Inherited Storage\n"
+                                    proxy.name,
+                                    " appears to use Inherited Storage\n"
                                 ]
                                 json = self.generate_result(info)
                                 results.append(json)
@@ -628,10 +617,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                         struct = delegate.structure
                         if f"{delegate.type}" == "address":
                             info = [
-                                proxy,
-                                " stores implementation address as an address variable called ",
                                 delegate,
-                                " found in the structure called ",
+                                " is an address stored in a structure: ",
                                 struct,
                                 "\n"
                             ]
@@ -639,13 +626,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                             results.append(json)
                         elif isinstance(delegate.type, MappingType):
                             info = [
-                                proxy,
-                                " stores implementation address in a mapping called ",
                                 delegate,
-                                " found in the structure called ",
+                                " is a mapping found in a structure: ",
                                 struct,
-                                " which is declared in the contract: ",
-                                proxy_features.impl_address_location,
                                 "\n"
                             ]
                             json = self.generate_result(info)
@@ -659,11 +642,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                             Print result for debugging
                             """
                             info = [
-                                proxy,
-                                " stores implementation address in a variable of type ",
+                                delegate,
+                                " is a structure variable of type ",
                                 str(delegate.type),
-                                " declared in a structure in another contract: ",
-                                delegate, "\n"
+                                " which is unexpected!\n"
                             ]
                             json = self.generate_result(info)
                             results.append(json)
@@ -693,35 +675,35 @@ or one of the proxy patterns developed by OpenZeppelin.
                     json = self.generate_result(info)
                     results.append(json)
                 """
-                
+                Check if all functions that can update the implementation have compatibility checks
                 """
                 has_checks, func_exp_list = proxy_features.has_compatibility_checks()
                 info = []
                 if not has_checks:
                     funcs_missing_check = [func for func, check in func_exp_list if check is None]
-                    funcs_with_check = [(func, check) for func, check in func_exp_list if check is not None]
+                    # funcs_with_check = [(func, check) for func, check in func_exp_list if check is not None]
                     for func in funcs_missing_check:
                         info += [
                             "Missing compatibility check in ",
-                            func, "\n"
+                            func.canonical_name, "\n"
                         ]
-                    for func, check in funcs_with_check:
-                        info += [
-                            "Found compatibility check in ",
-                            func,
-                            ": ",
-                            str(check),
-                            "\n"
-                        ]
+                    # for func, check in funcs_with_check:
+                    #     info += [
+                    #         "Found compatibility check in ",
+                    #         func.canonical_name,
+                    #         ": ",
+                    #         str(check),
+                    #         "\n"
+                    #     ]
                 elif len(func_exp_list) == 0:
-                    info = ["Could not find any setter functions in which to look for compatibility checks.\n"]
+                    info = ["No setter functions found to search for compatibility checks.\n"]
                 else:
-                    info = ["Found the following compatibility checks in all upgrade functions: \n"]
-                    for func, exp in func_exp_list:
-                        print(f"func: {func}  exp: {exp}")
-                        info += [
-                            "In ", func, ": ", str(exp), "\n"
-                        ]
+                    info = ["Found compatibility checks in all upgrade functions.\n"]
+                    # for func, exp in func_exp_list:
+                    #     print(f"func: {func}  exp: {exp}")
+                    #     info += [
+                    #         "In ", func.canonical_name, ": ", str(exp), "\n"
+                    #     ]
                 if len(info) > 0:
                     json = self.generate_result(info)
                     results.append(json)
@@ -729,7 +711,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
                 """
-                info = [contract, " appears to be a proxy contract, but it doesn't seem to be upgradeable.\n"]
+                info = [contract, " is a proxy, but doesn't seem upgradeable.\n"]
                 json = self.generate_result(info)
                 results.append(json)
         return results
