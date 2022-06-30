@@ -591,7 +591,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 continue
                             if proxy_features.impl_address_location in proxy.inheritance and \
                                     proxy_features.impl_address_location in c.inheritance and \
-                                    proxy not in c.inheritance:
+                                    proxy not in c.inheritance and c not in proxy.inheritance:
                                 info = [
                                     proxy,
                                     " appears to be using Inherited Storage\n"
