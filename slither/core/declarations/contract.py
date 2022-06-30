@@ -2841,7 +2841,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug: print(f"Unnamed function of type: {f.function_type}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 continue
-            if not f.name == "fallback" and "constructor" not in f.name.lower():
+            if not f.is_fallback and not f.is_constructor and not f.is_receive and "init" not in f.name.lower():
                 # if print_debug: print(f"Visibility: {f.visibility}")
                 # if f.visibility == "internal" or f.visibility == "private":
                 #     continue
@@ -2964,8 +2964,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug: print(f"Unnamed function of type: {f.function_type}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 continue
-            if not f.name == "fallback" and "constructor" not in f.name.lower() and "init" not in f.name.lower() \
-                    and f.name != contract.name:
+            if not f.is_fallback and not f.is_constructor and not f.is_receive \
+                    and "init" not in f.name.lower() and "fallback" not in f.name.lower():  # avoid _fallback()
                 if print_debug: print(f"Visibility: {f.visibility}")
                 if f.visibility == "internal" or f.visibility == "private":
                     continue
