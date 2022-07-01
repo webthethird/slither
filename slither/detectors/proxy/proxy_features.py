@@ -834,7 +834,8 @@ class ProxyFeatureExtraction:
 
     def functions_writing_to_delegate(
             self,
-            delegate: Variable
+            delegate: Variable,
+            contract: Contract
     ) -> List[Tuple[FunctionContract, LocalVariable]]:
         """
         Contract.get_functions_writing_to_variable doesn't always work for us,
@@ -842,14 +843,15 @@ class ProxyFeatureExtraction:
         So this helper method finds all functions writing to the delegate variable.
 
         :param delegate: The Variable we are interested in
+        :param contract: The Contract in which to search
         :return: List of FunctionContract objects and the values they write to delegate
         """
         setters = []
         setter = self.contract.proxy_implementation_setter
         slot = self.contract.proxy_impl_storage_offset
-        to_search = self.contract.functions
+        to_search = contract.functions
         print(f"functions_writing_to_variable: {delegate}")
-        if setter is not None and setter.contract != self.contract:
+        if setter is not None and setter.contract != contract:
             """
             If the implementation setter was found in a different contract, 
             then we must also search all of the functions in that contract.
