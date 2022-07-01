@@ -149,7 +149,7 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         self._expression_vars_read: List["Expression"] = []
         self._expression_vars_written: List["Expression"] = []
         self._expression_calls: List["Expression"] = []
-        self._expression_modifier_calls: List["CallExpression"] = []
+        self._expression_modifier_calls: List["CallExpression"] = None
         self._modifiers: List[ModifierStatements] = []
         self._explicit_base_constructor_calls: List[ModifierStatements] = []
         self._contains_assembly: bool = False
