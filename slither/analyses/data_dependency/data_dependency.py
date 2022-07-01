@@ -241,6 +241,10 @@ def get_dependencies_recursive(
                                     c_type = c
                         print(f"MemberAccess.expression.value = {value}, type = {c_type}")
                         call_val = c_type.get_function_from_name(called.member_name)
+                        if not call_val.is_implemented:
+                            for f in c_type.functions_declared:
+                                if f.name == call_val.name:
+                                    call_val = f
                         print(f"call_val: {call_val}")
                 else:
                     continue
