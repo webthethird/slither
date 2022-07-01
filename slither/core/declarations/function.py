@@ -19,6 +19,7 @@ from slither.core.expressions import (
     IndexAccess,
     MemberAccess,
     UnaryOperation,
+    CallExpression,
 )
 from slither.core.solidity_types import UserDefinedType
 from slither.core.solidity_types.type import Type
@@ -673,6 +674,14 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         list(ModifierCall): List of the modifiers call (include expression and irs)
         """
         return list(self._modifiers)
+
+    @property
+    def modifier_calls_as_expressions(self) -> List[CallExpression]:
+        """
+        list(ModifierCallExpression): List of the modifiers as CallExpressions, exposing variables passed as arguments
+        """
+        return[exp for exp in self.calls_as_expressions if isinstance(exp, CallExpression)
+               and isinstance(exp.called, Identifier) and exp.called.value in self.modifiers]
 
     @property
     def explicit_base_constructor_calls(self) -> List["Function"]:
