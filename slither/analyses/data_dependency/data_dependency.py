@@ -200,17 +200,19 @@ def get_dependencies_recursive(
         key = KEY_NON_SSA_UNPROTECTED
     else:
         key = KEY_NON_SSA
+    # print(f"get_dependencies_recursive: for {variable}")
     """
     explored and to_explore are lists of Variable objects, including temporary variables.
     """
-    explored = []
+    explored = [variable]
     to_explore = list(context.context[key].get(variable, set()))
     while to_explore:
+        # print(f"get_dependencies_recursive: still to explore {[str(v) for v in to_explore]}")
         var: Variable = to_explore[0]
         to_explore = to_explore[1:]
         if var in explored or isinstance(var, SolidityVariable):
             continue
-        print(f"Exploring {var}")
+        # print(f"Exploring {var}")
         explored.append(var)
 
         """
@@ -221,10 +223,11 @@ def get_dependencies_recursive(
         """
         if var.expression is not None:
             exp = var.expression
-            print(f"Expression: {exp}")
+            # print(f"Expression: {exp}")
             """ For now, we are only interested in tracing CallExpressions """
             if isinstance(exp, CallExpression):
                 called = exp.called
+                call_val = None
                 if isinstance(called, Identifier):
                     """ Indicates a simple function call within the current context """
                     call_val = called.value
@@ -239,19 +242,19 @@ def get_dependencies_recursive(
                             for c in context.compilation_unit.contracts:
                                 if c_type in c.inheritance:
                                     c_type = c
-                        print(f"MemberAccess.expression.value = {value}, type = {c_type}")
+                        # print(f"MemberAccess.expression.value = {value}, type = {c_type}")
                         call_val = c_type.get_function_from_name(called.member_name)
                         if not call_val.is_implemented:
                             for f in c_type.functions_declared:
                                 if f.name == call_val.name:
                                     call_val = f
-                        print(f"call_val: {call_val}")
+                        # print(f"call_val: {call_val}")
                 else:
                     continue
                 if isinstance(call_val, FunctionContract) and len(call_val.returns) > 0:
                     returns = call_val.returns
-                    print(f"{call_val} returns: {returns}")
-                    print(f"{call_val} return node: {call_val.return_node()}")
+                    # print(f"{call_val} returns: {[str(r.type) + ' ' + r.name for r in returns]}")
+                    # print(f"{call_val} return node: {call_val.return_node()}")
                     if call_val.return_nodes() is not None and len(call_val.return_nodes()) > 0:
                         for ret_node in call_val.return_nodes():
                             ret_exp = ret_node.expression
@@ -273,7 +276,7 @@ def get_dependencies_recursive(
                             v for v in list(new_context.context[key].get(ret, set()))
                             if v not in to_explore and v not in explored
                         ]
-    return set(explored)
+    return set(explored[1:])
 
 
 def get_all_dependencies(
