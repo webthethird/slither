@@ -1118,16 +1118,18 @@ class ProxyFeatureExtraction:
         """
         check_exp = None
         if var_written is None or (var_written.name not in str(condition)
-                                   and not isinstance(condition, Identifier)):
+                                   and not isinstance(condition, Identifier)
+                                   and not any([var_written.name in str(call)
+                                                for call in in_function.modifier_calls_as_expressions])):
             """
-            The boolean result of the condition should depend on
-            the new implementation address value.
+            The boolean result of the condition should depend on the new implementation address value.
+            But we need to be careful not to skip cases where the condition is in a modifier.
             """
             return check_exp, func_exp_list
         elif isinstance(condition, Identifier):
-            print(f"has_compatibility_checks: Identifier {condition}")
+            print(f"check_condition_from_expression: Identifier {condition}")
             if condition.value.expression is not None:
-                print(f"has_compatibility_checks: Identifier.value.expression "
+                print(f"check_condition_from_expression: Identifier.value.expression "
                       f"{condition.value.expression}")
                 condition = condition.value.expression
             else:
@@ -1136,6 +1138,9 @@ class ProxyFeatureExtraction:
                             str(condition) in str(e.expression_left):
                         condition = e.expression_right
                         break
+        elif len(in_function.modifier_calls_as_expressions) > 0:
+            print(f"check_condition_from_expression: modifier calls: "
+                  f"{[str(call) for call in in_function.modifier_calls_as_expressions]}")
         call_func = None
         if isinstance(condition, CallExpression):
             """
@@ -1194,7 +1199,7 @@ class ProxyFeatureExtraction:
                     for e in call_func.all_expressions():
                         if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(right):
                             condition = BinaryOperation(left, e.expression_right, condition.type)
-            print(f"has_compatibility_checks: condition {condition}")
+            print(f"check_condition_from_expression: condition {condition}")
             if isinstance(original, CallExpression) and call_func is not None:
                 args = [condition]
                 if len(original.arguments) > 1:
