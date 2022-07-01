@@ -34,7 +34,8 @@ from slither.core.solidity_types import (
 from slither.core.expressions import (
     CallExpression,
     MemberAccess,
-    Identifier
+    Identifier,
+    IndexAccess
 )
 
 if TYPE_CHECKING:
@@ -245,10 +246,19 @@ def get_dependencies_recursive(
                     continue
                 if isinstance(call_val, FunctionContract) and len(call_val.returns) > 0:
                     returns = call_val.returns
+                    print(f"{call_val} returns: {returns}")
+                    print(f"{call_val} return node: {call_val.return_node()}")
                     if call_val.return_nodes() is not None and len(call_val.return_nodes()) > 0:
                         for ret_node in call_val.return_nodes():
                             ret_exp = ret_node.expression
 
+                            if isinstance(ret_exp, IndexAccess):
+                                right = ret_exp.expression_right
+                                ret_exp = ret_exp.expression_left
+                                if isinstance(right, Identifier):
+                                    to_explore.append(right.value)
+                            if isinstance(ret_exp, Identifier):
+                                to_explore.append(ret_exp.value)
                     for ret in call_val.returns:
                         to_explore.append(ret)
                         if isinstance(context, Contract):
