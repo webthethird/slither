@@ -98,6 +98,9 @@ class ProxyFeatureExtraction:
                 struct = self._impl_address_variable.structure
                 if isinstance(struct, StructureContract):
                     self._impl_address_location = struct.contract
+            # dependencies = data_dependency.get_dependencies_recursive(self._impl_address_variable,
+            #                                                           self._impl_address_location)
+            # print(f"dependencies: {[str(dep) for dep in dependencies]}")
         return self._impl_address_location
 
     def is_impl_address_also_declared_in_logic(self) -> (int, Optional[Contract]):
