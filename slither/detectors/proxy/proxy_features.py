@@ -703,16 +703,28 @@ class ProxyFeatureExtraction:
         all_checks = []
         func_exp_list = []
         delegate = self.impl_address_variable
-        setters = self.functions_writing_to_delegate(delegate)
-        for (setter, var_written) in setters:
-            if setter.visibility in ["internal", "private"]:
-                print(f"has_compatibility_checks: skipping {setter.visibility} function {setter}")
+        writing_funcs = self.functions_writing_to_delegate(delegate, self.contract)
+        setter = self.contract.proxy_implementation_setter
+        getter = self.contract.proxy_implementation_getter
+        if setter is not None:
+            dependencies = data_dependency.get_dependencies_recursive(delegate, setter.contract)
+        elif getter is not None:
+            dependencies = data_dependency.get_dependencies_recursive(delegate, getter.contract)
+        else:
+            dependencies = data_dependency.get_dependencies_recursive(delegate, self.contract)
+        print(f"has_compatibility_checks: dependencies: {[str(dep) for dep in dependencies]}")
+        for dep in dependencies:
+            if isinstance(dep, StateVariable):
+                writing_funcs += self.functions_writing_to_delegate(dep, dep.contract)
+        for (func, var_written) in writing_funcs:
+            if func.visibility in ["internal", "private"]:
+                print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
                 continue
             else:
-                print(f"has_compatibility_checks: checking {setter.visibility} function {setter}")
+                print(f"has_compatibility_checks: checking {func.visibility} function {func}")
             check_exp = None
             has_check = False
-            for exp in setter.all_expressions():
+            for exp in func.all_expressions():
                 """
                 Search each upgrade function's expressions for a condition that will 
                 revert if the new implementation is not compatible with the proxy.
@@ -741,7 +753,7 @@ class ProxyFeatureExtraction:
                             newly found checks to the list of (function, compatibility check) pairs.
                             """
                             check_, func_exp_list = self.check_condition_from_expression(
-                                condition, setter, var_written, func_exp_list, exp
+                                condition, func, var_written, func_exp_list, exp
                             )
                             """
                             Since there may be more than one valid compatibility check in the same function,
@@ -764,7 +776,7 @@ class ProxyFeatureExtraction:
                     handle Solidity function CallExpressions correctly.
                     """
                     print(f"has_compatibility_checks: ConditionalExpression {exp}")
-            if check_exp is None and isinstance(setter, FunctionContract):
+            if check_exp is None and isinstance(func, FunctionContract):
                 """
                 We used Function.all_expressions() above to find require and assert,
                 because they are not captured correctly by Function.all_nodes().
@@ -774,7 +786,7 @@ class ProxyFeatureExtraction:
                 does not handle conditional expressions well, and unfortunately there
                 is no way to get from an Expression object to the Node that contains it.
                 """
-                for node in setter.all_nodes():
+                for node in func.all_nodes():
                     if node.type == NodeType.IF:
                         exp = node.expression
                         print(f"has_compatibility_checks: IF node exp = {exp}")
@@ -802,7 +814,7 @@ class ProxyFeatureExtraction:
                             newly found checks to the list of (function, compatibility check) pairs.
                             """
                             check_, func_exp_list = self.check_condition_from_expression(
-                                exp, setter, var_written, func_exp_list, conditional_exp
+                                exp, func, var_written, func_exp_list, conditional_exp
                             )
                             """
                             Since there may be more than one valid compatibility check in the same function,
@@ -816,7 +828,7 @@ class ProxyFeatureExtraction:
                                 has_check = True
             if check_exp is None:
                 """ Didn't find check in this function """
-                func_exp_list.append((setter, None))
+                func_exp_list.append((func, None))
             all_checks.append(has_check)
         return all(all_checks), func_exp_list
 
