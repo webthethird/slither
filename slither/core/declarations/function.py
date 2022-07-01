@@ -149,7 +149,7 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         self._expression_vars_read: List["Expression"] = []
         self._expression_vars_written: List["Expression"] = []
         self._expression_calls: List["Expression"] = []
-        # self._expression_modifiers: List["Expression"] = []
+        self._expression_modifier_calls: List["CallExpression"] = []
         self._modifiers: List[ModifierStatements] = []
         self._explicit_base_constructor_calls: List[ModifierStatements] = []
         self._contains_assembly: bool = False
@@ -680,8 +680,12 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         """
         list(ModifierCallExpression): List of the modifiers as CallExpressions, exposing variables passed as arguments
         """
-        return[exp for exp in self.calls_as_expressions if isinstance(exp, CallExpression)
-               and isinstance(exp.called, Identifier) and exp.called.value in self.modifiers]
+        if self._expression_modifier_calls is None:
+            self._expression_modifier_calls = [exp for exp in self._expression_calls
+                                               if isinstance(exp, CallExpression)
+                                               and isinstance(exp.called, Identifier)
+                                               and exp.called.value in self.modifiers]
+        return self._expression_modifier_calls
 
     @property
     def explicit_base_constructor_calls(self) -> List["Function"]:
