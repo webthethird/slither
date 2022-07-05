@@ -2003,6 +2003,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for a in args:
                                 if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
                                     self._proxy_impl_slot = a
+                                    if delegate.name == str(called) and delegate.expression == rex:
+                                        """ 
+                                        If we constructed a LocalVariable from scratch above, but 
+                                        then found the slot variable in the call expression arguments,
+                                        it may be better just to use the fallback variable `var` which
+                                        was assigned the value returned by the call expression.
+                                        """
+                                        delegate = var
+                                    if print_debug: print(f"Found storage slot: {a.name} (Slither"
+                                                          f" line:{getframeinfo(currentframe()).lineno}"
+                                                          f")")
                                     break
                             if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
