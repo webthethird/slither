@@ -1999,7 +1999,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 delegate.name = str(called)
                             if delegate.type is None:
                                 delegate.type = ret.type
-                            for a in exp.arguments:
+                            args = [arg.value for arg in exp.arguments if isinstance(arg, Identifier)]
+                            for a in args:
                                 if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
                                     self._proxy_impl_slot = a
                                     break
@@ -2444,10 +2445,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.name = str(e)
                                     if delegate.type is None:
                                         delegate.type = ret.type
-                                    for a in ex.arguments:
-                                        if isinstance(a, Identifier) and str(a.value.type) == "bytes32" \
-                                                and a.value.is_constant:
-                                            self._proxy_impl_slot = a.value
+                                    args = [arg.value for arg in ex.arguments if isinstance(arg, Identifier)]
+                                    for a in args:
+                                        if str(a.type) == "bytes32" and a.is_constant:
+                                            self._proxy_impl_slot = a
+                                            if print_debug: print(f"Found storage slot: {a.name} (Slither"
+                                                                  f" line:{getframeinfo(currentframe()).lineno}"
+                                                                  f")")
                                             break
                             elif isinstance(ex, IndexAccess):
                                 e = ex  # Fall through
