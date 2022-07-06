@@ -195,7 +195,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 setter = proxy.proxy_implementation_getter
             else:
                 print(f"Setter found in contract {setter.contract}")
-            if setter.contract == proxy or setter.contract in proxy.inheritance:
+            if setter is None or setter.contract == proxy or setter.contract in proxy.inheritance:
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                     info = [
                         proxy,
@@ -212,7 +212,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     ]
                     json = self.generate_result(info)
                     results.append(json)
-            elif setter.contract != proxy and proxy_features.proxy_only_contains_fallback():
+            elif setter is None or (setter.contract != proxy and proxy_features.proxy_only_contains_fallback()):
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
                     info = [
                         proxy,
