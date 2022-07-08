@@ -1152,10 +1152,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if self._delegate_variable.is_constant or self._delegate_variable.is_immutable:
                     if print_debug: print(f"Call destination {self._delegate_variable} is constant "
                                           f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                    self._is_upgradeable_proxy = False
-                    return False
+                    if self._proxy_impl_slot is not None and self._proxy_impl_slot == self._delegate_variable:
+                        if print_debug: print(f"{self._delegate_variable} is the implementation storage slot "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                    else:
+                        self._is_upgradeable_proxy = False
+                        if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy "
+                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                        return False
                 # if the destination is hard-coded, return false
-                if isinstance(self._delegate_variable.expression, Literal):
+                if isinstance(self._delegate_variable.expression, Literal) and \
+                        self._delegate_variable != self._proxy_impl_slot:
                     if print_debug: print(f"Call destination {self._delegate_variable.expression} is hardcoded "
                                           f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
                     self._is_upgradeable_proxy = False
@@ -1210,20 +1217,28 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                  self._delegate_variable,
                                                                                  self._proxy_impl_slot, print_debug)
                         if self._proxy_impl_setter is None:
-                            if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} "
+                            if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} \n"
+                                                  f"Looking in {self} "
                                                   f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                            for c in self.compilation_unit.contracts:
-                                if c == self or c == self._delegate_variable.contract or self in c.inheritance:
-                                    continue
-                                if self._proxy_impl_setter is not None:
-                                    break
-                                if self._delegate_variable.contract in c.inheritance:
-                                    if print_debug: print(f"Looking for setter in {c} "
-                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    (self._proxy_impl_setter,
-                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                             self._proxy_impl_slot,
-                                                                                             print_debug)
+                            (self._proxy_impl_setter,
+                             self._delegate_variable) = self.find_setter_in_contract(self, self._delegate_variable,
+                                                                                     self._proxy_impl_slot, print_debug)
+                            if self._proxy_impl_setter is None:
+                                if print_debug: print(f"\nCould not find setter in {self} "
+                                                      f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                                for c in self.compilation_unit.contracts:
+                                    if c == self or c == self._delegate_variable.contract or self in c.inheritance:
+                                        continue
+                                    if self._proxy_impl_setter is not None:
+                                        break
+                                    if self._delegate_variable.contract in c.inheritance:
+                                        if print_debug: print(f"Looking for setter in {c} "
+                                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                                        (self._proxy_impl_setter,
+                                         self._delegate_variable)= self.find_setter_in_contract(c,
+                                                                                                self._delegate_variable,
+                                                                                                self._proxy_impl_slot,
+                                                                                                print_debug)
                     elif isinstance(self._delegate_variable, LocalVariable) and\
                             isinstance(self._delegate_variable.function, FunctionContract) and\
                             self._delegate_variable.function.contract != self:
@@ -1439,14 +1454,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                                                           print_debug)
                         if not self._is_proxy:
                             self._is_proxy = is_proxy
-                        if self._is_proxy and self._delegate_variable is not None:
+                        if self._is_proxy and (self._delegate_variable is not None
+                                               or self._proxy_impl_slot is not None):
                             break
                 elif node.type == NodeType.EXPRESSION:
                     is_proxy, self._delegate_variable = self.find_delegatecall_in_exp_node(node, print_debug)
                     if not self._is_proxy:
                         self._is_proxy = is_proxy
-                    if self._is_proxy and self._delegate_variable is not None:
+                    if self._is_proxy and (self._delegate_variable is not None
+                                           or self._proxy_impl_slot is not None):
                         break
+            if self.is_proxy and self._delegate_variable is None and self._proxy_impl_slot is not None:
+                self._delegate_variable = self._proxy_impl_slot
+                if print_debug: print(f"Setting {self.name}._delegate_variable = {self.name}._proxy_impl_slot: "
+                                      f"{self._proxy_impl_slot} (Slither line:{getframeinfo(currentframe()).lineno})\n")
             if print_debug:
                 print(f"\nEnd {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return self._is_proxy
@@ -1564,15 +1585,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     e = v.expression
                                     if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
                                         v = e.value
-                                if isinstance(v, StateVariable) and v.is_constant:
-                                    if print_debug: print(f"Found storage slot: {v} "
-                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                                    slot = str(v.expression)
-                                    delegates_to = LocalVariable()
-                                    delegates_to.set_type(ElementaryType("address"))
-                                    delegates_to.name = dest
-                                    delegates_to.set_location(slot)
-                                    self._proxy_impl_slot = v
+                                """
+                                The section below should never be reachable, because 
+                                using state variables is never allowed in assembly.
+                                """
+                                # TODO: Confirm that this is in fact impossible
+                                # if isinstance(v, StateVariable) and v.is_constant:
+                                #     if print_debug: print(f"Found storage slot: {v} "
+                                #                           f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                                #     slot = str(v.expression)
+                                #     delegates_to = LocalVariable()
+                                #     delegates_to.set_type(ElementaryType("address"))
+                                #     delegates_to.name = dest
+                                #     delegates_to.set_location(slot)
+                                #     self._proxy_impl_slot = v
                     if dest.endswith(")"):
                         dest = params[2]
                     if print_debug:
@@ -1651,13 +1677,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 return delegate
         if print_debug:
             print(f"\nSearching Local Variables (Slither line:{getframeinfo(currentframe()).lineno})")
+        # TODO: Split searching local variables into its own separate method
         for lv in parent_func.local_variables:
+            if delegate is not None or self._proxy_impl_slot is not None:
+                return delegate
             if print_debug: print(f"Checking {lv.name} (Slither line:{getframeinfo(currentframe()).lineno})")
             if lv.name == dest:
                 if isinstance(parent_func, ChildContract):
                     if print_debug:
                         print(f"{dest} is a Local Variable in {parent_func.contract.name}.{parent_func.name}"
                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                # TODO: eliminate dependence on variable name for Diamond handling
                 if lv.name == "facet":
                     delegate = lv
                     if print_debug:
@@ -1734,20 +1764,23 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             self._proxy_impl_slot = v
                                             if print_debug: print(f"Found storage slot: {v.name} (Slither line:"
                                                                   f"{getframeinfo(currentframe()).lineno})")
+                                            break
                                         elif isinstance(v, LocalVariable) and v.expression is not None:
                                             e = v.expression
                                             if isinstance(e, Identifier) and e.value.is_constant:
                                                 self._proxy_impl_slot = e.value
                                                 if print_debug: print(f"Found storage slot: {e.value.name} (Slither "
                                                                       f"line:{getframeinfo(currentframe()).lineno})")
+                                                break
                                 else:
                                     delegate = self.find_delegate_from_call_exp(exp, lv, print_debug)
         if print_debug:
             print(f"\nSearching Parameter Variables (Slither line:{getframeinfo(currentframe()).lineno})")
+        # TODO: Split searching parameter variables into its own separate method
         for idx, pv in enumerate(parent_func.parameters):
             if print_debug: print(f"Checking {pv.name} (Slither line:{getframeinfo(currentframe()).lineno})")
             if pv.name == dest:
-                delegate = pv
+                # delegate = pv
                 if isinstance(parent_func, ChildContract):
                     if print_debug:
                         print(f"{dest} is a Parameter in {parent_func.contract.name}.{parent_func.name}"
@@ -1819,7 +1852,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.expression = arg
                                     break
                 break
-        if parent_func.contains_assembly:
+        if parent_func.contains_assembly and self._proxy_impl_slot is not None:
             if print_debug: print(f"{parent_func} contains assembly, searching for sload"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
             for n in parent_func.all_nodes():
@@ -1844,10 +1877,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
                                         slot = statement["value"]["arguments"][0]["value"]
                                         if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
-                                            delegate = LocalVariable()
-                                            delegate.set_type(ElementaryType("address"))
-                                            delegate.name = dest
-                                            delegate.set_location(slot)
+                                            # delegate = LocalVariable()
+                                            # delegate.set_type(ElementaryType("address"))
+                                            # delegate.name = dest
+                                            # delegate.set_location(slot)
                                             impl_slot = Variable()
                                             impl_slot.name = slot
                                             impl_slot.is_constant = True
@@ -1857,11 +1890,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
                                         for sv in self.state_variables:
                                             if sv.name == statement["value"]["arguments"][0]["name"] and sv.is_constant:
-                                                slot = str(sv.expression)
-                                                delegate = LocalVariable()
-                                                delegate.set_type(ElementaryType("address"))
-                                                delegate.name = dest
-                                                delegate.set_location(slot)
+                                                # slot = str(sv.expression)
+                                                # delegate = LocalVariable()
+                                                # delegate.set_type(ElementaryType("address"))
+                                                # delegate.name = dest
+                                                # delegate.set_location(slot)
                                                 self._proxy_impl_slot = sv
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
@@ -1934,7 +1967,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             elif isinstance(called, MemberAccess):
                 val = called.expression
                 if print_debug: print(f"Called member of {val} (Slither line:{getframeinfo(currentframe()).lineno})")
-                return self.find_delegate_from_member_access(exp, var, print_debug)
+                delegate = self.find_delegate_from_member_access(exp, var, print_debug)
+                if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp"
+                                      f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                return delegate
         if func is not None:
             if len(func.all_nodes()) == 0:
                 # Sometimes Slither connects a CallExpression to an abstract function, missing the overriding function
@@ -1992,6 +2028,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if delegate is None:
                                     if print_debug: print(f"Recursive {self.name}.find_delegate_from_call_exp returned "
                                                           f"None (Slither line:{getframeinfo(currentframe()).lineno})")
+                            # TODO: make sure we don't need to construct a LocalVariable from scratch anymore,
+                            #       now that we're allowing self._delegate_variable to equal self._proxy_impl_slot
                             if delegate is None:
                                 delegate = LocalVariable()
                                 delegate.expression = rex
@@ -1999,9 +2037,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 delegate.name = str(called)
                             if delegate.type is None:
                                 delegate.type = ret.type
-                            for a in exp.arguments:
+                            args = [arg.value for arg in exp.arguments if isinstance(arg, Identifier)]
+                            for a in args:
                                 if isinstance(a, StateVariable) and str(a.type) == "bytes32" and a.is_constant:
                                     self._proxy_impl_slot = a
+                                    if delegate.name == str(called) and delegate.expression == rex:
+                                        """ 
+                                        If we constructed a LocalVariable from scratch above, but 
+                                        then found the slot variable in the call expression arguments,
+                                        it may be better just to use the fallback variable `var` which
+                                        was assigned the value returned by the call expression.
+                                        """
+                                        delegate = var
+                                    if print_debug: print(f"Found storage slot: {a.name} (Slither"
+                                                          f" line:{getframeinfo(currentframe()).lineno}"
+                                                          f")")
                                     break
                             if print_debug: print(f"\nEnd {self.name}.find_delegate_from_call_exp"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
@@ -2026,7 +2076,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                           f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                     ret.expression = r
                                     if str(r.called) == "sload(uint256)":
-                                        delegate = ret
+                                        # delegate = ret
                                         arg = r.arguments[0]
                                         if isinstance(arg, Identifier):
                                             v = arg.value
@@ -2034,6 +2084,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 self._proxy_impl_slot = v
                                                 if print_debug: print(f"Found storage slot: {v.name} (Slither line:"
                                                                       f"{getframeinfo(currentframe()).lineno})")
+                                                break
                                             elif isinstance(v, LocalVariable) and v.expression is not None:
                                                 e = v.expression
                                                 if isinstance(e, Identifier) and e.value.is_constant:
@@ -2041,6 +2092,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                     if print_debug: print(f"Found storage slot: {e.value.name} (Slither"
                                                                           f" line:{getframeinfo(currentframe()).lineno}"
                                                                           f")")
+                                                    break
                                         elif isinstance(arg, Literal):
                                             slot_var = StateVariable()
                                             slot_var.name = str(arg.value)
@@ -2052,6 +2104,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             self._proxy_impl_slot = slot_var
                                             if print_debug: print(f"Found storage slot: {slot_var.name} (Slither line:"
                                                                   f"{getframeinfo(currentframe()).lineno})")
+                                            break
                                     elif str(r.called) == "abi.decode":
                                         arg = r.arguments[0]
                                         if print_debug: print(f"Value of {ret} comes from decoding the value of {arg}"
@@ -2071,6 +2124,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                         if v.name in str(exp.expression_left):
                                                             ret.expression = exp.expression_right
                                                             delegate = ret
+                                                            break
                                     else:
                                         delegate = self.find_delegate_from_call_exp(r, ret, print_debug)
                                         rc = r.called
@@ -2097,7 +2151,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if print_debug: print(f"{func.name} contains assembly - looking for sload"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 for n in func.all_nodes():
-                    if delegate is not None:
+                    if delegate is not None or self._proxy_impl_slot is not None:
                         break
                     if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str):
                         # only handle versions < 0.6.0 here - otherwise use EXPRESSION nodes
@@ -2109,12 +2163,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if ret.name + " := sload(" in asm:
                                 if print_debug: print(f"Return value set by sload in asm"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                delegate = ret
+                                # delegate = ret
                                 slotname = asm.split("sload(")[1].split(")")[0]
                                 if slotname.startswith("0x"):
                                     delegate = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, ret.name,
                                                                                               func, print_debug)
-                                    if delegate != ret:
+                                    if delegate is not None:
                                         break
                                 for v in func.variables_read_or_written:
                                     if v.name == slotname:
@@ -2122,12 +2176,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             self._proxy_impl_slot = v
                                             if print_debug: print(f"Found storage slot: {v.name} (Slither line:"
                                                                   f"{getframeinfo(currentframe()).lineno})")
+                                            break
                                         elif isinstance(v, LocalVariable) and v.expression is not None:
                                             e = v.expression
                                             if isinstance(e, Identifier) and e.value.is_constant:
                                                 self._proxy_impl_slot = e.value
                                                 if print_debug: print(f"Found storage slot: {e.value.name} (Slither "
                                                                       f"line:{getframeinfo(currentframe()).lineno})")
+                                                break
                                 break
                     elif n.type == NodeType.EXPRESSION and ret.name in str(n.expression):
                         # handle versions >= 0.6.0
@@ -2143,7 +2199,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if print_debug: print(f"Found {ret.name} on left side of assignment"
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 if isinstance(r, CallExpression) and "sload" in str(r):
-                                    delegate = ret
+                                    # delegate = ret
                                     arg = r.arguments[0]
                                     if isinstance(arg, Identifier):
                                         v = arg.value
@@ -2434,6 +2490,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if isinstance(called, MemberAccess):
                                     if print_debug: print(f"Too many MemberAccesses: returning"
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                    # TODO: make sure we don't need to construct a LocalVariable from scratch anymore,
+                                    #       now that we allow self._delegate_variable to equal self._proxy_impl_slot
                                     if delegate is None:
                                         if print_debug: print(f"find_delegate_from_member_access returned None"
                                                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -2444,10 +2502,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.name = str(e)
                                     if delegate.type is None:
                                         delegate.type = ret.type
-                                    for a in ex.arguments:
-                                        if isinstance(a, Identifier) and str(a.value.type) == "bytes32" \
-                                                and a.value.is_constant:
-                                            self._proxy_impl_slot = a.value
+                                    args = [arg.value for arg in ex.arguments if isinstance(arg, Identifier)]
+                                    for a in args:
+                                        if str(a.type) == "bytes32" and a.is_constant:
+                                            self._proxy_impl_slot = a
+                                            if print_debug: print(f"Found storage slot: {a.name} (Slither"
+                                                                  f" line:{getframeinfo(currentframe()).lineno}"
+                                                                  f")")
                                             break
                             elif isinstance(ex, IndexAccess):
                                 e = ex  # Fall through
@@ -2555,10 +2616,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 slot = asm.split("sload(", 1)[1].split(")")[0]
                 if print_debug: print(f"slot: {slot} (Slither line:{getframeinfo(currentframe()).lineno})")
                 if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
-                    delegates_to = LocalVariable()
-                    delegates_to.set_type(ElementaryType("address"))
-                    delegates_to.name = dest
-                    delegates_to.set_location(slot)
+                    # TODO: make sure we don't need to construct a LocalVariable from scratch anymore,
+                    #       now that we're allowing self._delegate_variable to equal self._proxy_impl_slot
+                    # delegates_to = LocalVariable()
+                    # delegates_to.set_type(ElementaryType("address"))
+                    # delegates_to.name = dest
+                    # delegates_to.set_location(slot)
                     impl_slot = Variable()
                     impl_slot.name = slot
                     impl_slot.is_constant = True
@@ -2811,6 +2874,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.index_access import IndexAccess
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
         from slither.core.solidity_types.user_defined_type import UserDefinedType
 
         getter = None
@@ -2908,6 +2972,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             break
                             elif n.type == NodeType.EXPRESSION:
                                 e = n.expression
+                                if isinstance(e, AssignmentOperation):
+                                    e = e.expression_right
                                 if isinstance(e, CallExpression) and "sload" in str(e.called):
                                     e = e.arguments[0]
                                     if isinstance(e, Identifier):

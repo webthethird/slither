@@ -208,6 +208,8 @@ class ProxyFeatureExtraction:
         """
         fallback = self.contract.fallback_function
         delegate = self.contract.delegate_variable
+        if delegate == self.contract.proxy_impl_storage_offset:
+            return str(delegate.expression)
         slot = None
         """
         Use slither.analysis.data_dependency to expedite analysis if possible.
