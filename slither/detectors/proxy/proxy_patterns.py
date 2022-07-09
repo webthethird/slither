@@ -1,8 +1,9 @@
 from abc import ABC
 
 import sha3
-from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification
+from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification, SupportedOutput, Output
 from slither.detectors.proxy.proxy_features import ProxyFeatureExtraction
+from slither.utils.proxy_output import ProxyOutput
 from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import NodeType
 from slither.core.declarations.contract import Contract
@@ -72,6 +73,30 @@ or one of the proxy patterns developed by OpenZeppelin.
 """
 
     # endregion wiki_recommendation
+    STANDARD_JSON = False
+
+    """
+    Override AbstractDetector.generate_result to define our own json output format
+    """
+    def generate_result(
+        self,
+        info: Union[str, List[Union[str, SupportedOutput]]],
+        additional_fields: Optional[Dict] = None,
+    ) -> ProxyOutput:
+        contracts = [i for i in info if isinstance(i, Contract)]
+        if len(contracts) > 0:
+            contract = contracts[0]
+        else:
+            contract = None
+        output = ProxyOutput(
+            contract,
+            info,
+            additional_fields,
+            standard_format=self.STANDARD_JSON,
+            markdown_root=self.slither.markdown_root,
+        )
+
+        return output
 
     def detect_mappings(self, proxy_features: ProxyFeatureExtraction, delegate: Variable):
         # results = []
@@ -319,6 +344,7 @@ or one of the proxy patterns developed by OpenZeppelin.
         results = []
         for contract in self.contracts:
             info = []
+            features: Dict = {}
             proxy_features = ProxyFeatureExtraction(contract, self.compilation_unit)
             if proxy_features.is_upgradeable_proxy:
                 proxy = contract
@@ -326,6 +352,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                 info += [proxy,
                         " may be" if not proxy_features.is_upgradeable_proxy_confirmed else " is",
                         " an upgradeable proxy.\n"]
+                if contract.is_upgradeable_proxy_confirmed:
+                    features["upgradeable"] = "true"
+                else:
+                    features["upgradeable"] = "maybe"
                 # json = self.generate_result(info)
                 # results.append(json)
                 """
@@ -700,6 +730,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
                 """
                 info += [contract, " is a proxy, but doesn't seem upgradeable.\n"]
-            json = self.generate_result(info)
+                features["upgradeable"] = "false"
+            else:
+                continue
+            json = self.generate_result(info, features)
             results.append(json)
         return results
