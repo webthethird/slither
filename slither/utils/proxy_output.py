@@ -40,8 +40,6 @@ class ProxyOutput(Output):
     order to pass the `valid_result` checks in slither/core/slither_core.py,
     though we don't need to populate the 'elements' field with source mapping
     information, which makes the json results output difficult to read.
-    Additionally, we eliminate the 'additional_fields' key in the output,
-    and instead simply add each field under its own key
     """
     def __init__(self,
                  contract: Optional[Contract],
@@ -80,5 +78,4 @@ class ProxyOutput(Output):
         #         self.add(add)
 
         if additional_fields:
-            for key in additional_fields.keys():
-                self._data[key] = additional_fields[key]
+            self._data["features"] = additional_fields
