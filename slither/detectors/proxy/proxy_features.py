@@ -1006,7 +1006,7 @@ class ProxyFeatureExtraction:
                                         break
         return setters
 
-    def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, "Contract"]]]:
+    def find_diamond_loupe_functions(self) -> Optional[List[Tuple[str, Union[str, "Contract"]]]]:
         """
         For EIP-2535 Diamonds, determine if all four Loupe functions are
         included in any of the "Facet" contracts in the compilation unit.
@@ -1032,6 +1032,9 @@ class ProxyFeatureExtraction:
                 if f.signature_str in loupe_sigs:
                     loupe_sigs.remove(f.signature_str)
                     loupe_facets.append((f.signature_str, c))
+        if len(loupe_sigs) > 0:
+            for sig in loupe_sigs:
+                loupe_facets.append((sig, "missing"))
         return loupe_facets
 
     # endregion
