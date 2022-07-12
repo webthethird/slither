@@ -218,7 +218,13 @@ class ProxyFeatureExtraction:
             if data_dependency.is_dependent(delegate, sv, self.contract):
                 print(f"{delegate} is dependent on {sv}")
                 if str(sv.type) == "bytes32" and sv.is_constant:
-                    return str(sv.expression)
+                    getter = self.contract.proxy_implementation_getter
+                    if getter is not None and getter.contains_assembly and getter.is_reading(sv):
+                        asm_nodes = [node for node in getter.all_nodes()
+                                     if node.type == NodeType.ASSEMBLY and node.inline_asm is not None]
+                        for node in asm_nodes:
+                            if "sload" in node.inline_asm:
+                                return str(sv.expression)
         """
         Check if the slot was found during the initial execution of Contract.is_upgradeable_proxy().
         Comment out to ensure the rest of the code here works without it.
