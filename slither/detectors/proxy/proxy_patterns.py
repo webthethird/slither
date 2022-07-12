@@ -325,7 +325,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 source = proxy_features.find_registry_address_source(call_exp)
                 if source is not None:
-                    if source.is_constant and str(source.type) == "bytes32":
+                    if isinstance(source, Variable) and source.is_constant and str(source.type) == "bytes32":
                         features[f"{rorb.lower()}_source_type"] = "bytes32 constant storage slot"
                         features[f"{rorb.lower()}_source_slot"] = str(source.expression)
                         info += [

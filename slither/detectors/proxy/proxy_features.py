@@ -473,6 +473,13 @@ class ProxyFeatureExtraction:
             print(f"impl_address_from_contract_call: getter is {getter}")
             if getter is None and delegate.visibility in ["public", "external"]:
                 getter = delegate
+            elif getter is not None:
+                print(f"getter.full_name = {getter.full_name}")
+                for (c, f) in self.contract.all_library_calls:
+                    print(f"library call: {c.name}.{f.name}")
+                    if f"{c.name}.{f.full_name}" == getter.canonical_name:
+                        print(f"Found {getter} in {self.contract.name}.all_library_calls")
+                        return is_cross_contract, ret_exp, c_type
             for node in self.contract.fallback_function.all_nodes():
                 exp = node.expression
                 if isinstance(exp, AssignmentOperation):
