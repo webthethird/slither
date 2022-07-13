@@ -1295,20 +1295,30 @@ class ProxyFeatureExtraction:
         exp = None
         e = delegate.expression
         if e is not None:
-            print(f"{delegate} expression is {e}")
+            # print(f"find_mapping_in_var_exp: {delegate} expression is {e}")
             while isinstance(e, TypeConversion) or isinstance(e, MemberAccess):
                 e = e.expression
             if isinstance(e, IndexAccess):
+                # print(f"find_mapping_in_var_exp: found IndexAccess: {e}")
                 exp = e
                 left = e.expression_left
                 if isinstance(left, MemberAccess):
+                    # print(f"find_mapping_in_var_exp: found MemberAccess: {left}")
                     e = left.expression
                     member = left.member_name
                     if isinstance(e, Identifier):
+                        # print(f"find_mapping_in_var_exp: found Identifier: {e}")
                         v = e.value
-                        if isinstance(v.type, UserDefinedType) and isinstance(v.type.type, Structure):
-                            if isinstance(v.type.type.elems[member].type, MappingType):
-                                mapping = v.type.type.elems[member]
+                        if isinstance(v.type, UserDefinedType):
+                            user_type: UserDefinedType = v.type
+                            # print(f"find_mapping_in_var_exp: found UserDefinedType: {user_type}")
+                            if isinstance(user_type.type, Structure):
+                                struct: Structure = user_type.type
+                                # print(f"find_mapping_in_var_exp: found Structure: {struct.name}")
+                                if isinstance(struct.elems[member].type, MappingType):
+                                    # print(f"find_mapping_in_var_exp: found mapping in struct: "
+                                    #       f"{struct.elems[member].type} {struct.elems[member].name}")
+                                    mapping = struct.elems[member]
                 elif isinstance(left, Identifier):
                     v = left.value
                     if isinstance(v.type, MappingType):
