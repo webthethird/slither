@@ -536,7 +536,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 features["impl_address_scope"] = "StructureVariable"
                             features["impl_address_type"] = str(mapping.type)
                             # info += self.detect_mappings(proxy_features, mapping)
-                            map_info, map_features = self.detect_mappings(proxy_features, delegate)
+                            map_info, map_features = self.detect_mappings(proxy_features, mapping)
                             if len(map_info) > 0:
                                 info += map_info
                                 for key in map_features.keys():
