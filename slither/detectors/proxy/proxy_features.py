@@ -721,12 +721,12 @@ class ProxyFeatureExtraction:
         writing_funcs = self.functions_writing_to_delegate(delegate, self.contract)
         setter = self.contract.proxy_implementation_setter
         getter = self.contract.proxy_implementation_getter
-        if setter is not None:
-            dependencies = data_dependency.get_dependencies_recursive(delegate, setter.contract)
-        elif getter is not None:
-            dependencies = data_dependency.get_dependencies_recursive(delegate, getter.contract)
-        else:
-            dependencies = data_dependency.get_dependencies_recursive(delegate, self.contract)
+        dependencies = list(data_dependency.get_dependencies_recursive(delegate, self.contract))
+        if setter is not None and setter.contract != self.contract:
+            dependencies += list(data_dependency.get_dependencies_recursive(delegate, setter.contract))
+        elif getter is not None and getter.contract != self.contract:
+            dependencies += list(data_dependency.get_dependencies_recursive(delegate, getter.contract))
+        dependencies = set(dependencies)
         print(f"has_compatibility_checks: dependencies: {[str(dep) for dep in dependencies]}")
         for dep in dependencies:
             if isinstance(dep, StateVariable):
