@@ -3205,9 +3205,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             continue
                                         if idiamond_cut in c.inheritance:
                                             cut_facet = c
-                                    for f in cut_facet.functions:
-                                        if f.name == "diamondCut":
-                                            setter = f
+                                    if cut_facet != idiamond_cut:
+                                        """ Found implementation of DiamondCutFacet """
+                                        for f in cut_facet.functions:
+                                            if f.name == "diamondCut":
+                                                setter = f
+                                                break
+                                    else:
+                                        lib_diamond = contract.compilation_unit.get_contract_from_name("LibDiamond")
+                                        setter = lib_diamond.get_function_from_name("diamondCut")
+                                        if setter is not None:
                                             break
             if print_debug:
                 print(f"\nEnd DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
