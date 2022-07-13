@@ -732,7 +732,7 @@ class ProxyFeatureExtraction:
             if isinstance(dep, StateVariable):
                 writing_funcs += self.functions_writing_to_delegate(dep, dep.contract)
         for (func, var_written) in writing_funcs:
-            if func.visibility in ["internal", "private"]:
+            if func.visibility in ["internal", "private"] and func != setter:
                 print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
                 continue
             else:
