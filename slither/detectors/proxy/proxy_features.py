@@ -995,7 +995,9 @@ class ProxyFeatureExtraction:
                             value_written = self.get_value_assigned(exp)
                             if value_written is None:
                                 dependencies = data_dependency.get_dependencies_recursive(delegate, func.contract)
-                                value_written = next((dep for dep in dependencies if dep.expression == right))
+                                value_written = next((dep for dep in dependencies
+                                                      if isinstance(dep, Variable)
+                                                      and dep.expression == right))
                             setters.append([func, value_written])
                             print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
                                   f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
