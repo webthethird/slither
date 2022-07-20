@@ -1360,6 +1360,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if len(c.state_variables_ordered) < index + 1:
                                     continue
                                 var = c.state_variables_ordered[index]
+                                if var.name != self._delegate_variable.name and \
+                                        self._delegate_variable == self._proxy_impl_slot:
+                                    var = c.get_state_variable_from_name(self._delegate_variable.name)
                                 if var is not None:
                                     if print_debug: print(f"Found {var} at slot {index} in contract {c}"
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -2321,19 +2324,40 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             member_name = exp.member_name
             e = exp.expression
             if print_debug: print(f"{e} (Slither line:{getframeinfo(currentframe()).lineno})")
-            if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
-                if print_debug: print(f"Member of call expression result"
+            if isinstance(e, CallExpression):
+                called = e.called
+                if print_debug: print(f"Member of call expression result: {called}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                f = e.called.value
-                if isinstance(f, Function):
-                    ret_node = f.return_node()
-                    if ret_node is not None:
-                        e = f.return_node().expression
-                    else:
-                        ret_val = f.returns[0]
-                        e = Identifier(ret_val)
-                    if print_debug: print(f"Call to function {f} returns {e}"
+                if isinstance(called, Identifier):
+                    f = called.value
+                    if isinstance(f, Function):
+                        ret_node = f.return_node()
+                        if ret_node is not None:
+                            e = f.return_node().expression
+                        else:
+                            ret_val = f.returns[0]
+                            e = Identifier(ret_val)
+                        if print_debug: print(f"Call to function {f} returns {e}"
+                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                elif isinstance(called, MemberAccess):
+                    if print_debug: print(f"Call to member of another contract: {called.expression}"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                    if isinstance(var, LocalVariable):
+                        parent_func = var.function
+                        for lib_call in parent_func.all_library_calls():
+                            if f"{lib_call[0]}.{lib_call[1]}" == str(called):
+                                if print_debug: print(f"{lib_call[0]}.{lib_call[1]} is a library call")
+                                if len(e.arguments) > 0 and isinstance(e.arguments[0], Identifier):
+                                    val = e.arguments[0].value
+                                    if (isinstance(val, StateVariable) and val.is_constant
+                                            and str(val.type) == "bytes32"):
+                                        slot = val
+                                        delegate = slot
+                                        self._proxy_impl_slot = slot
+                                        if print_debug: print(f"Found storage slot in call expression: {slot}\nSetting"
+                                                              f" {self}._delegate_variable = {self}._proxy_impl_slot"
+                                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                break
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 ctype = e.type
                 if isinstance(e, Identifier):
@@ -3124,7 +3148,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             left = exp.expression_left
                             if print_debug: print(f"is an Assignment Operation"
                                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if var_exp is not None:
+                            if isinstance(left, MemberAccess):
+                                if print_debug: print(f"Left side is a MemberAccess"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                                member_of = left.expression
+                                if isinstance(member_of, CallExpression):
+                                    if var_to_set in [arg.value for arg in member_of.arguments
+                                                      if isinstance(arg, Identifier)]:
+                                        setter = f
+                                        assignment = exp
+                            elif var_exp is not None:
                                 if print_debug: print(var_exp)
                                 if var_exp == left or str(var_exp) == str(left):   # Expression.__eq__() not implemented
                                     setter = f
