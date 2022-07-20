@@ -221,7 +221,7 @@ def get_dependencies_recursive(
         a CallExpression) will have that expression stored in TemporaryVariable.expression.
         Therefore, we can use these to find function calls that lead to other dependencies.
         """
-        if var.expression is not None:
+        if isinstance(var, Variable) and var.expression is not None:
             exp = var.expression
             # print(f"Expression: {exp}")
             """ For now, we are only interested in tracing CallExpressions """
