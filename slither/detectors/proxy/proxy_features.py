@@ -957,24 +957,30 @@ class ProxyFeatureExtraction:
                         function that uses sstore, even if it is using the admin or beacon slot.
                         """
                         if node.function.is_reading(slot) or slot.name in str(exp):
-                            if isinstance(exp, AssignmentOperation) and str(exp.expression_left) == delegate.name:
-                                """
-                                This case handles the recent versions of ERC-1967, which use the StorageSlot library.
-                                In this case, when extracting the implementation variable during initial analysis,
-                                we encounter the following return statement in the getter:
-                                    return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;
-                                Due to the complexity of unraveling this expression, we default to returning a new
-                                LocalVariable containing this expression. So in the setter, we expect to find the
-                                following AssignmentOperation:
-                                    StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation; 
-                                """
-                                if "sload" in str(exp.expression_right):
-                                    continue
-                                value_written = self.get_value_assigned(exp)
-                                setters.append([func, value_written])
-                                print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                                      f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
-                                break
+                            if isinstance(exp, AssignmentOperation):
+                                left = exp.expression_left
+                                if (str(left) == delegate.name
+                                        or (isinstance(left, MemberAccess)
+                                            and isinstance(left.expression, CallExpression)
+                                            and slot.name in [arg.value.name for arg in left.expression.arguments
+                                                              if isinstance(arg, Identifier)])):
+                                    """
+                                    This case handles the recent versions of ERC-1967 which use the StorageSlot library.
+                                    In this case, when extracting the implementation variable during initial analysis,
+                                    we encounter the following return statement in the getter:
+                                        return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;
+                                    Due to the complexity of unraveling this expression, we default to returning a new
+                                    LocalVariable containing this expression. So in the setter, we expect to find the
+                                    following AssignmentOperation:
+                                        StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation; 
+                                    """
+                                    if "sload" in str(exp.expression_right):
+                                        continue
+                                    value_written = self.get_value_assigned(exp)
+                                    setters.append([func, value_written])
+                                    print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                    break
                             elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
                                 value_written = self.get_value_assigned(exp)
                                 setters.append([func, value_written])
