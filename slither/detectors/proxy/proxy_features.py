@@ -819,9 +819,12 @@ class ProxyFeatureExtraction:
                             Unfortunately the IF Node does not contain a ConditionalExpression
                             already, so we must construct one using the CFG info from the Node. 
                             """
-                            conditional_exp = ConditionalExpression(exp,
-                                                                    node.sons[0].expression,
-                                                                    node.sons[1].expression)
+                            if len(node.sons) > 1:
+                                conditional_exp = ConditionalExpression(exp,
+                                                                        node.sons[0].expression,
+                                                                        node.sons[1].expression)
+                            else:
+                                conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
                             print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
                             """
                             The static helper method check_condition_from_expression will return an
