@@ -1735,7 +1735,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         delegate = self.find_delegate_from_member_access(exp, lv, print_debug)
                         if delegate is None:
                             delegate = lv
-                        if print_debug: print(f"Member Access\nEnd {self.name}.find_delegate_variable"
+                        if print_debug: print(f"Member Access\nEnd {self.name}.find_delegate_variable_from_name"
                                               f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                         return delegate
                 else:
