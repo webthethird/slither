@@ -1344,7 +1344,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                                     return self._is_upgradeable_proxy
-                    elif isinstance(self._delegate_variable, StateVariable):
+                    if isinstance(self._delegate_variable, StateVariable):
                         """
                         Handle the case where the delegate address is a state variable which is also declared in the
                         implementation contract at the same position in storage, in which case the setter may be
@@ -1379,7 +1379,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             return self._is_upgradeable_proxy
                                         elif self._proxy_impl_getter is not None:
                                             return c.getter_return_is_non_constant(print_debug)
-                    elif self._proxy_impl_slot is not None or self._delegate_variable.expression is not None:
+                    if self._proxy_impl_slot is not None or self._delegate_variable.expression is not None:
                         for c in self.compilation_unit.contracts:
                             if c != self and self not in c.inheritance:
                                 self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
@@ -1744,9 +1744,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 else:
                     if print_debug: print(f"No expression found for {dest}\nLooking for assignment operation"
                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    for n in parent_func.all_nodes():
-                        if n.type == NodeType.EXPRESSION or n.type == NodeType.VARIABLE:
-                            exp = n.expression
+                    for node in parent_func.all_nodes():
+                        if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+                            exp = node.expression
                             if isinstance(exp, AssignmentOperation):
                                 print(f"AssignmentOperation: {exp.expression_right}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -1788,9 +1788,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if print_debug:
                         print(f"{dest} is a Parameter in {parent_func.contract.name}.{parent_func.name}"
                               f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                for n in self.fallback_function.all_nodes():
-                    if n.type == NodeType.EXPRESSION or n.type == NodeType.VARIABLE:
-                        exp = n.expression
+                for node in self.fallback_function.all_nodes():
+                    if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
+                        exp = node.expression
                         if isinstance(exp, AssignmentOperation):
                             print(f"AssignmentOperation: {exp.expression_right}"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -1855,20 +1855,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.expression = arg
                                     break
                 break
-        if parent_func.contains_assembly and self._proxy_impl_slot is not None:
+        if parent_func.contains_assembly and delegate is None:  # and self._proxy_impl_slot is not None:
             if print_debug: print(f"{parent_func} contains assembly, searching for sload"
                                   f" (Slither line:{getframeinfo(currentframe()).lineno})")
-            for n in parent_func.all_nodes():
-                if n.type == NodeType.ASSEMBLY:
-                    if isinstance(n.inline_asm, str):
-                        asm = n.inline_asm.split("\n")
+            for node in parent_func.all_nodes():
+                if node.type == NodeType.ASSEMBLY:
+                    if isinstance(node.inline_asm, str):
+                        asm = node.inline_asm.split("\n")
                         for s in asm:
                             if f"let {dest}" in s:
                                 if "sload" in s:
                                     dest = s.replace(")", "(").split("(")[1]
                                     break
                     else:
-                        asm = n.inline_asm
+                        asm = node.inline_asm
                         # print(asm)
                         for statement in asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulVariableDeclaration" \
@@ -1884,10 +1884,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             # delegate.set_type(ElementaryType("address"))
                                             # delegate.name = dest
                                             # delegate.set_location(slot)
-                                            impl_slot = Variable()
+                                            impl_slot = StateVariable()
                                             impl_slot.name = slot
                                             impl_slot.is_constant = True
+                                            impl_slot.expression = Literal(slot, ElementaryType("bytes32"))
                                             impl_slot.set_type(ElementaryType("bytes32"))
+                                            impl_slot.set_contract(node.function.contract
+                                                                   if isinstance(node.function, ChildContract)
+                                                                   else self)
+                                            if print_debug:
+                                                print(f"Found hardcoded storage slot in {node.function}: {impl_slot}"
+                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                             self._proxy_impl_slot = impl_slot
                                             break
                                     elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
@@ -1898,6 +1905,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 # delegate.set_type(ElementaryType("address"))
                                                 # delegate.name = dest
                                                 # delegate.set_location(slot)
+                                                if print_debug:
+                                                    print(f"Found storage slot in {node.function}: {sv}"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                                 self._proxy_impl_slot = sv
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
