@@ -2686,7 +2686,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.member_access import MemberAccess
         from slither.core.variables.local_variable import LocalVariable
         from slither.core.children.child_function import ChildFunction
-        from slither.core.children.child_contract import ChildContract
+        from slither.core.declarations.function_contract import ChildContract, FunctionContract
+        from slither.slithir.variables.temporary import TemporaryVariable
 
         b = False
         d = None
@@ -2712,6 +2713,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         d = d.function.contract.find_delegate_from_call_exp(e, d, print_debug)
                 elif isinstance(e, MemberAccess) and isinstance(d, ChildFunction):
                     d = d.contract.find_delegate_from_member_access(e, d, print_debug)
+        elif isinstance(d, TemporaryVariable):
+            exp = d.expression
+            if print_debug: print(f"TemporaryVariable {d} expression: {exp}"
+                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
+            if isinstance(exp, CallExpression):
+                called = exp.called
+                if isinstance(called, Identifier):
+                    func = called.value
+                    if isinstance(func, FunctionContract):
+                        if not func.is_implemented:
+                            for f in node.function.contract.functions:
+                                if f.name == func.name and f.is_implemented:
+                                    func = f
+                        d = func.contract.find_delegate_from_call_exp(exp, d, print_debug)
         if print_debug:
             print(f"\nEnd Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return b, d
