@@ -816,8 +816,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                 features["compatibility_checks"] = {"has_all_checks": str(has_checks), "functions": {}}
                 # info = []
                 if not has_checks:
-                    funcs_missing_check = [func for func, check in func_exp_list if check is None]
-                    funcs_with_check = [(func, check) for func, check in func_exp_list if check is not None]
+                    funcs_missing_check = [func for func, check, correct in func_exp_list if check is None]
+                    funcs_with_check = [(func, check) for func, check, correct in func_exp_list if check is not None]
                     for func in funcs_missing_check:
                         features["compatibility_checks"]["functions"][func.canonical_name] = "missing"
                         info += [
@@ -836,8 +836,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                     info += ["No setter functions found to search for compatibility checks.\n"]
                 else:
                     info += ["Found compatibility checks in all upgrade functions.\n"]
-                    for func, exp in func_exp_list:
-                        features["compatibility_checks"]["functions"][func.canonical_name] = str(exp)
+                    for func, exp, is_correct in func_exp_list:
+                        if not is_correct:
+                            info += [f"Incorrect compatibility check in {func}: {exp}\n"]
+                        features["compatibility_checks"]["functions"][func.canonical_name] = {"check": str(exp),
+                                                                                              "is_correct": is_correct}
                         # print(f"func: {func}  exp: {exp}")
                         # info += [
                         #     "In ", func.canonical_name, ": ", str(exp), "\n"

@@ -699,7 +699,7 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
-    def has_compatibility_checks(self) -> (bool, List[Tuple[FunctionContract, Expression]]):
+    def has_compatibility_checks(self) -> (bool, List[Tuple[FunctionContract, Optional[Expression], bool]]):
         """
         For every function that can update the implementation address,
         determines whether it contains a compatibility check expression.
@@ -716,7 +716,7 @@ class ProxyFeatureExtraction:
                  plus a list of each Function and check Expression
         """
         all_checks = []
-        func_exp_list = []
+        func_exp_list: List[Tuple[FunctionContract, Optional[Expression], bool]] = []
         delegate = self.impl_address_variable
         writing_funcs = self.functions_writing_to_delegate(delegate, self.contract)
         setter = self.contract.proxy_implementation_setter
@@ -791,6 +791,39 @@ class ProxyFeatureExtraction:
                     handle Solidity function CallExpressions correctly.
                     """
                     print(f"has_compatibility_checks: ConditionalExpression {exp}")
+                elif isinstance(exp, AssignmentOperation):
+                    """
+                    Need to check for incorrect compatibility check where the variable written is a Contract type,
+                    as in the following example from PurgeableSynth.sol:
+                        function setTarget(Proxyable _target)
+                            external
+                            onlyOwner
+                        {
+                            target = _target;
+                            emit TargetUpdated(_target);
+                        }
+                    After compilation and deployment, the EVM converts the function's ABI to `setTarget(address)` and
+                    does not perform any type checking to ensure the address given is actually a Proxyable contract,
+                    even though the function signature in Solidity gives the impression that it would check the type.
+                    """
+                    left = exp.expression_left
+                    right = exp.expression_right
+                    if isinstance(left, Identifier) and isinstance(right, Identifier) \
+                            and left.value == delegate and right.value == var_written:
+                        if isinstance(var_written, LocalVariable) and isinstance(func, FunctionContract):
+                            var_type = var_written.type
+                            if isinstance(var_type, UserDefinedType):
+                                print(f"has_compatibility_checks: {var_written}"
+                                      f" is UserDefinedType: {var_type}")
+                                var_type = var_type.type
+                            if isinstance(var_type, Contract):
+                                print(f"has_compatibility_checks: {var_written}"
+                                      f" is Contract type: {var_type}")
+                                if var_written in func.parameters:
+                                    check_exp = exp
+                                    has_check = True
+                                    is_check_correct = False
+                                    func_exp_list.append((func, check_exp, is_check_correct))
             if check_exp is None and isinstance(func, FunctionContract):
                 """
                 We used Function.all_expressions() above to find require and assert,
@@ -846,7 +879,7 @@ class ProxyFeatureExtraction:
                                 has_check = True
             if check_exp is None:
                 """ Didn't find check in this function """
-                func_exp_list.append((func, None))
+                func_exp_list.append((func, None, False))
             all_checks.append(has_check)
         return all(all_checks), func_exp_list
 
@@ -1120,9 +1153,9 @@ class ProxyFeatureExtraction:
             condition: Expression,
             in_function: FunctionContract,
             var_written: LocalVariable,
-            func_exp_list: List[Tuple[FunctionContract, Expression]],
+            func_exp_list: List[Tuple[FunctionContract, Expression, bool]],
             original: Optional[Union[CallExpression, ConditionalExpression]]
-    ) -> Tuple[Optional[Expression], List[Tuple[FunctionContract, Expression]]]:
+    ) -> Tuple[Optional[Expression], List[Tuple[FunctionContract, Optional[Expression], bool]]]:
         """
         Helper method specifically intended for use by ``ProxyFeatureExtraction.has_compatibility_checks()``,
         which requires two separate loops to find Solidity function calls and if statements, but which needs
@@ -1188,7 +1221,7 @@ class ProxyFeatureExtraction:
                         if len(original.arguments) > 1:
                             args.append(original.arguments[1])
                         check_exp = CallExpression(original.called, args, original.type_call)
-                        func_exp_list.append((in_function, check_exp))
+                        func_exp_list.append((in_function, check_exp, True))
             elif isinstance(called, Identifier) and isinstance(called.value, FunctionContract):
                 call_func = called.value
             if isinstance(call_func, FunctionContract) \
@@ -1240,9 +1273,9 @@ class ProxyFeatureExtraction:
                                                   original.else_expression)
             else:
                 check_exp = original
-            print(f"Appending to list: {check_exp} at line 950")
-            if not (in_function, check_exp) in func_exp_list:
-                func_exp_list.append((in_function, check_exp))
+            # print(f"Appending to list: {check_exp} at line ")
+            if not (in_function, check_exp, True) in func_exp_list:
+                func_exp_list.append((in_function, check_exp, True))
         return check_exp, func_exp_list
 
     @staticmethod
