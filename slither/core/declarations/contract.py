@@ -1588,20 +1588,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     e = v.expression
                                     if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
                                         v = e.value
-                                """
-                                The section below should never be reachable, because 
-                                using state variables is never allowed in assembly.
-                                """
-                                # TODO: Confirm that this is in fact impossible
-                                # if isinstance(v, StateVariable) and v.is_constant:
-                                #     if print_debug: print(f"Found storage slot: {v} "
-                                #                           f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                                #     slot = str(v.expression)
-                                #     delegates_to = LocalVariable()
-                                #     delegates_to.set_type(ElementaryType("address"))
-                                #     delegates_to.name = dest
-                                #     delegates_to.set_location(slot)
-                                #     self._proxy_impl_slot = v
+                                        """
+                                        Fall through, use constant storage slot as delegates_to and proxy_impl_slot
+                                        """
+                                if isinstance(v, StateVariable) and v.is_constant:
+                                    if print_debug: print(f"Found storage slot: {v}\nSetting {self.name}"
+                                                          f"._delegate_variable = {self.name}._proxy_impl_slot "
+                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                                    # slot = str(v.expression)
+                                    # delegates_to = LocalVariable()
+                                    # delegates_to.set_type(ElementaryType("address"))
+                                    # delegates_to.name = dest
+                                    # delegates_to.set_location(slot)
+                                    delegates_to = v
+                                    self._proxy_impl_slot = v   # and also as proxy_impl_slot
                     if dest.endswith(")"):
                         dest = params[2]
                     if print_debug:
