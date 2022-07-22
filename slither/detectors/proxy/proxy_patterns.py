@@ -307,8 +307,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                 We use the presence or absence of arguments in the CallExpression
                 to classify the contract as a Registry or a Beacon.
                 A Beacon should have no arguments, while a Registry should have at least one.
+                Alternatively, if the delegate variable is a mapping in the called contract, it is a Registry.
                 """
-                if len(call_exp.arguments) > 0 and str(call_exp.arguments[0]) != "":
+                if (len(call_exp.arguments) > 0 and str(call_exp.arguments[0]) != "") or \
+                        (isinstance(delegate.type, MappingType) and
+                         proxy_features.impl_address_location == contract_type.type):
                     rorb = "Registry"
                 else:
                     rorb = "Beacon"
