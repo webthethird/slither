@@ -519,7 +519,7 @@ class ProxyFeatureExtraction:
             print(f"called: {called}")
             if isinstance(called, Identifier):
                 f = called.value
-                if isinstance(f, FunctionContract):
+                if isinstance(f, FunctionContract) and f.return_node() is not None:
                     e = f.return_node().expression
                     print(f"{called} returns {e}")
                 elif isinstance(f, SolidityFunction):
