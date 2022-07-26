@@ -1965,6 +1965,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.type_conversion import TypeConversion
         from slither.core.expressions.identifier import Identifier
         from slither.core.expressions.literal import Literal
+        from slither.core.solidity_types.elementary_type import ElementaryType
         from slither.core.declarations.function_contract import FunctionContract
         from slither.analyses.data_dependency import data_dependency
 
@@ -2112,7 +2113,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         elif isinstance(arg, Literal):
                                             slot_var = StateVariable()
                                             slot_var.name = str(arg.value)
-                                            slot_var.type = arg.type
+                                            slot_var.type = ElementaryType("bytes32")
                                             slot_var.is_constant = True
                                             slot_var.expression = arg
                                             slot_var.set_contract(func.contract if isinstance(func, FunctionContract)
