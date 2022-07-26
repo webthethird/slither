@@ -1359,6 +1359,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for c in self.compilation_unit.contracts:
                                 if len(c.state_variables_ordered) < index + 1:
                                     continue
+                                elif print_debug: print(f"Checking for {var} at slot {index} in contract {c}"
+                                                        f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 var = c.state_variables_ordered[index]
                                 if var.name != self._delegate_variable.name and \
                                         self._delegate_variable == self._proxy_impl_slot:
@@ -1397,7 +1399,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     return c.getter_return_is_non_constant(print_debug)
                     else:
                         for n in self.fallback_function.all_nodes():
-                            print(n.type)
+                            if print_debug: print(f"Checking node of type {n.type}"
+                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             if n.type == NodeType.VARIABLE: # and n.variable_declaration == self._delegates_to:
                                 print(n.variable_declaration)
                                 print(n.expression)
