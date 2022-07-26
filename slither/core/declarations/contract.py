@@ -1357,7 +1357,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 break
                         if index >= 0:
                             for c in self.compilation_unit.contracts:
-                                if len(c.state_variables_ordered) < index + 1:
+                                if len(c.state_variables_ordered) < index + 1 or c == self:
                                     continue
                                 elif print_debug: print(f"Checking for {var} at slot {index} in contract {c}"
                                                         f" (Slither line:{getframeinfo(currentframe()).lineno})")
