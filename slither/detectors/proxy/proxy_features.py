@@ -490,7 +490,8 @@ class ProxyFeatureExtraction:
                     called = exp.called
                     if isinstance(called, Identifier):
                         f = called.value
-                        if isinstance(f, FunctionContract) and f == getter:
+                        if isinstance(f, FunctionContract) and f == getter \
+                                and f.contract != self.contract and f.contract not in self.contract.inheritance:
                             e = exp
                             print(f"found CallExpression calling getter in another contract: {e}")
                             break
