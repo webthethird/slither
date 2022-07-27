@@ -372,7 +372,7 @@ class ProxyFeatureExtraction:
 
         :return: True if the above conditions are met, otherwise False
         """
-        admin_exp = None
+        admin_str = None
         checks = []
         has_external_functions = False
         for function in self.contract.functions:
@@ -393,50 +393,12 @@ class ProxyFeatureExtraction:
                 """
                 continue
             if function.visibility in ["external", "public"]:
-                check = False
                 has_external_functions = True
-                print(f"Checking {function.visibility} function {function}")
-                for exp in function.all_expressions():
-                    """
-                    function.all_expressions() is a recursive getter which includes
-                    expressions from all functions/modifiers called in given function.
-                    """
-                    if ('msg.sender ' + comparator) in str(exp):
-                        print(f"Found 'msg.sender {comparator}' in expression: {exp}")
-                    if "require" in str(exp) or "assert" in str(exp):
-                        """
-                        'require' and 'assert' are Solidity functions which always
-                        take a boolean expression as the first argument.
-                        """
-                        if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
-                            exp = exp.arguments[0]
-                    if isinstance(exp, Identifier):
-                        value = self.unwrap_identifiers(function.contract, exp)
-                        if value is None:
-                            continue
-                        exp = value.expression
-                    if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
-                        """
-                        For this method to return true, we must find a comparison expression,
-                        i.e., a BinaryOperation, with 'msg.sender' on one side and the
-                        admin_exp on the other side, where admin_exp must be the same in all.
-                        """
-                        if str(exp.expression_left) == "msg.sender":
-                            exp = exp.expression_right
-                        elif str(exp.expression_right) == "msg.sender":
-                            exp = exp.expression_left
-                        else:
-                            continue
-                        if admin_exp is None:
-                            admin_exp = str(exp)
-                            check = True
-                            break
-                        elif str(exp) == admin_exp:
-                            check = True
-                            break
-                        print(admin_exp)
+                if not function.is_protected():
+                    return False, None
+                check, admin_str = self.is_function_protected_with_comparator(function, comparator, admin_str)
                 checks.append(check)
-        return (all(checks) and has_external_functions), admin_exp
+        return (all(checks) and has_external_functions), admin_str
 
     def impl_address_from_contract_call(self) -> (bool, Optional[Expression], Optional[Type]):
         """
@@ -1101,6 +1063,55 @@ class ProxyFeatureExtraction:
     # region Static methods
     ###################################################################################
     ###################################################################################
+
+    @staticmethod
+    def is_function_protected_with_comparator(
+            function: FunctionContract,
+            comparator: str,
+            admin_str: Optional[str]
+    ) -> Tuple[bool, Optional[str]]:
+        check = False
+
+        print(f"Checking {function.visibility} function {function}")
+        for exp in function.all_expressions():
+            """
+            function.all_expressions() is a recursive getter which includes
+            expressions from all functions/modifiers called in given function.
+            """
+            if ('msg.sender ' + comparator) in str(exp):
+                print(f"Found 'msg.sender {comparator}' in expression: {exp}")
+            if "require" in str(exp) or "assert" in str(exp):
+                """
+                'require' and 'assert' are Solidity functions which always
+                take a boolean expression as the first argument.
+                """
+                if isinstance(exp, CallExpression) and len(exp.arguments) > 0:
+                    exp = exp.arguments[0]
+            if isinstance(exp, Identifier):
+                value = ProxyFeatureExtraction.unwrap_identifiers(function.contract, exp)
+                if value is None:
+                    continue
+                exp = value.expression
+            if isinstance(exp, BinaryOperation) and str(exp.type) == comparator:
+                """
+                For this method to return true, we must find a comparison expression,
+                i.e., a BinaryOperation, with 'msg.sender' on one side and the
+                admin_exp on the other side, where admin_exp must be the same in all.
+                """
+                if str(exp.expression_left) == "msg.sender":
+                    exp = exp.expression_right
+                elif str(exp.expression_right) == "msg.sender":
+                    exp = exp.expression_left
+                else:
+                    continue
+                if admin_str is None:
+                    admin_str = str(exp)
+                    check = True
+                    break
+                elif str(exp) == admin_str:
+                    check = True
+                    break
+        return check, admin_str
 
     @staticmethod
     def unwrap_identifiers(
