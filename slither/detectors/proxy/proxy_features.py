@@ -363,7 +363,7 @@ class ProxyFeatureExtraction:
                 return False
         return is_true
 
-    def external_functions_require_specific_sender(self) -> (bool, str):
+    def has_transparent_admin_checks(self) -> (bool, str):
         """
         Determine whether all external functions (besides fallback() and receive())
         are only callable by a specific address, and whether the fallback and receive
