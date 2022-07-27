@@ -805,6 +805,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                 is_transparent, admin_str = proxy_features.has_transparent_admin_checks()
                 if is_transparent:
                     features["transparent"] = "true"
+                    features["external_functions_require_specific_sender"] = "true"
+                    features["fallback_receive_not_callable_by_specific_sender"] = "true"
                     info += [
                         " uses Transparent Proxy pattern\n"
                     ]
@@ -812,6 +814,15 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # results.append(json)
                 else:
                     features["transparent"] = "false"
+                    features["external_functions_require_specific_sender"] = str(all(
+                        [proxy_features.is_function_protected_with_comparator(fn, "==", admin_str)
+                         for fn in proxy.functions if fn.visibility in ["external", "public"]
+                         and not fn.is_fallback and not fn.is_receive and not fn.is_constructor]
+                    )).lower()
+                    features["fallback_receive_not_callable_by_specific_sender"] = str(all(
+                        [proxy_features.is_function_protected_with_comparator(fn, "!=", admin_str)
+                         for fn in proxy.functions if fn.is_fallback or fn.is_receive]
+                    )).lower()
                 """
                 Check if all functions that can update the implementation have compatibility checks
                 """
