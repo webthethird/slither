@@ -802,7 +802,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 the fallback and receive functions are only callable by addresses other than 
                 the same specific address
                 """
-                is_transparent, admin_str = proxy_features.external_functions_require_specific_sender()
+                is_transparent, admin_str = proxy_features.has_transparent_admin_checks()
                 if is_transparent:
                     features["transparent"] = "true"
                     info += [
