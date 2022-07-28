@@ -457,7 +457,15 @@ class ProxyFeatureExtraction:
                             e = exp
                             print(f"found CallExpression calling getter in another contract: {e}")
                             break
-                    elif isinstance(called, MemberAccess) and called.member_name == getter.name:
+                        elif len(exp.arguments) > 0:
+                            for arg in exp.arguments:
+                                print(f"impl_address_from_contract_call: arg is {arg}")
+                                if isinstance(arg, CallExpression):
+                                    print(f"impl_address_from_contract_call: CallExpression {arg}")
+                                    exp = arg
+                                    called = arg.called
+                                    break
+                    if isinstance(called, MemberAccess) and called.member_name == getter.name:
                         e = exp
                         print(f"found MemberAccess calling getter in another contract: {e}")
                         break
@@ -484,6 +492,7 @@ class ProxyFeatureExtraction:
                 if isinstance(f, FunctionContract) and f.return_node() is not None:
                     e = f.return_node().expression
                     print(f"{called} returns {e}")
+
                 elif isinstance(f, SolidityFunction):
                     break
                 else:
@@ -1056,6 +1065,28 @@ class ProxyFeatureExtraction:
             for sig in loupe_sigs:
                 loupe_facets.append((sig, "missing"))
         return loupe_facets
+
+    def can_toggle_delegatecall_on_off(self) -> bool:
+        dominators = None
+        for node in self.contract.fallback_function.all_nodes():
+            if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
+                if "delegatecall" in node.inline_asm:
+                    dominators = node.dominators
+                    break
+            elif node.type == NodeType.EXPRESSION:
+                exp = node.expression
+                if isinstance(exp, AssignmentOperation):
+                    exp = exp.expression_right
+                if isinstance(exp, CallExpression) and "delegatecall" in str(exp.called):
+                    dominators = node.dominators
+                    break
+        if dominators is not None:
+            for dom_node in dominators:
+                print(f"can_toggle_delegatecall_on_off: dominator expression: {dom_node.expression}")
+                if dom_node.is_conditional(include_loop=False):
+                    break
+            successors = dom_node.dominator_successors
+
 
     # endregion
     ###################################################################################
