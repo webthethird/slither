@@ -1082,10 +1082,17 @@ class ProxyFeatureExtraction:
                     break
         if dominators is not None:
             for dom_node in dominators:
-                print(f"can_toggle_delegatecall_on_off: dominator expression: {dom_node.expression}")
+                print(f"can_toggle_delegatecall_on_off:\n"
+                      f" dominator node type: {dom_node.type}\n"
+                      f" dominator expression: {dom_node.expression}")
                 if dom_node.is_conditional(include_loop=False):
                     break
             successors = dom_node.dominator_successors
+            if len(successors) > 0:
+                print(f"can_toggle_delegatecall_on_off: successors:")
+            for successor in successors:
+                print(f" NodeType: {successor.type}"
+                      f"  expression: {successor.expression}")
 
 
     # endregion
