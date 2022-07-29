@@ -529,7 +529,7 @@ class ProxyFeatureExtraction:
                 elif isinstance(e, TypeConversion):
                     print(f"TypeConversion: {e}")
                     exp = e.expression
-                    if isinstance(exp, Literal):
+                    if isinstance(exp, Literal) and not isinstance(ret_exp, CallExpression):
                         ret_exp = exp
                 if isinstance(c_type, UserDefinedType) and isinstance(c_type.type,
                                                                       Contract) and c_type.type != self:
