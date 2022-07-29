@@ -862,6 +862,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 # if len(info) > 0:
                     # json = self.generate_result(info)
                     # results.append(json)
+                can_toggle_delegatecall = proxy_features.can_toggle_delegatecall_on_off()
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
