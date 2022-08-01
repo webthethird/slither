@@ -780,6 +780,20 @@ class Node(SourceMapping, ChildFunction):  # pylint: disable=too-many-public-met
         return self._dom_successors
 
     @property
+    def dominator_successors_recursive(self) -> Set["Node"]:
+        successors = self._dom_successors
+        to_explore = list(self._dom_successors)
+        while len(to_explore) > 0:
+            dom_node: Node = to_explore[0]
+            to_explore = to_explore[1:]
+            if dom_node not in successors:
+                successors.add(dom_node)
+            for node in dom_node.dominator_successors:
+                if dom_node in node.dominators and self in node.dominators and node not in to_explore:
+                    to_explore.append(node)
+        return set(sorted(list(successors), key=lambda x: x.node_id))
+
+    @property
     def dominance_exploration_ordered(self) -> List["Node"]:
         """
         Sorted list of all the nodes to explore to follow the dom
