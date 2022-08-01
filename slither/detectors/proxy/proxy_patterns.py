@@ -467,6 +467,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             if idx >= 0 and logic is not None:
                                 features["impl_address_also_declared_in"] = logic.source_mapping_str
                                 features["impl_address_slot"] = str(idx)
+                                features["master_copy_coupling"] = "true"
                                 info += [
                                     delegate.name,
                                     " is declared in both the proxy and logic contract (",
@@ -475,6 +476,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 ]
                                 # json = self.generate_result(info)
                                 # results.append(json)
+                            elif logic is None:
+                                features["master_copy_coupling"] = "missing implementation source"
                         elif f"{delegate.type}" == "bytes32" and delegate.is_constant:
                             # info += self.detect_storage_slot(proxy_features)
                             features["impl_address_type"] = "bytes32 constant storage slot"
