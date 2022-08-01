@@ -2642,7 +2642,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param print_debug: if True, print debugging information
         :return: the corresponding Variable object, if found
         """
-        from slither.core.variables.local_variable import LocalVariable, Variable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.expressions.literal import Literal
+        from slither.core.children.child_contract import ChildContract
         from slither.core.solidity_types.elementary_type import ElementaryType
 
         if print_debug:
@@ -2660,10 +2663,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     # delegates_to.set_type(ElementaryType("address"))
                     # delegates_to.name = dest
                     # delegates_to.set_location(slot)
-                    impl_slot = Variable()
+                    impl_slot = StateVariable()
                     impl_slot.name = slot
                     impl_slot.is_constant = True
+                    impl_slot.expression = Literal(slot, ElementaryType("bytes32"))
                     impl_slot.set_type(ElementaryType("bytes32"))
+                    impl_slot.set_contract(parent_func.contract
+                                           if isinstance(parent_func, ChildContract)
+                                           else self)
                     self._proxy_impl_slot = impl_slot
                     break
                 else:
