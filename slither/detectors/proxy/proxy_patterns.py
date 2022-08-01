@@ -10,6 +10,7 @@ from slither.core.declarations.contract import Contract
 from slither.core.children.child_contract import ChildContract
 from slither.core.declarations.structure import Structure
 from slither.core.declarations.structure_contract import StructureContract
+from slither.core.declarations.modifier import Modifier
 from slither.core.variables.variable import Variable
 from slither.core.variables.state_variable import StateVariable
 from slither.core.variables.local_variable import LocalVariable
@@ -865,7 +866,36 @@ or one of the proxy patterns developed by OpenZeppelin.
                 # if len(info) > 0:
                     # json = self.generate_result(info)
                     # results.append(json)
-                can_toggle_delegatecall = proxy_features.can_toggle_delegatecall_on_off()
+                """
+                Check whether the proxy can toggle using delegatecall on and off
+                """
+                can_toggle_delegatecall, condition, delegate_condition, alt_node \
+                    = proxy_features.can_toggle_delegatecall_on_off()
+                if can_toggle_delegatecall:
+                    info += [f"Can toggle delegatecall on/off: condition: {condition}\n"]
+                    features["can_toggle_delegatecall"] = "true"
+                    toggle_condition = str(condition)
+                    if not delegate_condition:  # condition must equate to False for using delegatecall
+                        if "==" in toggle_condition:
+                            toggle_condition = toggle_condition.replace("==", "!=")
+                        else:
+                            toggle_condition = "!" + toggle_condition
+                    features["toggle_delegatecall_condition"] = toggle_condition
+                    if alt_node.type == NodeType.PLACEHOLDER and isinstance(alt_node.function, Modifier):
+                        features["toggle_alternative_logic"] = "placeholder for function with modifier"
+                        features["toggle_modifier"] = alt_node.function.name
+                    elif alt_node.type == NodeType.ASSEMBLY and " call" in alt_node.inline_asm:
+                        features["toggle_alternative_logic"] = "uses call instead of delegatecall"
+                    else:
+                        alt_logic = str(alt_node.expression) if alt_node.expression is not None else "None"
+                        features["toggle_alternative_logic"] = alt_logic
+                    if isinstance(condition, Identifier):
+                        condition_var = condition.value
+                        funcs_writing_condition = proxy.get_functions_writing_to_variable(condition_var)
+                        features["toggle_setters"] = [func.name for func in funcs_writing_condition]
+                    elif isinstance(condition, BinaryOperation) \
+                            and delegate in [exp.value for exp in condition.expressions if isinstance(exp, Identifier)]:
+                        features["toggle_setters"] = [proxy.proxy_implementation_setter.name]
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
