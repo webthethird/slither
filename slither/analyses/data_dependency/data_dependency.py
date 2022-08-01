@@ -234,6 +234,7 @@ def get_dependencies_recursive(
                 elif isinstance(called, MemberAccess) and isinstance(called.expression, Identifier):
                     """ Indicates a function call to another contract """
                     value = called.expression.value
+                    c_type = None
                     if isinstance(value, Variable):
                         c_type = value.type
                     elif isinstance(value, Contract):
