@@ -74,6 +74,8 @@ or one of the proxy patterns developed by OpenZeppelin.
 """
 
     # endregion wiki_recommendation
+
+    # region custom generate_result
     STANDARD_JSON = False
 
     """
@@ -98,6 +100,13 @@ or one of the proxy patterns developed by OpenZeppelin.
         )
 
         return output
+
+    # endregion
+    ###################################################################################
+    ###################################################################################
+    # region Detect Mappings
+    ###################################################################################
+    ###################################################################################
 
     @staticmethod
     def detect_mappings(proxy_features: ProxyFeatureExtraction, delegate: Variable):
@@ -211,6 +220,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                 # results.append(json)
         return info, features
 
+    # endregion
+    ###################################################################################
+    ###################################################################################
+    # region Detect Storage Slot
+    ###################################################################################
+    ###################################################################################
+
     @staticmethod
     def detect_storage_slot(proxy_features: ProxyFeatureExtraction):
         print(f"detect_storage_slot: {proxy_features.contract}")
@@ -279,6 +295,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # json = self.generate_result(info)
                     # results.append(json)
         return info, features
+
+    # endregion
+    ###################################################################################
+    ###################################################################################
+    # region Detect Cross-Contract Call
+    ###################################################################################
+    ###################################################################################
 
     @staticmethod
     def detect_cross_contract_call(proxy_features: ProxyFeatureExtraction):
@@ -389,6 +412,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # json = self.generate_result(info)
                     # results.append(json)
         return info, features
+
+    # endregion
+    ###################################################################################
+    ###################################################################################
+    # region Main _detect
+    ###################################################################################
+    ###################################################################################
 
     def _detect(self):
         results = []
@@ -1021,3 +1051,4 @@ or one of the proxy patterns developed by OpenZeppelin.
             json = self.generate_result(info, features)
             results.append(json)
         return results
+    # endregion
