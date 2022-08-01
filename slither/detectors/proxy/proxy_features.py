@@ -1095,7 +1095,9 @@ class ProxyFeatureExtraction:
                 print(f"can_toggle_delegatecall_on_off:\n"
                       f" dominator node type: {node.type}\n"
                       f" dominator expression: {node.expression}")
-                if node.is_conditional(include_loop=False):
+                # if node.is_conditional(include_loop=False) and all([call not in str(node.expression)
+                #                                                     for call in ["require", "assert"]]):
+                if node.type == NodeType.IF:
                     condition = node.expression
                     dom_node = node
                     can_toggle = True
@@ -1120,7 +1122,7 @@ class ProxyFeatureExtraction:
                         if successor == delegatecall_node:
                             continue
                         elif ((not delegatecall_condition and (successor == dom_node.son_true or
-                                                             dom_node.son_true in successor.dominators))
+                                                               dom_node.son_true in successor.dominators))
                               or (delegatecall_condition and (successor == dom_node.son_false or
                                                               dom_node.son_false in successor.dominators))):
                             alternate_node = successor
@@ -1128,7 +1130,6 @@ class ProxyFeatureExtraction:
                                     or " call(" in str(alternate_node.expression):
                                 break
         return can_toggle, condition, delegatecall_condition, alternate_node
-
 
     # endregion
     ###################################################################################
