@@ -940,6 +940,36 @@ or one of the proxy patterns developed by OpenZeppelin.
                 # if len(info) > 0:
                     # json = self.generate_result(info)
                     # results.append(json)
+
+                # endregion
+                ###################################################################################
+                ###################################################################################
+                # region Anti-Pattern Features
+                ###################################################################################
+                ###################################################################################
+
+                """
+                Check whether upgradeability can be removed 
+                i.e., if setter is in another contract, which can be updated to remove the setter
+                """
+                setter = proxy.proxy_implementation_setter
+                if setter.contract != proxy and setter.contract not in proxy.inheritance:
+                    features["can_remove_upgradeability"] = "true"
+                    """
+                    If a beacon or registry was detected earlier, check if its address can be updated
+                    """
+                    if "beacon_source_constant" in features.keys():
+                        if features["beacon_source_constant"] == "true":
+                            features["can_remove_upgradeability"] = "false"
+                        elif features["beacon_source_constant"] == "false":
+                            features["can_remove_upgradeability"] = "true"
+                    elif "registry_source_constant" in features.keys():
+                        if features["registry_source_constant"] == "true":
+                            features["can_remove_upgradeability"] = "false"
+                        elif features["registry_source_constant"] == "false":
+                            features["can_remove_upgradeability"] = "true"
+                else:
+                    features["can_remove_upgradeability"] = "false"
                 """
                 Check whether the proxy can toggle using delegatecall on and off
                 """
