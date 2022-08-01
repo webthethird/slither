@@ -396,6 +396,11 @@ or one of the proxy patterns developed by OpenZeppelin.
             info = []
             features: Dict = {}
             proxy_features = ProxyFeatureExtraction(contract, self.compilation_unit)
+            ###################################################################################
+            ###################################################################################
+            # region Upgradeable Proxy
+            ###################################################################################
+            ###################################################################################
             if proxy_features.is_upgradeable_proxy:
                 proxy = contract
                 delegate = proxy_features.impl_address_variable
@@ -416,6 +421,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Check location of implementation address, i.e. contract.delegate_variable.
                 Could be located in proxy contract or in a different contract.
                 """
+                # endregion
+                ###################################################################################
+                ###################################################################################
+                # region Delegate Variable Located in Proxy Contract
+                ###################################################################################
+                ###################################################################################
                 if proxy_features.impl_address_location == proxy:
                     """
                     Check the scope of the implementation address variable,
@@ -428,6 +439,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                     features["impl_address_location"] = proxy.name + " (" + proxy.source_mapping_str + ")"
                     # json = self.generate_result(info)
                     # results.append(json)
+
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region State Variable
+                    ###################################################################################
+                    ###################################################################################
                     if isinstance(delegate, StateVariable):
                         """
                         Check the type of the state variable, i.e. an address, a mapping, or something else
@@ -528,6 +546,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info += map_info
                             for key in map_features.keys():
                                 features[key] = map_features[key]
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region Local Variable
+                    ###################################################################################
+                    ###################################################################################
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
@@ -565,6 +589,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                         info += cross_contract_info
                         for key in cross_contract_features.keys():
                             features[key] = cross_contract_features[key]
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region Structure Variable
+                    ###################################################################################
+                    ###################################################################################
                     elif isinstance(delegate, StructureVariable):
                         """
                         Check the type of the structure variable, i.e. an address, a mapping, or something else
@@ -608,6 +638,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             # json = self.generate_result(info)
                             # results.append(json)
+                    # endregion
                     else:
                         """
                         Should not be reachable, but print a result for debugging
@@ -619,6 +650,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                         ]
                         # json = self.generate_result(info)
                         # results.append(json)
+                # endregion
+                ###################################################################################
+                ###################################################################################
+                # region Delegate Variable Located in Different Contract
+                ###################################################################################
+                ###################################################################################
                 else:   # Location of delegate is in a different contract
                     info += [
                         delegate.name,
@@ -632,6 +669,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                     Check the scope of the implementation address variable,
                     i.e., StateVariable or LocalVariable.
                     """
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region State Variable
+                    ###################################################################################
+                    ###################################################################################
                     if isinstance(delegate, StateVariable):
                         """
                         Check the type of the state variable, i.e. an address, a mapping, or something else
@@ -708,6 +751,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 # json = self.generate_result(info)
                                 # results.append(json)
                                 break
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region Local Variable
+                    ###################################################################################
+                    ###################################################################################
                     elif isinstance(delegate, LocalVariable):
                         """
                         Check where the local variable gets the value of the implementation address from, i.e., 
@@ -742,6 +791,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info += cross_contract_info
                             for key in cross_contract_features.keys():
                                 features[key] = cross_contract_features[key]
+
+                    # endregion
+                    ###################################################################################
+                    ###################################################################################
+                    # region Structure Variable
+                    ###################################################################################
+                    ###################################################################################
                     elif isinstance(delegate, StructureVariable):
                         """
                         Check the type of the structure variable, i.e. an address, a mapping, or something else
@@ -789,6 +845,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                             ]
                             # json = self.generate_result(info)
                             # results.append(json)
+
+                    # endregion
                     else:
                         """
                         Should not be reachable, but print a result for debugging
@@ -800,6 +858,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                         ]
                         # json = self.generate_result(info)
                         # results.append(json)
+
+                # endregion
+                ###################################################################################
+                ###################################################################################
+                # region Transparent Proxy
+                ###################################################################################
+                ###################################################################################
+
                 """
                 Check if the proxy is transparent, i.e., if all external functions other than
                 the fallback and receive are only callable by a specific address, and whether 
@@ -827,6 +893,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                         [proxy_features.is_function_protected_with_comparator(fn, "!=", admin_str)
                          for fn in proxy.functions if fn.is_fallback or fn.is_receive]
                     )).lower()
+
+                # endregion
+                ###################################################################################
+                ###################################################################################
+                # region Compatibility Checks
+                ###################################################################################
+                ###################################################################################
+
                 """
                 Check if all functions that can update the implementation have compatibility checks
                 """
@@ -896,12 +970,22 @@ or one of the proxy patterns developed by OpenZeppelin.
                     elif isinstance(condition, BinaryOperation) \
                             and delegate in [exp.value for exp in condition.expressions if isinstance(exp, Identifier)]:
                         features["toggle_setters"] = [proxy.proxy_implementation_setter.name]
+
+                # endregion
+            ###################################################################################
+            ###################################################################################
+            # region Non-Upgradeable Proxy
+            ###################################################################################
+            ###################################################################################
+
             elif contract.is_proxy:
                 """
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
                 """
                 info += [contract, " is a proxy, but doesn't seem upgradeable.\n"]
                 features["upgradeable"] = "false"
+
+            # endregion
             else:
                 continue
             json = self.generate_result(info, features)
