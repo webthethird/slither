@@ -3,7 +3,7 @@ from abc import ABC
 import sha3
 from inspect import currentframe, getframeinfo
 from slither.detectors.abstract_detector import AbstractDetector, DetectorClassification
-from typing import Optional, List, Dict, Callable, Tuple, TYPE_CHECKING, Union
+from typing import Optional, List, Dict, Set, Callable, Tuple, TYPE_CHECKING, Union
 from slither.core.cfg.node import Node, NodeType
 from slither.core.declarations.contract import Contract
 from slither.core.compilation_unit import SlitherCompilationUnit
@@ -1066,33 +1066,68 @@ class ProxyFeatureExtraction:
                 loupe_facets.append((sig, "missing"))
         return loupe_facets
 
-    def can_toggle_delegatecall_on_off(self) -> bool:
-        dominators = None
+    def can_toggle_delegatecall_on_off(self) -> Tuple[bool, Optional[Expression], Optional[bool], Optional["Node"]]:
+        can_toggle = False
+        dominators: Optional[Set[Node]] = None
+        delegatecall_node: Optional[Node] = None
+        alternate_node: Optional[Node] = None
+        condition: Optional[Expression] = None
+        delegatecall_condition: Optional[bool] = None
         for node in self.contract.fallback_function.all_nodes():
             if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
                 if "delegatecall" in node.inline_asm:
+                    print(f"can_toggle_delegatecall_on_off: found delegatecall in ASSEMBLY node: {node.inline_asm}")
                     dominators = node.dominators
+                    delegatecall_node = node
                     break
             elif node.type == NodeType.EXPRESSION:
                 exp = node.expression
                 if isinstance(exp, AssignmentOperation):
                     exp = exp.expression_right
                 if isinstance(exp, CallExpression) and "delegatecall" in str(exp.called):
+                    print(f"can_toggle_delegatecall_on_off: found delegatecall in EXPRESSION node: {node.inline_asm}")
                     dominators = node.dominators
+                    delegatecall_node = node
                     break
         if dominators is not None:
-            for dom_node in dominators:
+            dom_node = None
+            for node in dominators:
                 print(f"can_toggle_delegatecall_on_off:\n"
-                      f" dominator node type: {dom_node.type}\n"
-                      f" dominator expression: {dom_node.expression}")
-                if dom_node.is_conditional(include_loop=False):
+                      f" dominator node type: {node.type}\n"
+                      f" dominator expression: {node.expression}")
+                if node.is_conditional(include_loop=False):
+                    condition = node.expression
+                    dom_node = node
+                    can_toggle = True
                     break
-            successors = dom_node.dominator_successors
-            if len(successors) > 0:
-                print(f"can_toggle_delegatecall_on_off: successors:")
-            for successor in successors:
-                print(f" NodeType: {successor.type}"
-                      f"  expression: {successor.expression}")
+            if dom_node is not None:
+                successors = dom_node.dominator_successors_recursive
+                if len(successors) > 0:
+                    print(f"can_toggle_delegatecall_on_off: successors:")
+                for successor in successors:
+                    print(f" NodeType: {successor.type}"
+                          f"  expression: "
+                          f"{successor.inline_asm if successor.inline_asm is not None else successor.expression}")
+                    if successor == delegatecall_node:
+                        if successor == dom_node.son_true or dom_node.son_true in successor.dominators:
+                            print(f"can_toggle_delegatecall_on_off: delegatecall_condition = True")
+                            delegatecall_condition = True
+                        elif successor == dom_node.son_false or dom_node.son_false in successor.dominators:
+                            print(f"can_toggle_delegatecall_on_off: delegatecall_condition = False")
+                            delegatecall_condition = False
+                if delegatecall_condition is not None:
+                    for successor in successors:
+                        if successor == delegatecall_node:
+                            continue
+                        elif ((not delegatecall_condition and (successor == dom_node.son_true or
+                                                             dom_node.son_true in successor.dominators))
+                              or (delegatecall_condition and (successor == dom_node.son_false or
+                                                              dom_node.son_false in successor.dominators))):
+                            alternate_node = successor
+                            if alternate_node.type in [NodeType.ASSEMBLY, NodeType.PLACEHOLDER] \
+                                    or " call(" in str(alternate_node.expression):
+                                break
+        return can_toggle, condition, delegatecall_condition, alternate_node
 
 
     # endregion
