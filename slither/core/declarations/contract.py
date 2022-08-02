@@ -91,14 +91,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._proxy_impl_setter: Optional["Function"] = None
         self._proxy_impl_getter: Optional["Function"] = None
         self._proxy_impl_slot: Optional["Variable"] = None
-        self._proxy_storage_slots: Optional[List["Variable"]] = None
-        self._proxy_storage_contract: Optional["Contract"] = None
-        self._proxy_registry_contract: Optional["Contract"] = None
-        self._proxy_admin_contract: Optional["Contract"] = None
-        self._has_multiple_implementations: Optional[bool] = None
-        self._is_storage_inherited: Optional[bool] = None
-        self._is_storage_eternal: Optional[bool] = None
-        self._is_storage_unstructured: Optional[bool] = None
+        self._uses_call_not_delegatecall: Optional[bool] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -1457,7 +1450,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         # print("\nFound Inline ASM\n")
                         is_proxy, self._delegate_variable = self.find_delegatecall_in_asm(node.inline_asm,
                                                                                           node.function,
-                                                                                          print_debug)
+                                                                                          print_debug=print_debug)
+                        if not is_proxy:
+                            is_proxy, self._delegate_variable = self.find_delegatecall_in_asm(node.inline_asm,
+                                                                                              node.function,
+                                                                                              print_debug=print_debug,
+                                                                                              include_call=True)
                         if not self._is_proxy:
                             self._is_proxy = is_proxy
                         if self._is_proxy and (self._delegate_variable is not None
@@ -1518,7 +1516,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             self,
             inline_asm: Union[str, Dict],
             parent_func: Function,
-            print_debug=False):
+            print_debug=False,
+            include_call=False):
         """
         Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
         as well as the address Variable which the 'delegatecall' targets.
@@ -1553,14 +1552,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if statement["nodeType"] == "YulVariableDeclaration":
                     statement = statement["value"]
                 if statement["nodeType"] == "YulFunctionCall":
-                    if statement["functionName"]["name"] == "delegatecall":
+                    if statement["functionName"]["name"] == "delegatecall" or (include_call and
+                                                                               statement["functionName"]["name"]
+                                                                               == "call"):
                         is_proxy = True
                         args = statement["arguments"]
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
                             dest = dest["name"]
                         if print_debug:
-                            print(f"\nFound delegatecall in YulFunctionCall "
+                            print(f"\nFound {statement['functionName']['name']} in YulFunctionCall "
                                   f"(Slither line:{getframeinfo(currentframe()).lineno})\n"
                                   f"Destination param is called '{dest}'\nLooking for corresponding Variable\n"
                                   f"Current function: {parent_func.name}")
@@ -1574,9 +1575,20 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             dest = None
             for asm in asm_split:
                 if print_debug: print(f"{asm} (Slither line:{getframeinfo(currentframe()).lineno})")
-                if "delegatecall" in asm:
+                if "delegatecall" in asm or (include_call and "call(" in asm):
+                    # need to know what to print for debugging
+                    if "delegatecall" not in inline_asm:
+                        print_call = "call"
+                        self._uses_call_not_delegatecall = True
+                    else:
+                        # found delegatecall somewhere in full inline_asm
+                        print_call = "delegatecall"
+                        if "delegatecall" not in asm:
+                            continue
+                        else:
+                            self._uses_call_not_delegatecall = False
                     is_proxy = True   # Now look for the target of this delegatecall
-                    params = asm.split("delegatecall(")[1].split(", ")
+                    params = asm.split("call(")[1].split(", ")
                     dest: str = params[1]
                     # Target should be 2nd parameter, but 1st param might have 2 params
                     # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
@@ -1608,7 +1620,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if dest.endswith(")"):
                         dest = params[2]
                     if print_debug:
-                        print(f"\nFound delegatecall in inline asm "
+                        print(f"\nFound {print_call} in inline asm "
                               f"(Slither line:{getframeinfo(currentframe()).lineno})\n"
                               f"Destination param is called '{dest}'\nLooking for corresponding Variable\n"
                               f"Current function: {parent_func.name}")
