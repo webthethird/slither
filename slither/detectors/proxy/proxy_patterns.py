@@ -1048,15 +1048,12 @@ or one of the proxy patterns developed by OpenZeppelin.
                         if function.visibility in ["external", "public"]:
                             if function.is_receive or function.is_fallback or function.is_constructor:
                                 continue
-                            print(f"checking external function {function.name} for delegatecall")
                             if function.contains_assembly or any([modifier.contains_assembly
                                                                   for modifier in function.modifiers]):
-                                print(f"{function} contains assembly")
                                 asm_nodes = function.assembly_nodes
-                                print(f"asm_nodes.length = {len(asm_nodes)}")
                                 for node in asm_nodes:
                                     if node.inline_asm is not None and "delegatecall" in node.inline_asm:
-                                        funcs_containing_delegatecall.append(function.name)
+                                        funcs_containing_delegatecall.append(function.canonical_name)
                                         features["external_functions_containing_delegatecall"] \
                                             = funcs_containing_delegatecall
 
