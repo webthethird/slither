@@ -48,6 +48,7 @@ class ProxyFeatureExtraction:
         self._is_admin_only_proxy: Optional[bool] = None
         self._impl_address_variable: Optional["Variable"] = contract.delegate_variable
         self._impl_address_location: Optional["Contract"] = None
+        self._proxy_only_contains_fallback: Optional[bool] = None
 
     ###################################################################################
     ###################################################################################
@@ -351,17 +352,19 @@ class ProxyFeatureExtraction:
         :return: False if any other external/public function is found, or if the
                  fallback function is missing, otherwise True
         """
-        is_true = False
-        for function in self.contract.functions:
-            if function.is_fallback:
-                print(f"Found {function.name}")
-                is_true = True
-            elif function.visibility in ["external", "public"]:
-                print(f"Found {function.visibility} function: {function.name}")
-                if function.is_receive or function.is_constructor:
-                    continue
-                return False
-        return is_true
+        if self._proxy_only_contains_fallback is None:
+            self._proxy_only_contains_fallback = False
+            for function in self.contract.functions:
+                if function.is_fallback:
+                    print(f"Found {function.name}")
+                    self._proxy_only_contains_fallback = True
+                elif function.visibility in ["external", "public"]:
+                    print(f"Found {function.visibility} function: {function.name}")
+                    if function.is_receive or function.is_constructor:
+                        continue
+                    self._proxy_only_contains_fallback = False
+                    return self._proxy_only_contains_fallback
+        return self._proxy_only_contains_fallback
 
     def has_transparent_admin_checks(self) -> (bool, str):
         """
