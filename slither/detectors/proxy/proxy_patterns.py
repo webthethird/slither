@@ -1007,6 +1007,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info += [f"To remove upgradeability, delete {setter.name} from {setter.contract}\n"]
                 else:
                     features["can_remove_upgradeability"] = "false"
+
                 """
                 Check whether the proxy can toggle using delegatecall on and off
                 """
@@ -1037,6 +1038,27 @@ or one of the proxy patterns developed by OpenZeppelin.
                     elif isinstance(condition, BinaryOperation) \
                             and delegate in [exp.value for exp in condition.expressions if isinstance(exp, Identifier)]:
                         features["toggle_setters"] = [proxy.proxy_implementation_setter.name]
+
+                """
+                Check whether any external functions (besides fallback/receive) contain delegatecall
+                """
+                if not proxy_features.proxy_only_contains_fallback():
+                    funcs_containing_delegatecall = []
+                    for function in proxy.functions:
+                        if function.visibility in ["external", "public"]:
+                            if function.is_receive or function.is_fallback or function.is_constructor:
+                                continue
+                            print(f"checking external function {function.name} for delegatecall")
+                            if function.contains_assembly or any([modifier.contains_assembly
+                                                                  for modifier in function.modifiers]):
+                                print(f"{function} contains assembly")
+                                asm_nodes = function.assembly_nodes
+                                print(f"asm_nodes.length = {len(asm_nodes)}")
+                                for node in asm_nodes:
+                                    if node.inline_asm is not None and "delegatecall" in node.inline_asm:
+                                        funcs_containing_delegatecall.append(function.name)
+                                        features["external_functions_containing_delegatecall"] \
+                                            = funcs_containing_delegatecall
 
                 # endregion
             ###################################################################################
