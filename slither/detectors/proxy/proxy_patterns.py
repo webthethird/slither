@@ -983,7 +983,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 i.e., if setter is in another contract, which can be updated to remove the setter
                 """
                 setter = proxy.proxy_implementation_setter
-                if setter.contract != proxy and setter.contract not in proxy.inheritance:
+                if setter is not None and setter.contract != proxy and setter.contract not in proxy.inheritance:
                     features["can_remove_upgradeability"] = "true"
                     """
                     If a beacon or registry was detected earlier, check if its address can be updated
@@ -998,6 +998,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                             features["can_remove_upgradeability"] = "false"
                         elif features["registry_source_constant"] == "false":
                             features["can_remove_upgradeability"] = "true"
+                    if features["can_remove_upgradeability"] == "true":
+                        if "eip_2535" in features.keys():
+                            features["how_to_remove_upgradeability"] = f"remove {setter.contract.name} facet"
+                            info += [f"To remove upgradeability, delete the {setter.contract.name} facet\n"]
+                        else:
+                            features["how_to_remove_upgradeability"] = f"remove {setter.name} from {setter.contract}"
+                            info += [f"To remove upgradeability, delete {setter.name} from {setter.contract}\n"]
                 else:
                     features["can_remove_upgradeability"] = "false"
                 """
