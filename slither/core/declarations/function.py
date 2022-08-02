@@ -523,6 +523,10 @@ class Function(SourceMapping, metaclass=ABCMeta):  # pylint: disable=too-many-pu
         self._nodes.append(node)
 
     @property
+    def assembly_nodes(self) -> List["Node"]:
+        return [node for node in self.all_nodes() if str(node.type) == "INLINE ASM"]
+
+    @property
     def nodes_ordered_dominators(self) -> List["Node"]:
         # TODO: does not work properly; most likely due to modifier call
         # This will not work for modifier call that lead to multiple nodes
