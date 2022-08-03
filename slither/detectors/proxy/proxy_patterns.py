@@ -28,6 +28,13 @@ from slither.core.expressions.index_access import IndexAccess
 from slither.core.solidity_types.mapping_type import MappingType
 from slither.core.solidity_types.user_defined_type import UserDefinedType
 from slither.core.solidity_types.elementary_type import ElementaryType
+from slither.utils.erc import (
+    ERC20_all_signatures,
+    ERC165_signatures,
+    ERC721_all_signatures,
+    ERC897_signatures,
+    ERC1155_all_signatures
+)
 
 
 class ProxyPatterns(AbstractDetector, ABC):
@@ -1043,9 +1050,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                         features["toggle_setters"] = [proxy.proxy_implementation_setter.name]
 
                 """
-                Check whether any external functions (besides fallback/receive) contain delegatecall
+                Check whether there are any immutable external/public functions (besides fallback/receive) 
+                and see if they contain delegatecall
                 """
                 if not proxy_features.proxy_only_contains_fallback():
+                    features["immutable_functions"] = {}
                     funcs_containing_delegatecall = []
                     for function in proxy.functions:
                         if function.visibility in ["external", "public"]:
@@ -1056,9 +1065,55 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 asm_nodes = function.assembly_nodes
                                 for node in asm_nodes:
                                     if node.inline_asm is not None and "delegatecall" in node.inline_asm:
-                                        funcs_containing_delegatecall.append(function.canonical_name)
-                                        features["external_functions_containing_delegatecall"] \
+                                        funcs_containing_delegatecall.append(function.full_name)
+                                        features["immutable_functions"]["containing_delegatecall"] \
                                             = funcs_containing_delegatecall
+                                        break
+                    """
+                    Check if the proxy contains any known ERC functions (if it contains external functions)
+                    """
+                    ERC721 = list(set(ERC721_all_signatures).difference(ERC20_all_signatures + ERC165_signatures))
+                    ERC1155 = list(set(ERC1155_all_signatures).difference(ERC20_all_signatures + ERC165_signatures))
+                    all_erc_sigs = ERC20_all_signatures + ERC165_signatures + ERC721 + ERC897_signatures + ERC1155
+                    if any(function.full_name in all_erc_sigs
+                           for function in proxy.functions if function.name != "implementation"):
+                        if any(function.full_name in ERC20_all_signatures for function in proxy.functions):
+                            erc20_functions = []
+                            for sig in ERC20_all_signatures:
+                                if proxy.get_function_from_signature(sig) is not None:
+                                    erc20_functions.append(sig)
+                            features["immutable_functions"]["erc20"] = erc20_functions
+                        if any(function.full_name in ERC165_signatures for function in proxy.functions):
+                            erc165_functions = []
+                            for sig in ERC165_signatures:
+                                if proxy.get_function_from_signature(sig) is not None:
+                                    erc165_functions.append(sig)
+                            features["immutable_functions"]["erc165"] = erc165_functions
+                        if any(function.full_name in ERC721 for function in proxy.functions):
+                            erc721_functions = []
+                            for sig in ERC721_all_signatures:
+                                if proxy.get_function_from_signature(sig) is not None:
+                                    erc721_functions.append(sig)
+                            features["immutable_functions"]["erc721"] = erc721_functions
+                        if any(function.full_name in ERC1155 for function in proxy.functions):
+                            erc1155_functions = []
+                            for sig in ERC1155_all_signatures:
+                                if proxy.get_function_from_signature(sig) is not None:
+                                    erc1155_functions.append(sig)
+                            features["immutable_functions"]["erc1155"] = erc1155_functions
+                        # for ERC-897: DelegateProxy, only care if `proxyType()` is present, since
+                        # `implementation()` is found in so many proxies which don't use EIP-897
+                        if all(function.full_name in ERC897_signatures for function in proxy.functions):
+                            features["immutable_functions"]["erc897"] = ERC897_signatures
+                    """
+                    Add remaining public/external functions not covered above
+                    """
+                    other_functions = [function.full_name for function in proxy.functions
+                                       if function.visibility in ["external", "public"]
+                                       and function.full_name not in str(features["immutable_functions"])
+                                       and not (function.is_constructor or function.is_fallback or function.is_receive)]
+                    if len(other_functions) > 0:
+                        features["immutable_functions"]["other"] = other_functions
 
                 # endregion
             ###################################################################################
