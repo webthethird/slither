@@ -441,6 +441,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                     features["upgradeable"] = "true"
                 else:
                     features["upgradeable"] = "maybe"
+                if contract.uses_call_not_delegatecall:
+                    features["uses_call_instead_of_delegatecall"] = "true"
+                    info += f"{proxy.name} uses `call` instead of `delegatecall`\n"
                 if isinstance(delegate, (StateVariable, LocalVariable, StructureVariable)):
                     features["impl_address_variable"] = delegate.canonical_name
                 else:
