@@ -55,6 +55,7 @@ ERC20_OPTIONAL = [
 ERC20 = ERC20 + ERC20_OPTIONAL
 
 ERC20_signatures = erc_to_signatures(ERC20)
+ERC20_all_signatures = erc_to_all_signatures(ERC20)
 
 # Draft
 # https://github.com/ethereum/eips/issues/223
@@ -365,6 +366,7 @@ ERC1967_UPGRADE = [
 ERC1967 = ERC1967_PROXY + ERC1967_UPGRADE
 
 ERC1967_signatures = erc_to_signatures(ERC1967)
+ERC1967_all_signatures = erc_to_all_signatures(ERC1967)
 
 ERCS = {
     "ERC20": (ERC20, ERC20_EVENTS),
