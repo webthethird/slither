@@ -233,6 +233,16 @@ ERC777 = [
 ]
 ERC777_signatures = erc_to_signatures(ERC777)
 
+# Stagnant
+# https://eips.ethereum.org/EIPS/eip-897
+
+ERC897 = [
+    ERC("proxyType", [], "uint256", True, True, []),
+    ERC("implementation", [], "address", True, True, [])
+]
+
+ERC897_signatures = erc_to_signatures(ERC897)
+
 # Final
 # https://eips.ethereum.org/EIPS/eip-1155
 # Must have ERC165
