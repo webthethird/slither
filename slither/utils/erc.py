@@ -57,6 +57,14 @@ ERC20 = ERC20 + ERC20_OPTIONAL
 ERC20_signatures = erc_to_signatures(ERC20)
 ERC20_all_signatures = erc_to_all_signatures(ERC20)
 
+# Final
+# https://eips.ethereum.org/EIPS/eip-165
+
+ERC165_EVENTS: List = []
+
+ERC165 = [ERC("supportsInterface", ["bytes4"], "bool", True, True, [])]
+ERC165_signatures = erc_to_signatures(ERC165)
+
 # Draft
 # https://github.com/ethereum/eips/issues/223
 
@@ -91,14 +99,6 @@ ERC223 = [
     ),
 ]
 ERC223_signatures = erc_to_signatures(ERC223)
-
-# Final
-# https://eips.ethereum.org/EIPS/eip-165
-
-ERC165_EVENTS: List = []
-
-ERC165 = [ERC("supportsInterface", ["bytes4"], "bool", True, True, [])]
-ERC165_signatures = erc_to_signatures(ERC165)
 
 # Final
 # https://eips.ethereum.org/EIPS/eip-721
@@ -164,21 +164,7 @@ ERC721_OPTIONAL = [
 ERC721 = ERC721 + ERC721_OPTIONAL
 
 ERC721_signatures = erc_to_signatures(ERC721)
-
-# Final
-# https://eips.ethereum.org/EIPS/eip-1820
-ERC1820_EVENTS: List = []
-ERC1820 = [
-    ERC(
-        "canImplementInterfaceForAddress",
-        ["bytes32", "address"],
-        "bytes32",
-        True,
-        True,
-        [],
-    )
-]
-ERC1820_signatures = erc_to_signatures(ERC1820)
+ERC721_all_signatures = erc_to_all_signatures(ERC721)
 
 # Last Call
 # https://eips.ethereum.org/EIPS/eip-777
@@ -329,6 +315,22 @@ ERC1155_METADATA = [ERC("uri", ["uint256"], "string", True, False, [])]
 ERC1155 = ERC1155 + ERC1155_TOKEN_RECEIVER + ERC1155_METADATA
 
 ERC1155_signatures = erc_to_signatures(ERC1155)
+ERC1155_all_signatures = erc_to_all_signatures(ERC1155)
+
+# Final
+# https://eips.ethereum.org/EIPS/eip-1820
+ERC1820_EVENTS: List = []
+ERC1820 = [
+    ERC(
+        "canImplementInterfaceForAddress",
+        ["bytes32", "address"],
+        "bytes32",
+        True,
+        True,
+        [],
+    )
+]
+ERC1820_signatures = erc_to_signatures(ERC1820)
 
 # Final
 # https://eips.ethereum.org/EIPS/eip-1967
