@@ -451,10 +451,21 @@ or one of the proxy patterns developed by OpenZeppelin.
                 if contract.uses_call_not_delegatecall:
                     features["uses_call_instead_of_delegatecall"] = "true"
                     info += f"{proxy.name} uses `call` instead of `delegatecall`\n"
+                """
+                Output the delegate variable and its setter and getter
+                """
                 if isinstance(delegate, (StateVariable, LocalVariable, StructureVariable)):
                     features["impl_address_variable"] = delegate.canonical_name
                 else:
                     features["impl_address_variable"] = delegate.name
+                if proxy.proxy_implementation_setter is not None:
+                    features["impl_address_setter"] = proxy.proxy_implementation_setter.canonical_name
+                else:
+                    features["impl_address_setter"] = "not found"
+                if proxy.proxy_implementation_getter is not None:
+                    features["impl_address_getter"] = proxy.proxy_implementation_getter.canonical_name
+                else:
+                    features["impl_address_getter"] = "not found"
                 # json = self.generate_result(info)
                 # results.append(json)
                 """
