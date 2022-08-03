@@ -1508,9 +1508,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable_proxy_confirmed
 
     @property
-    def is_admin_only_proxy(self) -> bool:
-        # TODO: check if transparent
-        return self._is_transparent_proxy
+    def uses_call_not_delegatecall(self) -> bool:
+        return self._uses_call_not_delegatecall
 
     def find_delegatecall_in_asm(
             self,
