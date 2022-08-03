@@ -14,6 +14,15 @@ def erc_to_signatures(erc: List[ERC]):
     return [f'{e.name}({",".join(e.parameters)})' for e in erc if e.required]
 
 
+def erc_to_all_signatures(erc: List[ERC]):
+    """
+    Return the list of signatures (mandatory and optional)
+    :param erc:
+    :return:
+    """
+    return [f'{e.name}({",".join(e.parameters)})' for e in erc]
+
+
 # Final
 # https://eips.ethereum.org/EIPS/eip-20
 
