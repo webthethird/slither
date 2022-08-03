@@ -88,10 +88,11 @@ or one of the proxy patterns developed by OpenZeppelin.
     """
     Override AbstractDetector.generate_result to define our own json output format
     """
+
     def generate_result(
-        self,
-        info: Union[str, List[Union[str, SupportedOutput]]],
-        additional_fields: Optional[Dict] = None,
+            self,
+            info: Union[str, List[Union[str, SupportedOutput]]],
+            additional_fields: Optional[Dict] = None,
     ) -> ProxyOutput:
         contracts = [i for i in info if isinstance(i, Contract)]
         if len(contracts) > 0:
@@ -183,7 +184,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 features["diamond_loupe_facets"][sig] = str(facet)
                             if len(loupe_facets) == 4:
                                 info += [
-                                    f"Loupe functions located in {', '.join(set(str(c) for f,c in loupe_facets))}\n"
+                                    f"Loupe functions located in {', '.join(set(str(c) for f, c in loupe_facets))}\n"
                                 ]
                                 # json = self.generate_result(info)
                                 # results.append(json)
@@ -707,7 +708,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 # region Delegate Variable Located in Different Contract
                 ###################################################################################
                 ###################################################################################
-                else:   # Location of delegate is in a different contract
+                else:  # Location of delegate is in a different contract
                     info += [
                         delegate.name,
                         " was found in a different contract.\n"
@@ -989,8 +990,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                         #     "In ", func.canonical_name, ": ", str(exp), "\n"
                         # ]
                 # if len(info) > 0:
-                    # json = self.generate_result(info)
-                    # results.append(json)
+                # json = self.generate_result(info)
+                # results.append(json)
 
                 # endregion
                 ###################################################################################
