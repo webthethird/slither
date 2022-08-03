@@ -1134,6 +1134,11 @@ class ProxyFeatureExtraction:
                                 break
         return can_toggle, condition, delegatecall_condition, alternate_node
 
+    def has_time_delay(self):
+        """
+        TODO: implement check for time-delayed upgrade function
+        """
+
     # endregion
     ###################################################################################
     ###################################################################################

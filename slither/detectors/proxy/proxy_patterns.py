@@ -1127,6 +1127,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                     if len(other_functions) > 0:
                         features["immutable_functions"]["other"] = other_functions
 
+                """
+                TODO: Check whether upgrading has a time-delay
+                """
+
                 # endregion
             ###################################################################################
             ###################################################################################
