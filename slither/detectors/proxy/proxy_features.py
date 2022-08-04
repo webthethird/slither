@@ -121,6 +121,7 @@ class ProxyFeatureExtraction:
             setter = self.contract.proxy_implementation_setter
             if setter is not None and setter.contract != self.contract:
                 ret_contract = setter.contract
+                index = -1
                 for idx, var in enumerate(self.contract.state_variables_ordered):
                     if var == delegate:
                         index = idx
