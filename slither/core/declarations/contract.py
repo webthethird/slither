@@ -1629,6 +1629,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             Now that we extracted the name of the address variable passed as the second parameter to delegatecall, 
             we need to find the correct Variable object to ultimately assign to self._delegates_to.
             """
+            if "_fallback_asm" in dest:
+                dest = dest.split("_fallback_asm")[0]
             delegates_to = self.find_delegate_variable_from_name(dest, parent_func, print_debug)
             if delegates_to is None and asm_split is not None:
                 delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, parent_func, print_debug)
@@ -1888,6 +1890,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             if statement["nodeType"] == "YulVariableDeclaration" \
                                     and statement["variables"][0]["name"] == dest:
                                 if statement["value"]["nodeType"] == "YulFunctionCall" \
+                                        and statement["value"]["functionName"]["name"] == "and" \
+                                        and statement["value"]["arguments"][0]["nodeType"] == "YulFunctionCall" \
+                                        and statement["value"]["arguments"][0]["functionName"]["name"] == "sload":
+                                    statement["value"] = statement["value"]["arguments"][0]
+                                if statement["value"]["nodeType"] == "YulFunctionCall" \
                                         and statement["value"]["functionName"]["name"] == "sload":
                                     if print_debug: print(f"{statement['value']['arguments'][0]}" 
                                                           f" (Slither line:{getframeinfo(currentframe()).lineno})")
@@ -1911,6 +1918,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                             self._proxy_impl_slot = impl_slot
                                             break
+                                        elif slot == "0":
+                                            print(f"Found sload(0), getting first state variable")
+                                            delegate = self.state_variables_ordered[0]
                                     elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
                                         for sv in self.state_variables:
                                             if sv.name == statement["value"]["arguments"][0]["name"] and sv.is_constant:
