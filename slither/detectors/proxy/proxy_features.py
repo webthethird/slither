@@ -715,7 +715,8 @@ class ProxyFeatureExtraction:
                 print(f"has_compatibility_checks: checking {func.visibility} function {func}")
             check_exp = None
             has_check = False
-            for exp in func.all_expressions():
+            for node in func.all_nodes():
+                exp = node.expression
                 """
                 Search each upgrade function's expressions for a condition that will 
                 revert if the new implementation is not compatible with the proxy.
@@ -800,59 +801,47 @@ class ProxyFeatureExtraction:
                                     has_check = True
                                     is_check_correct = False
                                     func_exp_list.append((func, check_exp, is_check_correct))
-            if check_exp is None and isinstance(func, FunctionContract):
-                """
-                We used Function.all_expressions() above to find require and assert,
-                because they are not captured correctly by Function.all_nodes().
-                However, in order to detect compatibility checks in the form of an
-                if statement followed by a revert, we need to use the CFG information
-                accessed from Function.all_nodes(), because Function.all_expressions() 
-                does not handle conditional expressions well, and unfortunately there
-                is no way to get from an Expression object to the Node that contains it.
-                """
-                for node in func.all_nodes():
-                    if node.type == NodeType.IF:
-                        exp = node.expression
-                        print(f"has_compatibility_checks: IF node exp = {exp}")
+                elif node.type == NodeType.IF:
+                    print(f"has_compatibility_checks: IF node exp = {exp}")
+                    """
+                    Found an IF node, so check if it can lead to a revert.
+                    Node.sons only gives us the immediate children of the IF node,
+                    i.e., the first node in the `then` block and the `else` block.
+                    """
+                    # TODO: It may be better to implement a recursive getter for Node children.
+                    # TODO: Use Dominators / Control Dependency Graph instead
+                    if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
+                        print("has_compatibility_checks: IF node can lead to revert"
+                              f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
                         """
-                        Found an IF node, so check if it can lead to a revert.
-                        Node.sons only gives us the immediate children of the IF node,
-                        i.e., the first node in the `then` block and the `else` block.
+                        Unfortunately the IF Node does not contain a ConditionalExpression
+                        already, so we must construct one using the CFG info from the Node. 
                         """
-                        # TODO: It may be better to implement a recursive getter for Node children.
-                        # TODO: Use Dominators / Control Dependency Graph instead
-                        if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
-                            print("has_compatibility_checks: IF node can lead to revert"
-                                  f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
-                            """
-                            Unfortunately the IF Node does not contain a ConditionalExpression
-                            already, so we must construct one using the CFG info from the Node. 
-                            """
-                            if len(node.sons) > 1:
-                                conditional_exp = ConditionalExpression(exp,
-                                                                        node.sons[0].expression,
-                                                                        node.sons[1].expression)
-                            else:
-                                conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
-                            print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
-                            """
-                            The static helper method check_condition_from_expression will return an
-                            Expression object if exp is a compatibility check, and will append any
-                            newly found checks to the list of (function, compatibility check) pairs.
-                            """
-                            check_, func_exp_list = self.check_condition_from_expression(
-                                exp, func, var_written, func_exp_list, conditional_exp
-                            )
-                            """
-                            Since there may be more than one valid compatibility check in the same function,
-                            it is possible for the call above to return a check expression the first time,
-                            setting has_check = True, and then return None after checking another expression
-                            in the same function. Therefore, we do not want to overwrite check_exp above 
-                            if the subsequent call to check_condition_from_expression returned None.
-                            """
-                            if check_ is not None:
-                                check_exp = check_
-                                has_check = True
+                        if len(node.sons) > 1:
+                            conditional_exp = ConditionalExpression(exp,
+                                                                    node.sons[0].expression,
+                                                                    node.sons[1].expression)
+                        else:
+                            conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
+                        print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
+                        """
+                        The static helper method check_condition_from_expression will return an
+                        Expression object if exp is a compatibility check, and will append any
+                        newly found checks to the list of (function, compatibility check) pairs.
+                        """
+                        check_, func_exp_list = self.check_condition_from_expression(
+                            exp, func, var_written, func_exp_list, conditional_exp
+                        )
+                        """
+                        Since there may be more than one valid compatibility check in the same function,
+                        it is possible for the call above to return a check expression the first time,
+                        setting has_check = True, and then return None after checking another expression
+                        in the same function. Therefore, we do not want to overwrite check_exp above 
+                        if the subsequent call to check_condition_from_expression returned None.
+                        """
+                        if check_ is not None:
+                            check_exp = check_
+                            has_check = True
             if check_exp is None:
                 """ Didn't find check in this function """
                 func_exp_list.append((func, None, False))
