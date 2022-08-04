@@ -126,7 +126,7 @@ or one of the proxy patterns developed by OpenZeppelin.
         Check mapping types, i.e. delegate.type_from and delegate.type_to
         """
         if proxy_features.is_eternal_storage():
-            features["eternal_storage"] = "true"
+            features["eternal_storage"] = True
             info += [
                 " uses Eternal Storage\n"
             ]
@@ -138,7 +138,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Check to confirm that `msg.sig` is used as the key in the mapping
                 """
                 if proxy_features.is_mapping_from_msg_sig(delegate):
-                    features["impl_mapping_from_msg_sig"] = "true"
+                    features["impl_mapping_from_msg_sig"] = True
                     info += [
                         delegate.name,
                         " maps function signatures to addresses, suggesting multiple implementations.\n"
@@ -151,10 +151,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                     if isinstance(delegate, StructureVariable):
                         struct = delegate.structure
                         if struct.name == "DiamondStorage":
-                            features["diamond_storage"] = "true"
+                            features["diamond_storage"] = True
                             if struct.canonical_name == "LibDiamond.DiamondStorage":
                                 features["diamond_storage_location"] = "LibDiamond (" + struct.source_mapping_str + ")"
-                                features["eip_2535"] = "true"
+                                features["eip_2535"] = True
                                 info += [
                                     delegate.name,
                                     " is stored in the structure specified by EIP-2535: ",
@@ -189,11 +189,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 # json = self.generate_result(info)
                                 # results.append(json)
                         else:
-                            features["eip_2535"] = "false"
+                            features["eip_2535"] = False
                             if len(struct.elems) > 1:
-                                features["diamond_storage"] = "true"
+                                features["diamond_storage"] = True
                             else:
-                                features["diamond_storage"] = "false"
+                                features["diamond_storage"] = False
                             info += [
                                 delegate.name,
                                 " is stored in a structure: ",
@@ -206,8 +206,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                         """
                         Mapping not stored in a struct
                         """
-                        features["eip_2535"] = "false"
-                        features["eip_1538"] = "true"
+                        features["eip_2535"] = False
+                        features["eip_1538"] = True
                 else:
                     features["impl_mapping_from_msg_sig"] = "maybe"
                     info += [
@@ -217,7 +217,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # json = self.generate_result(info)
                     # results.append(json)
             else:
-                features["impl_mapping_from_msg_sig"] = "false"
+                features["impl_mapping_from_msg_sig"] = False
                 info += [
                     delegate.name,
                     " is a mapping of type ",
@@ -244,7 +244,7 @@ or one of the proxy patterns developed by OpenZeppelin.
         proxy = proxy_features.contract
         slot = proxy_features.find_impl_slot_from_sload()
         if slot is not None:
-            features["unstructured_storage"] = "true"
+            features["unstructured_storage"] = True
             info += [
                 " uses Unstructured Storage\n"
             ]
@@ -260,14 +260,14 @@ or one of the proxy patterns developed by OpenZeppelin.
                 print(f"Setter found in contract {setter.contract}")
             if setter is None or setter.contract == proxy or setter.contract in proxy.inheritance:
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-                    features["eip_1967"] = "true"
+                    features["eip_1967"] = True
                     info += [
                         " implements EIP-1967\n"
                     ]
                     # json = self.generate_result(info)
                     # results.append(json)
                 else:
-                    features["eip_1967"] = "false"
+                    features["eip_1967"] = False
                     info += [
                         " uses non-standard slot: ",
                         slot, "\n"
@@ -276,8 +276,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # results.append(json)
             elif setter.contract != proxy and proxy_features.proxy_only_contains_fallback():
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
-                    features["eip_1967"] = "true"
-                    features["eip_1822"] = "true"
+                    features["eip_1967"] = True
+                    features["eip_1822"] = True
                     info += [
                         " implements EIP-1822 using slot from ERC-1967"
                         " (i.e. OpenZeppelin UUPS)\n"
@@ -286,16 +286,16 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # results.append(json)
 
                 elif slot == "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7":
-                    features["eip_1967"] = "false"
-                    features["eip_1822"] = "true"
+                    features["eip_1967"] = False
+                    features["eip_1822"] = True
                     info += [
                         " implements EIP-1822 (UUPS) with slot = keccak256('PROXIABLE')\n"
                     ]
                     # json = self.generate_result(info)
                     # results.append(json)
                 else:
-                    features["eip_1967"] = "false"
-                    features["eip_1822"] = "false"
+                    features["eip_1967"] = False
+                    features["eip_1822"] = False
                     info += [
                         " uses non-standard slot: ",
                         slot, "\n"
@@ -383,13 +383,13 @@ or one of the proxy patterns developed by OpenZeppelin.
                             "\n"
                         ]
                         if source.is_constant:
-                            features[f"{rorb.lower()}_source_constant"] = "true"
+                            features[f"{rorb.lower()}_source_constant"] = True
                             info += [
                                 source.name,
                                 f" is constant, so the {rorb} address cannot be upgraded.\n"
                             ]
                         else:
-                            features[f"{rorb.lower()}_source_constant"] = "false"
+                            features[f"{rorb.lower()}_source_constant"] = False
                             setters = proxy.get_functions_writing_to_variable(source)
                             setters = [setter.canonical_name for setter in setters if not setter.is_constructor]
                             if len(setters) > 0:
@@ -446,11 +446,11 @@ or one of the proxy patterns developed by OpenZeppelin.
                          " may be" if not proxy_features.is_upgradeable_proxy_confirmed else " is",
                          " an upgradeable proxy.\n"]
                 if contract.is_upgradeable_proxy_confirmed:
-                    features["upgradeable"] = "true"
+                    features["upgradeable"] = True
                 else:
                     features["upgradeable"] = "maybe"
                 if contract.uses_call_not_delegatecall:
-                    features["uses_call_instead_of_delegatecall"] = "true"
+                    features["uses_call_instead_of_delegatecall"] = True
                     info += f"{proxy.name} uses `call` instead of `delegatecall`\n"
                 """
                 Output the delegate variable and its setter and getter
@@ -538,7 +538,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             if idx >= 0 and logic is not None:
                                 features["impl_address_also_declared_in"] = logic.source_mapping_str
                                 features["impl_address_slot"] = str(idx)
-                                features["master_copy_coupling"] = "true"
+                                features["master_copy_coupling"] = True
                                 info += [
                                     delegate.name,
                                     " is declared in both the proxy and logic contract (",
@@ -796,7 +796,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             if proxy_features.impl_address_location in proxy.inheritance and \
                                     proxy_features.impl_address_location in c.inheritance and \
                                     proxy not in c.inheritance and c not in proxy.inheritance:
-                                features["inherited_storage"] = "true"
+                                features["inherited_storage"] = True
                                 info += [
                                     " uses Inherited Storage\n"
                                 ]
@@ -926,25 +926,25 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 is_transparent, admin_str = proxy_features.has_transparent_admin_checks()
                 if is_transparent:
-                    features["transparent"] = "true"
-                    features["external_functions_require_specific_sender"] = "true"
-                    features["fallback_receive_not_callable_by_specific_sender"] = "true"
+                    features["transparent"] = True
+                    features["external_functions_require_specific_sender"] = True
+                    features["fallback_receive_not_callable_by_specific_sender"] = True
                     info += [
                         " uses Transparent Proxy pattern\n"
                     ]
                     # json = self.generate_result(info)
                     # results.append(json)
                 else:
-                    features["transparent"] = "false"
-                    features["external_functions_require_specific_sender"] = str(all(
+                    features["transparent"] = False
+                    features["external_functions_require_specific_sender"] = (all(
                         [proxy_features.is_function_protected_with_comparator(fn, "==", admin_str)
                          for fn in proxy.functions if fn.visibility in ["external", "public"]
                          and not fn.is_fallback and not fn.is_receive and not fn.is_constructor]
-                    ) and admin_str is not None and not proxy_features.proxy_only_contains_fallback()).lower()
-                    features["fallback_receive_not_callable_by_specific_sender"] = str(all(
+                    ) and admin_str is not None and not proxy_features.proxy_only_contains_fallback())
+                    features["fallback_receive_not_callable_by_specific_sender"] = (all(
                         [proxy_features.is_function_protected_with_comparator(fn, "!=", admin_str)
                          for fn in proxy.functions if fn.is_fallback or fn.is_receive]
-                    ) and admin_str is not None).lower()
+                    ) and admin_str is not None)
 
                 # endregion
                 ###################################################################################
@@ -957,7 +957,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Check if all functions that can update the implementation have compatibility checks
                 """
                 has_checks, func_exp_list = proxy_features.has_compatibility_checks()
-                features["compatibility_checks"] = {"has_all_checks": str(has_checks), "functions": {}}
+                features["compatibility_checks"] = {"has_all_checks": has_checks, "functions": {}}
                 # info = []
                 if not has_checks:
                     funcs_missing_check = [func for func, check, correct in func_exp_list if check is None]
@@ -1006,21 +1006,21 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 setter = proxy.proxy_implementation_setter
                 if setter is not None and setter.contract != proxy and setter.contract not in proxy.inheritance:
-                    features["can_remove_upgradeability"] = "true"
+                    features["can_remove_upgradeability"] = True
                     """
                     If a beacon or registry was detected earlier, check if its address can be updated
                     """
                     if "beacon_source_constant" in features.keys():
-                        if features["beacon_source_constant"] == "true":
-                            features["can_remove_upgradeability"] = "false"
-                        elif features["beacon_source_constant"] == "false":
-                            features["can_remove_upgradeability"] = "true"
+                        if features["beacon_source_constant"]:
+                            features["can_remove_upgradeability"] = False
+                        elif not features["beacon_source_constant"]:
+                            features["can_remove_upgradeability"] = True
                     elif "registry_source_constant" in features.keys():
-                        if features["registry_source_constant"] == "true":
-                            features["can_remove_upgradeability"] = "false"
-                        elif features["registry_source_constant"] == "false":
-                            features["can_remove_upgradeability"] = "true"
-                    if features["can_remove_upgradeability"] == "true":
+                        if features["registry_source_constant"]:
+                            features["can_remove_upgradeability"] = False
+                        elif not features["registry_source_constant"]:
+                            features["can_remove_upgradeability"] = True
+                    if features["can_remove_upgradeability"]:
                         if "eip_2535" in features.keys():
                             features["how_to_remove_upgradeability"] = f"remove {setter.contract.name} facet"
                             info += [f"To remove upgradeability, delete the {setter.contract.name} facet\n"]
@@ -1028,7 +1028,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             features["how_to_remove_upgradeability"] = f"remove {setter.name} from {setter.contract}"
                             info += [f"To remove upgradeability, delete {setter.name} from {setter.contract}\n"]
                 else:
-                    features["can_remove_upgradeability"] = "false"
+                    features["can_remove_upgradeability"] = False
 
                 """
                 Check whether the proxy can toggle using delegatecall on and off
@@ -1037,7 +1037,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                     = proxy_features.can_toggle_delegatecall_on_off()
                 if can_toggle_delegatecall:
                     info += [f"Can toggle delegatecall on/off: condition: {condition}\n"]
-                    features["can_toggle_delegatecall"] = "true"
+                    features["can_toggle_delegatecall"] = True
                     toggle_condition = str(condition)
                     if not delegate_condition:  # condition must equate to False for using delegatecall
                         if "==" in toggle_condition:
@@ -1146,7 +1146,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Contract is either a non-upgradeable proxy, or upgradeability could not be determined
                 """
                 info += [contract, " is a proxy, but doesn't seem upgradeable.\n"]
-                features["upgradeable"] = "false"
+                features["upgradeable"] = False
 
             # endregion
             else:
