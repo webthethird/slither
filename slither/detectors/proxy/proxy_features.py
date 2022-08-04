@@ -709,44 +709,136 @@ class ProxyFeatureExtraction:
             if isinstance(dep, StateVariable):
                 writing_funcs += self.functions_writing_to_delegate(dep, dep.contract)
         for (func, var_written) in writing_funcs:
-            if func.visibility in ["internal", "private"] and func != setter:
-                print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
-                continue
-            else:
-                print(f"has_compatibility_checks: checking {func.visibility} function {func}")
-            check_exp = None
-            has_check = False
-            for node in func.all_nodes():
-                exp = node.expression
-                """
-                Search each upgrade function's expressions for a condition that will 
-                revert if the new implementation is not compatible with the proxy.
-                """
-                if isinstance(exp, CallExpression):
-                    called = exp.called
-                    if isinstance(called, Identifier):
+            if isinstance(func, FunctionContract):
+                if func.visibility in ["internal", "private"] and func != setter:
+                    print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
+                    continue
+                else:
+                    print(f"has_compatibility_checks: checking {func.visibility} function {func}")
+                check_exp = None
+                has_check = False
+                for node in func.all_nodes():
+                    exp = node.expression
+                    """
+                    Search each upgrade function's expressions for a condition that will 
+                    revert if the new implementation is not compatible with the proxy.
+                    """
+                    if isinstance(exp, CallExpression):
+                        called = exp.called
+                        if isinstance(called, Identifier):
+                            """
+                            For some early versions of Solidity, like 0.4.21, Slither wraps
+                            SolidityFunctions in an Identifier when found in a CallExpression.
+                            i.e., exp.called.value is the SolidityFunction object.
+                            For later versions, exp.called is the SolidityFunction.
+                            """
+                            called = called.value
+                        if isinstance(called, SolidityFunction):
+                            """
+                            Only CallExpressions we care about here are require and assert
+                            """
+                            if called.name in ["require(bool)", "require(bool,string)", "assert(bool)"]:
+                                print(exp)
+                                condition = exp.arguments[0]
+                                print(f"has_compatibility_checks: condition {condition}")
+                                """
+                                The static helper method check_condition_from_expression will return an
+                                Expression object if exp is a compatibility check, and will append any
+                                newly found checks to the list of (function, compatibility check) pairs.
+                                """
+                                check_, func_exp_list = self.check_condition_from_expression(
+                                    condition, func, var_written, func_exp_list, exp
+                                )
+                                """
+                                Since there may be more than one valid compatibility check in the same function,
+                                it is possible for the call above to return a check expression the first time,
+                                setting has_check = True, and then return None after checking another expression
+                                in the same function. Therefore, we do not want to overwrite check_exp above 
+                                if the subsequent call to check_condition_from_expression returned None.
+                                """
+                                if check_ is not None:
+                                    check_exp = check_
+                                    has_check = True
+                    elif isinstance(exp, ConditionalExpression):
                         """
-                        For some early versions of Solidity, like 0.4.21, Slither wraps
-                        SolidityFunctions in an Identifier when found in a CallExpression.
-                        i.e., exp.called.value is the SolidityFunction object.
-                        For later versions, exp.called is the SolidityFunction.
+                        Even when there is clearly an if-else block in the source code, Function.all_expressions()
+                        never seems to contain any ConditionalExpression objects. Rather, only the condition itself,
+                        often a BinaryOperation or an Identifier for a boolean variable, and the expressions within
+                        the `then` and `else` blocks appear in the list of all expressions. Therefore we need to use
+                        Function.all_nodes() instead to find the IF nodes in the CFG. Unfortunately we cannot use 
+                        all_nodes() instead of all_expressions() for the section above, because all_nodes() does not
+                        handle Solidity function CallExpressions correctly.
                         """
-                        called = called.value
-                    if isinstance(called, SolidityFunction):
+                        print(f"has_compatibility_checks: ConditionalExpression {exp}")
+                    elif isinstance(exp, AssignmentOperation):
                         """
-                        Only CallExpressions we care about here are require and assert
+                        Need to check for incorrect compatibility check where the variable written is a Contract type,
+                        as in the following example from PurgeableSynth.sol:
+                            function setTarget(Proxyable _target)
+                                external
+                                onlyOwner
+                            {
+                                target = _target;
+                                emit TargetUpdated(_target);
+                            }
+                        After compilation and deployment, the EVM converts the function's ABI to `setTarget(address)` and
+                        does not perform any type checking to ensure the address given is actually a Proxyable contract,
+                        even though the function signature in Solidity gives the impression that it would check the type.
                         """
-                        if called.name in ["require(bool)", "require(bool,string)", "assert(bool)"]:
-                            print(exp)
-                            condition = exp.arguments[0]
-                            print(f"has_compatibility_checks: condition {condition}")
+                        left = exp.expression_left
+                        right = exp.expression_right
+                        if isinstance(left, Identifier) and isinstance(right, Identifier) \
+                                and left.value == delegate and right.value == var_written:
+                            if isinstance(var_written, LocalVariable) and isinstance(func, FunctionContract):
+                                var_type = var_written.type
+                                if isinstance(var_type, UserDefinedType):
+                                    print(f"has_compatibility_checks: {var_written}"
+                                          f" is UserDefinedType: {var_type}")
+                                    var_type = var_type.type
+                                if isinstance(var_type, Contract):
+                                    print(f"has_compatibility_checks: {var_written}"
+                                          f" is Contract type: {var_type}")
+                                    if var_written in func.parameters:
+                                        check_exp = exp
+                                        has_check = True
+                                        is_check_correct = False
+                                        func_exp_list.append((func, check_exp, is_check_correct))
+                    elif node.type == NodeType.IF:
+                        print(f"has_compatibility_checks: IF node exp = {exp}")
+                        """
+                        Found an IF node, so check if it can lead to a revert.
+                        Node.sons only gives us the immediate children of the IF node,
+                        i.e., the first node in the `then` block and the `else` block.
+                        """
+                        # TODO: It may be better to implement a recursive getter for Node children.
+                        # TODO: Use Dominators / Control Dependency Graph instead
+                        if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
+                            print("has_compatibility_checks: IF node can lead to revert"
+                                  f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                            """
+                            Unfortunately the IF Node does not contain a ConditionalExpression
+                            already, so we must construct one using the CFG info from the Node. 
+                            """
+                            if len(node.sons) > 1:
+                                print("has_compatibility_checks: IF node can lead to revert"
+                                      f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                                son0 = node.sons[0]
+                                while son0.expression is None and son0.sons[0] is not None:
+                                    son0 = son0.sons[0]
+                                son1 = node.sons[1]
+                                while son1.expression is None and son1.sons[0] is not None:
+                                    son1 = son1.sons[0]
+                                conditional_exp = ConditionalExpression(exp, son0.expression, son1.expression)
+                            else:
+                                conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
+                            print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
                             """
                             The static helper method check_condition_from_expression will return an
                             Expression object if exp is a compatibility check, and will append any
                             newly found checks to the list of (function, compatibility check) pairs.
                             """
                             check_, func_exp_list = self.check_condition_from_expression(
-                                condition, func, var_written, func_exp_list, exp
+                                exp, func, var_written, func_exp_list, conditional_exp
                             )
                             """
                             Since there may be more than one valid compatibility check in the same function,
@@ -758,94 +850,9 @@ class ProxyFeatureExtraction:
                             if check_ is not None:
                                 check_exp = check_
                                 has_check = True
-                elif isinstance(exp, ConditionalExpression):
-                    """
-                    Even when there is clearly an if-else block in the source code, Function.all_expressions()
-                    never seems to contain any ConditionalExpression objects. Rather, only the condition itself,
-                    often a BinaryOperation or an Identifier for a boolean variable, and the expressions within
-                    the `then` and `else` blocks appear in the list of all expressions. Therefore we need to use
-                    Function.all_nodes() instead to find the IF nodes in the CFG. Unfortunately we cannot use 
-                    all_nodes() instead of all_expressions() for the section above, because all_nodes() does not
-                    handle Solidity function CallExpressions correctly.
-                    """
-                    print(f"has_compatibility_checks: ConditionalExpression {exp}")
-                elif isinstance(exp, AssignmentOperation):
-                    """
-                    Need to check for incorrect compatibility check where the variable written is a Contract type,
-                    as in the following example from PurgeableSynth.sol:
-                        function setTarget(Proxyable _target)
-                            external
-                            onlyOwner
-                        {
-                            target = _target;
-                            emit TargetUpdated(_target);
-                        }
-                    After compilation and deployment, the EVM converts the function's ABI to `setTarget(address)` and
-                    does not perform any type checking to ensure the address given is actually a Proxyable contract,
-                    even though the function signature in Solidity gives the impression that it would check the type.
-                    """
-                    left = exp.expression_left
-                    right = exp.expression_right
-                    if isinstance(left, Identifier) and isinstance(right, Identifier) \
-                            and left.value == delegate and right.value == var_written:
-                        if isinstance(var_written, LocalVariable) and isinstance(func, FunctionContract):
-                            var_type = var_written.type
-                            if isinstance(var_type, UserDefinedType):
-                                print(f"has_compatibility_checks: {var_written}"
-                                      f" is UserDefinedType: {var_type}")
-                                var_type = var_type.type
-                            if isinstance(var_type, Contract):
-                                print(f"has_compatibility_checks: {var_written}"
-                                      f" is Contract type: {var_type}")
-                                if var_written in func.parameters:
-                                    check_exp = exp
-                                    has_check = True
-                                    is_check_correct = False
-                                    func_exp_list.append((func, check_exp, is_check_correct))
-                elif node.type == NodeType.IF:
-                    print(f"has_compatibility_checks: IF node exp = {exp}")
-                    """
-                    Found an IF node, so check if it can lead to a revert.
-                    Node.sons only gives us the immediate children of the IF node,
-                    i.e., the first node in the `then` block and the `else` block.
-                    """
-                    # TODO: It may be better to implement a recursive getter for Node children.
-                    # TODO: Use Dominators / Control Dependency Graph instead
-                    if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
-                        print("has_compatibility_checks: IF node can lead to revert"
-                              f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
-                        """
-                        Unfortunately the IF Node does not contain a ConditionalExpression
-                        already, so we must construct one using the CFG info from the Node. 
-                        """
-                        if len(node.sons) > 1:
-                            conditional_exp = ConditionalExpression(exp,
-                                                                    node.sons[0].expression,
-                                                                    node.sons[1].expression)
-                        else:
-                            conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
-                        print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
-                        """
-                        The static helper method check_condition_from_expression will return an
-                        Expression object if exp is a compatibility check, and will append any
-                        newly found checks to the list of (function, compatibility check) pairs.
-                        """
-                        check_, func_exp_list = self.check_condition_from_expression(
-                            exp, func, var_written, func_exp_list, conditional_exp
-                        )
-                        """
-                        Since there may be more than one valid compatibility check in the same function,
-                        it is possible for the call above to return a check expression the first time,
-                        setting has_check = True, and then return None after checking another expression
-                        in the same function. Therefore, we do not want to overwrite check_exp above 
-                        if the subsequent call to check_condition_from_expression returned None.
-                        """
-                        if check_ is not None:
-                            check_exp = check_
-                            has_check = True
-            if check_exp is None:
-                """ Didn't find check in this function """
-                func_exp_list.append((func, None, False))
+                if check_exp is None:
+                    """ Didn't find check in this function """
+                    func_exp_list.append((func, None, False))
             all_checks.append(has_check)
         return all(all_checks), func_exp_list
 
