@@ -1130,6 +1130,9 @@ or one of the proxy patterns developed by OpenZeppelin.
                 """
                 TODO: Check whether upgrading has a time-delay
                 """
+                has_time_delay = proxy_features.has_time_delay()
+                if has_time_delay["has_delay"]:
+                    features["time_delay"] = has_time_delay
 
                 # endregion
             ###################################################################################
