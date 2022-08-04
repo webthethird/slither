@@ -1464,7 +1464,10 @@ class ProxyFeatureExtraction:
             id_exp = exp.arguments[1]
         while isinstance(id_exp, Identifier):
             value = id_exp.value
-            id_exp = value.expression
+            if isinstance(value, Variable):
+                id_exp = value.expression
+            else:
+                break
         return value
 
     @staticmethod
