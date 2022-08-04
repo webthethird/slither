@@ -1178,7 +1178,7 @@ class ProxyFeatureExtraction:
                                                    and "now" in str(exp.expression_right)), None)
                                 right = assignment.expression_right
                                 print(f"has_time_delay: function {func} assigns {right} to {compare_to_var}")
-                                if isinstance(right, BinaryOperation) and str(compare_to_exp.type) == "+":
+                                if isinstance(right, BinaryOperation) and str(right.type) == "+":
                                     print(f"has_time_delay: assigned (BinaryOperation) {right}")
                                     compare_to_exp, delay_duration = self.delay_duration_from_binary_operation(right)
                                     if delay_duration is not None:
