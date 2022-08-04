@@ -49,6 +49,7 @@ class ProxyFeatureExtraction:
         self._impl_address_variable: Optional["Variable"] = contract.delegate_variable
         self._impl_address_location: Optional["Contract"] = None
         self._proxy_only_contains_fallback: Optional[bool] = None
+        self._has_time_delay: Optional[dict] = None
 
     ###################################################################################
     ###################################################################################
@@ -1124,10 +1125,68 @@ class ProxyFeatureExtraction:
                                 break
         return can_toggle, condition, delegatecall_condition, alternate_node
 
-    def has_time_delay(self):
-        """
-        TODO: implement check for time-delayed upgrade function
-        """
+    def has_time_delay(self) -> dict:
+        if self._has_time_delay is None:
+            self._has_time_delay = {"has_delay": False}
+            delegate = self._impl_address_variable
+            setter = self.contract.proxy_implementation_setter
+            condition: Optional[Expression] = None
+            if setter is not None:
+                for node in setter.all_nodes():
+                    if node.expression is not None:
+                        exp = node.expression
+                        print(f"has_time_delay: (node.type) {node.type}\n(Expression) {exp}")
+                        if isinstance(exp, CallExpression):
+                            # print(f"has_time_delay: (node.type) {node.type}\n(CallExpression) {exp}")
+                            if str(exp.called) in ["require(bool)", "require(bool,string)", "assert(bool)"]:
+                                condition = exp.arguments[0]
+                        elif node.type == NodeType.IF:
+                            condition = exp
+                    if "now" in str(condition) and delegate in [n.expression.expression_left.value
+                                                                for n in node.dominator_successors_recursive
+                                                                if isinstance(n.expression, AssignmentOperation) and
+                                                                isinstance(n.expression.expression_left, Identifier)]:
+                        print(f"has_time_delay: found condition using `now`: {condition}")
+                        self._has_time_delay["has_delay"] = True
+                        self._has_time_delay["upgrade_condition"] = str(condition)
+                        break
+                if isinstance(condition, BinaryOperation) and str(condition.type) in ["<", ">", "<=", ">="]:
+                    left = condition.expression_left
+                    right = condition.expression_right
+                    delay_duration = None
+                    if "now" in str(left):
+                        compare_to_exp = right
+                        now_exp = left
+                    else:
+                        compare_to_exp = left
+                        now_exp = right
+                    if isinstance(compare_to_exp, BinaryOperation) and str(compare_to_exp.type) == "+":
+                        print(f"has_time_delay: comparing (BinaryOperation) {compare_to_exp} to {now_exp}")
+                        compare_to_exp, delay_duration = self.delay_duration_from_binary_operation(compare_to_exp)
+                    if isinstance(compare_to_exp, Identifier):
+                        print(f"has_time_delay: comparing (Identifier) {compare_to_exp} to {now_exp}")
+                        compare_to_var = compare_to_exp.value
+                        self._has_time_delay["timestamp_variable"] = compare_to_var.name
+                        timestamp_setters = self.contract.get_functions_writing_to_variable(compare_to_var)
+                        self._has_time_delay["timestamp_setters"] = [func.canonical_name for func in timestamp_setters]
+                        if delay_duration is None:
+                            for func in timestamp_setters:
+                                assignment = next((exp for exp in func.expressions
+                                                   if isinstance(exp, AssignmentOperation)
+                                                   and isinstance(exp.expression_left, Identifier)
+                                                   and exp.expression_left.value == compare_to_var
+                                                   and "now" in str(exp.expression_right)), None)
+                                right = assignment.expression_right
+                                print(f"has_time_delay: function {func} assigns {right} to {compare_to_var}")
+                                if isinstance(right, BinaryOperation) and str(compare_to_exp.type) == "+":
+                                    print(f"has_time_delay: assigned (BinaryOperation) {right}")
+                                    compare_to_exp, delay_duration = self.delay_duration_from_binary_operation(right)
+                                    if delay_duration is not None:
+                                        break
+                    if delay_duration is not None:
+                        print(f"has_time_delay: time delay = {delay_duration}")
+                        self._has_time_delay["delay_duration"] = delay_duration
+        return self._has_time_delay
 
     # endregion
     ###################################################################################
@@ -1135,6 +1194,30 @@ class ProxyFeatureExtraction:
     # region Static methods
     ###################################################################################
     ###################################################################################
+
+    @staticmethod
+    def delay_duration_from_binary_operation(
+            compare_to_exp: Expression
+    ) -> Tuple[Expression, Optional[str]]:
+        delay_duration = None
+        if isinstance(compare_to_exp, BinaryOperation):
+            print(f"delay_duration_from_binary_operation: (BinaryOperation) {compare_to_exp}")
+            left = compare_to_exp.expression_left
+            right = compare_to_exp.expression_right
+            if isinstance(right, Literal):
+                print(f"delay_duration_from_binary_operation: right side (Literal) {right.value}")
+                delay_duration = right.value
+                if right.subdenomination is not None:
+                    delay_duration = f"{delay_duration} {right.subdenomination}"
+                if isinstance(left, Identifier):
+                    compare_to_exp = left
+            elif isinstance(left, Literal):
+                delay_duration = left.value
+                if left.subdenomination is not None:
+                    delay_duration = f"{delay_duration} {left.subdenomination}"
+                if isinstance(right, Identifier):
+                    compare_to_exp = right
+        return compare_to_exp, delay_duration
 
     @staticmethod
     def is_function_protected_with_comparator(
