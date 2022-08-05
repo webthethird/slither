@@ -3214,6 +3214,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                       if isinstance(arg, Identifier)]:
                                         setter = f
                                         assignment = exp
+                                    elif str(left) == var_to_set.name:
+                                        setter = f
+                                        assignment = exp
                             elif var_exp is not None:
                                 if print_debug: print(var_exp)
                                 if var_exp == left or str(var_exp) == str(left):   # Expression.__eq__() not implemented
