@@ -3280,11 +3280,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 for n in constructor.all_nodes():
                     if n.type == NodeType.EXPRESSION:
                         exp = n.expression
-                        if print_debug:
-                            print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if isinstance(exp, ExpressionTyped):
-                                print(f"Expression type: {exp.type}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                        # if print_debug:
+                        #     print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
+                        #     if isinstance(exp, ExpressionTyped):
+                        #         print(f"Expression type: {exp.type}"
+                        #               f" (Slither line:{getframeinfo(currentframe()).lineno})")
                         if isinstance(exp, CallExpression):
                             print(exp.called)
                             # TODO: Remove dependence on function name "diamondCut"
@@ -3309,6 +3309,26 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         setter = lib_diamond.get_function_from_name("diamondCut")
                                         if setter is not None:
                                             break
+                        elif isinstance(exp, AssignmentOperation):
+                            left = exp.expression_left
+                            right = exp.expression_right
+                            if isinstance(left, IndexAccess):
+                                left = left.expression_left
+                                if isinstance(left, Identifier) and str(left.value.type) == "bytes4[]":
+                                    print(f"Assignment to bytes4[]: {exp}")
+                                    if isinstance(right, MemberAccess) and right.member_name == "selector":
+                                        print(f"Assigning function selector for {right.expression}")
+                                        right = right.expression
+                                        if isinstance(right, MemberAccess):
+                                            member_name = right.member_name
+                                            member_of = right.expression
+                                            if isinstance(member_of, Identifier):
+                                                print(f"member of (Identifier): {member_of}")
+                                                value = member_of.value
+                                                if isinstance(value, Contract):
+                                                    setter = value.get_function_from_name(member_name)
+                                                    print(f"Diamond corner case: found setter {setter}")
+                                                    break
             if print_debug:
                 print(f"\nEnd DiamondCut corner case handling (Slither line:{getframeinfo(currentframe()).lineno})\n")
         if print_debug:

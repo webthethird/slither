@@ -614,8 +614,10 @@ or one of the proxy patterns developed by OpenZeppelin.
                         # slot_results = self.detect_storage_slot(proxy_features)
                         if mapping is not None:
                             if isinstance(mapping, StateVariable):
+                                features["impl_address_variable"] = f"{mapping.canonical_name}"
                                 features["impl_address_scope"] = "StateVariable"
                             elif isinstance(mapping, StructureVariable):
+                                features["impl_address_variable"] = f"{mapping.structure.canonical_name}.{mapping.name}"
                                 features["impl_address_scope"] = "StructureVariable"
                             features["impl_address_type"] = str(mapping.type)
                             # info += self.detect_mappings(proxy_features, mapping)

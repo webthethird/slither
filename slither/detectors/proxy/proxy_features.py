@@ -669,6 +669,8 @@ class ProxyFeatureExtraction:
                     exp = node.expression
                     if isinstance(exp, AssignmentOperation):
                         exp = exp.expression_right
+                    while isinstance(exp, TypeConversion):
+                        exp = exp.expression
                     if isinstance(exp, MemberAccess):
                         exp = exp.expression
                     if isinstance(exp, IndexAccess):
