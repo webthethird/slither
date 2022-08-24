@@ -259,7 +259,8 @@ or one of the proxy patterns developed by OpenZeppelin.
             else:
                 print(f"Setter found in contract {setter.contract}")
             if setter is None or setter.contract == proxy or setter.contract in proxy.inheritance:
-                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" or \
+                        slot == "bytes32(uint256(keccak256(bytes)(eip1967.proxy.implementation)) - 1)":
                     features["eip_1967"] = True
                     info += [
                         " implements EIP-1967\n"
@@ -275,7 +276,8 @@ or one of the proxy patterns developed by OpenZeppelin.
                     # json = self.generate_result(info)
                     # results.append(json)
             elif setter.contract != proxy and proxy_features.proxy_only_contains_fallback():
-                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc":
+                if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" or \
+                        slot == "bytes32(uint256(keccak256(bytes)(eip1967.proxy.implementation)) - 1)":
                     features["eip_1967"] = True
                     features["eip_1822"] = True
                     info += [
