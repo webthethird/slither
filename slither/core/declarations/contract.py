@@ -1764,7 +1764,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
                             exp = node.expression
                             if isinstance(exp, AssignmentOperation):
-                                print(f"AssignmentOperation: {exp.expression_right}"
+                                print(f"AssignmentOperation: {exp}"
                                       f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 exp = exp.expression_right
                             if isinstance(exp, MemberAccess):
@@ -1879,9 +1879,17 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if isinstance(node.inline_asm, str):
                         asm = node.inline_asm.split("\n")
                         for s in asm:
-                            if f"let {dest}" in s:
+                            if f"{dest}" in s and ":=" in s:
                                 if "sload" in s:
+                                    if print_debug: print(f"Found sload in assembly: {s}"
+                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     dest = s.replace(")", "(").split("(")[1]
+                                    if not dest.endswith("_slot"):
+                                        slot_var = parent_func.get_local_variable_from_name(dest)
+                                        if slot_var.expression is not None:
+                                            slot_exp = slot_var.expression
+                                            if isinstance(slot_exp, Identifier) and slot_exp.value.is_constant:
+                                                self._proxy_impl_slot = slot_exp.value
                                     break
                     else:
                         asm = node.inline_asm
