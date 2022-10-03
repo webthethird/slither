@@ -120,8 +120,6 @@ Avoid variables in the proxy. If a variable is in the proxy, ensure it has the s
 
             variable1 = order1[idx]
             variable2 = order2[idx]
-            print(f"variable1: {variable1.name} {variable1.type}")
-            print(f"variable2: {variable2.name} {variable2.type}")
             if (variable1.name != variable2.name) or (variable1.type != variable2.type):
                 info = [
                     "Different variables between ",
