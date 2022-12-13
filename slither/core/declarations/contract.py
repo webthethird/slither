@@ -1289,9 +1289,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         print_debug = True
 
         if self._is_upgradeable_proxy is None:
-            if print_debug: print(f"\nBegin {self.name}.is_upgradeable_proxy "
-                                  f"(Slither line:{getframeinfo(currentframe()).lineno})"
-                                  f"\n\nChecking contract: {self.name} ")
             self._is_upgradeable_proxy = False
             self._is_upgradeable_proxy_confirmed = False
             # calling self.is_proxy returns True or False, and should also set self._delegates_to in the process
@@ -1299,268 +1296,62 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 
                 # if the destination is a constant or immutable, return false
                 if self._delegate_variable.is_constant or self._delegate_variable.is_immutable:
-                    if print_debug: print(f"Call destination {self._delegate_variable} is constant "
-                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                    if self._proxy_impl_slot is not None and self._proxy_impl_slot == self._delegate_variable:
-                        if print_debug: print(f"{self._delegate_variable} is the implementation storage slot "
-                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                    else:
+                    if self._proxy_impl_slot is None or self._proxy_impl_slot != self._delegate_variable:
                         self._is_upgradeable_proxy = False
-                        if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy "
-                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
                         return False
                 # if the destination is hard-coded, return false
                 if isinstance(self._delegate_variable.expression, Literal) and \
                         self._delegate_variable != self._proxy_impl_slot:
-                    if print_debug: print(f"Call destination {self._delegate_variable.expression} is hardcoded "
-                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
                     self._is_upgradeable_proxy = False
                     return False
-                if isinstance(self._delegate_variable, LocalVariable): # and isinstance(self._delegates_to.function, FunctionContract):
-                    if print_debug: print(f"Local Variable: {self._delegate_variable} "
-                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                    call = self._delegate_variable.expression
-                    if isinstance(call, CallExpression):
-                        call = call.called
-                        if isinstance(call, MemberAccess):
-                            e = call.expression
-                            if print_debug: print(f"{e} (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
-                                f = e.called.value
-                                if isinstance(f, Function):
-                                    ret_node = f.return_node()
-                                    if ret_node is not None:
-                                        e = f.return_node().expression
-                                    else:
-                                        ret_val = f.returns[0]
-                                        e = Identifier(ret_val)
-                            if isinstance(e, TypeConversion) or isinstance(e, Identifier):
-                                ctype = e.type
-                                if isinstance(e, Identifier):
-                                    if isinstance(e.value, Contract):
-                                        ctype = UserDefinedType(e.value)
-                                    else:
-                                        ctype = e.value.type
-                                if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
-                                                                                     Contract) and ctype.type != self:
-                                    contract = ctype.type
-                                    if contract.is_interface:
-                                        if print_debug: print(f"Call destination {self._delegate_variable.expression} "
-                                                              f"is hidden in an interface "
-                                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                        self._is_upgradeable_proxy = True
-                                        self._is_upgradeable_proxy_confirmed = False
-                                        return self._is_upgradeable_proxy
 
-                # now find setter in the contract. If succeed, then the contract is upgradeable.
-                if print_debug: print(f"{self.name} is delegating to {self._delegate_variable}\n"
-                                      f"Looking for setter (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                # self._delegate_variable should ideally be a StateVariable,
+                # but it may be a LocalVariable if cross-contract analysis failed to find its source
+                if isinstance(self._delegate_variable, LocalVariable):
+                    if self.handle_local_delegate_from_call_exp():
+                        return self._is_upgradeable_proxy
+
+                # Now find setter in the contract. If we succeed, then the contract is upgradeable.
+                # It is possible for self._proxy_impl_setter to already be found by this point.
                 if self._proxy_impl_setter is None:
+                    # Case: delegate is StateVariable declared in a different contract
                     if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
-                        if print_debug: print(f"Looking for setter in {self._delegate_variable.contract} "
-                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                        # Whenever we call find_setter_in_contract, we should also update _delegate_variable, in case
-                        # find_setter_in_contract found an AssignmentOperation and updated _delegate_variable.expression
-                        (self._proxy_impl_setter,
-                         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.contract,
-                                                                                 self._delegate_variable,
-                                                                                 self._proxy_impl_slot, print_debug)
-                        if self._proxy_impl_setter is None:
-                            if print_debug: print(f"\nCould not find setter in {self._delegate_variable.contract} \n"
-                                                  f"Looking in {self} "
-                                                  f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                            (self._proxy_impl_setter,
-                             self._delegate_variable) = self.find_setter_in_contract(self, self._delegate_variable,
-                                                                                     self._proxy_impl_slot, print_debug)
-                            if self._proxy_impl_setter is None:
-                                if print_debug: print(f"\nCould not find setter in {self} "
-                                                      f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                                for c in self.compilation_unit.contracts:
-                                    if c == self or c == self._delegate_variable.contract or self in c.inheritance:
-                                        continue
-                                    if self._proxy_impl_setter is not None:
-                                        break
-                                    if self._delegate_variable.contract in c.inheritance:
-                                        if print_debug: print(f"Looking for setter in {c} "
-                                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                        (self._proxy_impl_setter,
-                                         self._delegate_variable)= self.find_setter_in_contract(c,
-                                                                                                self._delegate_variable,
-                                                                                                self._proxy_impl_slot,
-                                                                                                print_debug)
+                        self.handle_delegate_state_var_different_contract()
+                    # Case: delegate is LocalVariable in a function declared in a different contract
                     elif isinstance(self._delegate_variable, LocalVariable) and\
                             isinstance(self._delegate_variable.function, FunctionContract) and\
                             self._delegate_variable.function.contract != self:
-                        if print_debug: print(f"Looking for setter in {self._delegate_variable.function.contract} "
-                                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                        (self._proxy_impl_setter,
-                         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.function.contract,
-                                                                                 self._delegate_variable,
-                                                                                 self._proxy_impl_slot, print_debug)
-                        if self._proxy_impl_setter is None:
-                            if print_debug: print(f"\nCould not find setter in "
-                                                  f"{self._delegate_variable.function.contract} "
-                                                  f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                            for c in self.compilation_unit.contracts:
-                                if c == self or c == self._delegate_variable.function.contract or self in c.inheritance:
-                                    continue
-                                if self._delegate_variable.function.contract in c.inheritance:
-                                    if print_debug: print(f"Looking for setter in {c} "
-                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    (self._proxy_impl_setter,
-                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                             self._proxy_impl_slot,
-                                                                                             print_debug)
+                        self.handle_delegate_local_var_different_contract()
+                    # Default case: look for setter in this contract
                     if self._proxy_impl_setter is None:
                         (self._proxy_impl_setter,
                          self._delegate_variable) = self.find_setter_in_contract(self, self._delegate_variable,
-                                                                                 self._proxy_impl_slot, print_debug)
+                                                                                 self._proxy_impl_slot)
                 if self._proxy_impl_setter is not None:
-                    if print_debug and isinstance(self._proxy_impl_setter, FunctionContract):
-                        print(f"\nImplementation set by function: {self._proxy_impl_setter.name} in contract: "
-                              f"{self._proxy_impl_setter.contract.name} "
-                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
+                    # Setter is found, and upgradeability confirmed
                     self._is_upgradeable_proxy = True
                     self._is_upgradeable_proxy_confirmed = True
-                elif print_debug: print(f"\nCould not find implementation setter in {self.name} "
-                                        f"(Slither line:{getframeinfo(currentframe()).lineno})")
                 
                 # then find getter
-                if print_debug: print(f"Looking for getter (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 if self._proxy_impl_getter is None:
                     if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
                         self._proxy_impl_getter = self.find_getter_in_contract(self._delegate_variable.contract,
-                                                                               self._delegate_variable, print_debug)
+                                                                               self._delegate_variable)
                     if self._proxy_impl_getter is None:
-                        self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegate_variable, print_debug)
+                        self._proxy_impl_getter = self.find_getter_in_contract(self, self._delegate_variable)
                 
                 # if both setter and getter can be found, then return true
                 # Otherwise, at least the getter's return is non-constant
                 if self._proxy_impl_getter is not None:
-                    if print_debug and isinstance(self._proxy_impl_getter, FunctionContract):
-                        print(f"\nImplementation retrieved by function: {self._proxy_impl_getter.name} in contract: "
-                              f"{self._proxy_impl_getter.contract.name} "
-                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
                     if self._proxy_impl_setter is not None:
                         self._is_upgradeable_proxy = True
                         self._is_upgradeable_proxy_confirmed = True
                     else:
                         self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
-                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                     return self._is_upgradeable_proxy
                 else:
-                    """
-                    Handle the case, as in EIP 1822, where the Proxy has no implementation getter because it is
-                    loaded explicitly from a hard-coded slot within the fallback itself.
-                    We assume in this case that, if the Proxy needs to load the implementation address from storage slot
-                    then the address must not be constant - otherwise why not use a constant address
-                    This is only necessary if the Proxy also doesn't have an implementation setter, because it is
-                    located in another contract. The assumption is only necessary if we do not search cross-contracts.
-                    """
-                    if print_debug: print(f"Could not find implementation getter in {self.name} "
-                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                    delegate_contract = None
-                    if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
-                        delegate_contract = self._delegate_variable.contract
-                    elif isinstance(self._delegate_variable, LocalVariable) and\
-                            isinstance(self._delegate_variable.function, FunctionContract) and\
-                            self._delegate_variable.function.contract != self:
-                        delegate_contract = self._delegate_variable.function.contract
-                    elif isinstance(self._delegate_variable, StructureVariable) and\
-                            isinstance(self._delegate_variable.structure, StructureContract) and \
-                            self._delegate_variable.structure.contract != self:
-                        delegate_contract = self._delegate_variable.structure.contract
-                    if delegate_contract is not None:
-                        if print_debug: print(f"or in {delegate_contract.name} "
-                                              f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                        for c in self.compilation_unit.contracts:
-                            if delegate_contract in c.inheritance and c != self and self not in c.inheritance:
-                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
-                                                                                       print_debug)
-                                if self._proxy_impl_setter is None:
-                                    (self._proxy_impl_setter,
-                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                             None, print_debug)
-                                if self._proxy_impl_setter is not None:
-                                    self._is_upgradeable_proxy = True
-                                    self._is_upgradeable_proxy_confirmed = True
-                                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    return self._is_upgradeable_proxy
-                                elif self._proxy_impl_getter is not None:
-                                    self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
-                                    if print_debug: print(f"\nEnd {self.name}.is_upgradeable_proxy"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-                                    return self._is_upgradeable_proxy
-                    if isinstance(self._delegate_variable, StateVariable):
-                        """
-                        Handle the case where the delegate address is a state variable which is also declared in the
-                        implementation contract at the same position in storage, in which case the setter may be
-                        located in the implementation contract, though we have no other clues that this may be the case.
-                        """
-                        index = -1
-                        for idx, var in enumerate(self.state_variables_ordered):
-                            if var == self._delegate_variable:
-                                index = idx
-                                break
-                        if index >= 0:
-                            for c in self.compilation_unit.contracts:
-                                if len(c.state_variables_ordered) < index + 1 or c == self:
-                                    continue
-                                elif print_debug: print(f"Checking for {var} at slot {index} in contract {c}"
-                                                        f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                var = c.state_variables_ordered[index]
-                                if var.name != self._delegate_variable.name and \
-                                        self._delegate_variable == self._proxy_impl_slot:
-                                    var = c.get_state_variable_from_name(self._delegate_variable.name)
-                                if var is not None:
-                                    if print_debug: print(f"Found {var} at slot {index} in contract {c}"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                    if var.name == self._delegate_variable.name and \
-                                            var.type == self._delegate_variable.type:
-                                        self._proxy_impl_getter = self.find_getter_in_contract(c, var, print_debug)
-                                        if self._proxy_impl_setter is None:
-                                            (self._proxy_impl_setter,
-                                             self._delegate_variable) = self.find_setter_in_contract(c, var,
-                                                                                                     None, print_debug)
-                                        if self._proxy_impl_setter is not None:
-                                            self._is_upgradeable_proxy = True
-                                            self._is_upgradeable_proxy_confirmed = True
-                                            return self._is_upgradeable_proxy
-                                        elif self._proxy_impl_getter is not None:
-                                            return c.getter_return_is_non_constant(print_debug)
-                    if self._proxy_impl_slot is not None or self._delegate_variable.expression is not None:
-                        for c in self.compilation_unit.contracts:
-                            if c != self and self not in c.inheritance:
-                                self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
-                                                                                       print_debug)
-                                if self._proxy_impl_setter is None:
-                                    (self._proxy_impl_setter,
-                                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
-                                                                                             self._proxy_impl_slot,
-                                                                                             print_debug)
-                                if self._proxy_impl_setter is not None:
-                                    self._is_upgradeable_proxy = True
-                                    self._is_upgradeable_proxy_confirmed = True
-                                    return self._is_upgradeable_proxy
-                                elif self._proxy_impl_getter is not None:
-                                    return c.getter_return_is_non_constant(print_debug)
-                    else:
-                        for n in self.fallback_function.all_nodes():
-                            if print_debug: print(f"Checking node of type {n.type}"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if n.type == NodeType.VARIABLE: # and n.variable_declaration == self._delegates_to:
-                                print(n.variable_declaration)
-                                print(n.expression)
-                            elif n.type == NodeType.EXPRESSION:
-                                print(n.expression)
-                            elif n.type == NodeType.ASSEMBLY:
-                                inline_asm = n.inline_asm
-                                if inline_asm and "sload" in str(inline_asm): # and self._delegates_to.name in inline_asm:
-                                    self._is_upgradeable_proxy = True
-            if print_debug:
-                print(f"\nEnd {self.name}.is_upgradeable_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                    if self.handle_missing_getter():
+                        return self._is_upgradeable_proxy
         return self._is_upgradeable_proxy
 
     @property
@@ -3101,7 +2892,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def find_getter_in_contract(
             contract: "Contract", 
             var_to_get: Union[str, "Variable"],
-            print_debug: bool
+            print_debug: bool = False
     ) -> Optional[Function]:
         """
         Tries to find the getter function for a given variable.
@@ -3243,7 +3034,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             contract: "Contract",
             var_to_set: Union[str, "Variable"],
             storage_slot: Optional["Variable"],
-            print_debug: bool
+            print_debug: bool = False
     ) -> (Optional[Function], Union[str, "Variable"]):
         """
         Tries to find the setter function for a given variable.
@@ -3499,6 +3290,185 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             print(f"\nEnd {contract.name}.find_setter_in_contract"
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return setter, var_to_set
+
+    def handle_local_delegate_from_call_exp(self) -> bool:
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.solidity_types.user_defined_type import UserDefinedType
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+
+        if isinstance(self._delegate_variable, LocalVariable):
+            call = self._delegate_variable.expression
+            if isinstance(call, CallExpression):
+                call = call.called
+                if isinstance(call, MemberAccess):
+                    e = call.expression
+                    if isinstance(e, CallExpression) and isinstance(e.called, Identifier):
+                        f = e.called.value
+                        if isinstance(f, Function):
+                            ret_node = f.return_node()
+                            if ret_node is not None:
+                                e = f.return_node().expression
+                            else:
+                                ret_val = f.returns[0]
+                                e = Identifier(ret_val)
+                    if isinstance(e, TypeConversion) or isinstance(e, Identifier):
+                        ctype = e.type
+                        if isinstance(e, Identifier):
+                            if isinstance(e.value, Contract):
+                                ctype = UserDefinedType(e.value)
+                            else:
+                                ctype = e.value.type
+                        if isinstance(ctype, UserDefinedType) and isinstance(ctype.type,
+                                                                             Contract) and ctype.type != self:
+                            contract = ctype.type
+                            if contract.is_interface:
+                                # call destination to retrieve delegate target is hidden in an interface,
+                                # cannot use cross-contract analysis to confirm upgradeability
+                                self._is_upgradeable_proxy = True
+                                self._is_upgradeable_proxy_confirmed = False
+        return self._is_upgradeable_proxy
+
+    def handle_delegate_state_var_different_contract(self):
+        # Whenever we call find_setter_in_contract, we should also update _delegate_variable, in case
+        # find_setter_in_contract found an AssignmentOperation and updated _delegate_variable.expression
+        (self._proxy_impl_setter,
+         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.contract,
+                                                                 self._delegate_variable,
+                                                                 self._proxy_impl_slot, print_debug)
+        if self._proxy_impl_setter is None:
+            # Failed to find setter in self._delegate_variable.contract, so look in self
+            (self._proxy_impl_setter,
+             self._delegate_variable) = self.find_setter_in_contract(self, self._delegate_variable,
+                                                                     self._proxy_impl_slot, print_debug)
+            if self._proxy_impl_setter is None:
+                # Failed to find setter in self, so scan the rest of the compilation unit contracts
+                for c in self.compilation_unit.contracts:
+                    if c == self or c == self._delegate_variable.contract or self in c.inheritance:
+                        continue
+                    if self._proxy_impl_setter is not None:
+                        break
+                    if self._delegate_variable.contract in c.inheritance:
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                 self._proxy_impl_slot,
+                                                                                 print_debug)
+
+    def handle_delegate_local_var_different_contract(self):
+        (self._proxy_impl_setter,
+         self._delegate_variable) = self.find_setter_in_contract(self._delegate_variable.function.contract,
+                                                                 self._delegate_variable,
+                                                                 self._proxy_impl_slot, print_debug)
+        if self._proxy_impl_setter is None:
+            for c in self.compilation_unit.contracts:
+                if c == self or c == self._delegate_variable.function.contract or self in c.inheritance:
+                    continue
+                if self._delegate_variable.function.contract in c.inheritance:
+                    (self._proxy_impl_setter,
+                     self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                             self._proxy_impl_slot,
+                                                                             print_debug)
+
+    def handle_missing_getter(self) -> bool:
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.variables.structure_variable import StructureVariable
+        from slither.core.declarations.function_contract import FunctionContract
+
+        delegate_contract = None
+        if isinstance(self._delegate_variable, StateVariable) and self._delegate_variable.contract != self:
+            delegate_contract = self._delegate_variable.contract
+        elif isinstance(self._delegate_variable, LocalVariable) and \
+                isinstance(self._delegate_variable.function, FunctionContract) and \
+                self._delegate_variable.function.contract != self:
+            delegate_contract = self._delegate_variable.function.contract
+        elif isinstance(self._delegate_variable, StructureVariable) and \
+                isinstance(self._delegate_variable.structure, StructureContract) and \
+                self._delegate_variable.structure.contract != self:
+            delegate_contract = self._delegate_variable.structure.contract
+        if delegate_contract is not None:
+            for c in self.compilation_unit.contracts:
+                if delegate_contract in c.inheritance and c != self and self not in c.inheritance:
+                    self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable,
+                                                                           print_debug)
+                    if self._proxy_impl_setter is None:
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                 None, print_debug)
+                    if self._proxy_impl_setter is not None:
+                        self._is_upgradeable_proxy = True
+                        self._is_upgradeable_proxy_confirmed = True
+                        return self._is_upgradeable_proxy
+                    elif self._proxy_impl_getter is not None:
+                        self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
+                        return self._is_upgradeable_proxy
+        """
+        Handle the case where the delegate address is a state variable which is also declared in the
+        implementation contract at the same position in storage, in which case the setter may be
+        located in the implementation contract, though we have no other clues that this may be the case.
+        """
+        if isinstance(self._delegate_variable, StateVariable):
+            index = -1
+            for idx, var in enumerate(self.state_variables_ordered):
+                if var == self._delegate_variable:
+                    index = idx
+                    break
+            if index >= 0:
+                for c in self.compilation_unit.contracts:
+                    if len(c.state_variables_ordered) < index + 1 or c == self:
+                        continue
+                    var = c.state_variables_ordered[index]
+                    if var.name != self._delegate_variable.name and self._delegate_variable == self._proxy_impl_slot:
+                        var = c.get_state_variable_from_name(self._delegate_variable.name)
+                    if var is not None:
+                        if var.name == self._delegate_variable.name and var.type == self._delegate_variable.type:
+                            self._proxy_impl_getter = self.find_getter_in_contract(c, var, print_debug)
+                            if self._proxy_impl_setter is None:
+                                (self._proxy_impl_setter,
+                                 self._delegate_variable) = self.find_setter_in_contract(c, var, None, print_debug)
+                            if self._proxy_impl_setter is not None:
+                                self._is_upgradeable_proxy = True
+                                self._is_upgradeable_proxy_confirmed = True
+                                return self._is_upgradeable_proxy
+                            elif self._proxy_impl_getter is not None:
+                                return c.getter_return_is_non_constant(print_debug)
+        """
+        Handle the case, as in EIP 1822, where the Proxy has no implementation getter because it is
+        loaded explicitly from a hard-coded slot within the fallback itself.
+        We assume in this case that, if the Proxy needs to load the implementation address from storage slot
+        then the address must not be constant - otherwise why not use a constant address
+        This is only necessary if the Proxy also doesn't have an implementation setter, because it is
+        located in another contract. The assumption is only necessary if we do not search cross-contracts.
+        """
+        if self._proxy_impl_slot is not None or self._delegate_variable.expression is not None:
+            for c in self.compilation_unit.contracts:
+                if c != self and self not in c.inheritance:
+                    self._proxy_impl_getter = self.find_getter_in_contract(c, self._delegate_variable, print_debug)
+                    if self._proxy_impl_setter is None:
+                        (self._proxy_impl_setter,
+                         self._delegate_variable) = self.find_setter_in_contract(c, self._delegate_variable,
+                                                                                 self._proxy_impl_slot, print_debug)
+                    if self._proxy_impl_setter is not None:
+                        self._is_upgradeable_proxy = True
+                        self._is_upgradeable_proxy_confirmed = True
+                        return self._is_upgradeable_proxy
+                    elif self._proxy_impl_getter is not None:
+                        return c.getter_return_is_non_constant(print_debug)
+        else:
+            for n in self.fallback_function.all_nodes():
+                if n.type == NodeType.VARIABLE:  # and n.variable_declaration == self._delegates_to:
+                    print(n.variable_declaration)
+                    print(n.expression)
+                elif n.type == NodeType.EXPRESSION:
+                    print(n.expression)
+                elif n.type == NodeType.ASSEMBLY:
+                    inline_asm = n.inline_asm
+                    if inline_asm and "sload" in str(inline_asm):  # and self._delegates_to.name in inline_asm:
+                        self._is_upgradeable_proxy = True
+        return self._is_upgradeable_proxy
 
     # endregion
     ###################################################################################
