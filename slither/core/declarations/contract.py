@@ -1578,73 +1578,40 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
 
         delegate = None
-        if print_debug: print(f"\nBegin {self.name}.find_delegate_variable_from_name\nSearching for {dest}"
-                              f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
         if len(dest) == 42 and dest.startswith("0x"):
-            if print_debug: print(f"{dest} is a hard-coded address"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
             addr = Literal(dest, ElementaryType("address"))
             delegate = Variable()
             delegate.expression = addr
             delegate.type = ElementaryType("address")
             delegate.name = dest
-            if print_debug: print(f"\nEnd {self.name}.find_delegate_variable_by_name"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
             return delegate
-        if print_debug: print(f"Searching State Variables (Slither line:{getframeinfo(currentframe()).lineno})")
         for sv in self.state_variables:
-            if print_debug: print(f"Checking {sv.name} (Slither line:{getframeinfo(currentframe()).lineno})")
             if sv.name == dest:
                 delegate = sv
-                if print_debug:
-                    print(f"{dest} is a State Variable in contract {sv.contract.name}"
-                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                    print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                 return delegate
-        if print_debug:
-            print(f"\nSearching Local Variables (Slither line:{getframeinfo(currentframe()).lineno})")
         # TODO: Split searching local variables into its own separate method
         for lv in parent_func.local_variables:
             if delegate is not None or self._proxy_impl_slot is not None:
                 return delegate
-            if print_debug: print(f"Checking {lv.name} (Slither line:{getframeinfo(currentframe()).lineno})")
             if lv.name == dest:
-                if isinstance(parent_func, ChildContract):
-                    if print_debug:
-                        print(f"{dest} is a Local Variable in {parent_func.contract.name}.{parent_func.name}"
-                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 # TODO: eliminate dependence on variable name for Diamond handling
                 if lv.name == "facet":
                     delegate = lv
-                    if print_debug:
-                        print(f"{dest} appears to be a Diamond facet address"
-                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                        print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                     return delegate
                 if lv.expression is not None:
                     exp = lv.expression
-                    if print_debug: print(f"Expression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
                     while isinstance(exp, TypeConversion):
-                        if print_debug: print(f"type conversion (Slither line:{getframeinfo(currentframe()).lineno})")
                         exp = exp.expression
                     if isinstance(exp, Identifier):
                         val = exp.value
-                        if print_debug: print(f"Identifier value: {val}"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
                         if isinstance(val, StateVariable):
                             delegate = val
-                            if print_debug:
-                                print(f"{val.name} is a State Variable in contract {val.contract.name}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                             return delegate
                     elif isinstance(exp, CallExpression):
                         """
                         Must be the getter, but we still need a variable
                         """
                         delegate = self.find_delegate_from_call_exp(exp, lv, print_debug)
-                        if print_debug: print(f"Call Expression\nEnd {self.name}.find_delegate_variable_by_name"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                         return delegate
                     elif isinstance(exp, IndexAccess):
                         exp = exp.expression_left
@@ -1652,34 +1619,22 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             val = exp.value
                             if isinstance(val, StateVariable):
                                 delegate = val
-                                if print_debug:
-                                    print(f"{val.name} is a State Variable in contract {val.contract.name}"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                    print(f"\nEnd {self.name}.find_delegate_variable_by_name\n")
                                 return delegate
                     if isinstance(exp, MemberAccess):
                         delegate = self.find_delegate_from_member_access(exp, lv, print_debug)
                         if delegate is None:
                             delegate = lv
-                        if print_debug: print(f"Member Access\nEnd {self.name}.find_delegate_variable_from_name"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                         return delegate
                 else:
-                    if print_debug: print(f"No expression found for {dest}\nLooking for assignment operation"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                    # No expression found, so look for assignment operation
                     for node in parent_func.all_nodes():
                         if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
                             exp = node.expression
                             if isinstance(exp, AssignmentOperation):
-                                print(f"AssignmentOperation: {exp}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 exp = exp.expression_right
                             if isinstance(exp, MemberAccess):
-                                print(f"exp is a MemberAccess: {exp}\n exp.expression = {exp.expression}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 exp = exp.expression
                             if isinstance(exp, CallExpression):
-                                print(f"CallExpression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
                                 called = exp.called
                                 if str(called) == "sload(uint256)":
                                     delegate = lv
@@ -1688,74 +1643,43 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         v = arg.value
                                         if isinstance(v, Variable) and v.is_constant:
                                             self._proxy_impl_slot = v
-                                            if print_debug: print(f"Found storage slot: {v.name} (Slither line:"
-                                                                  f"{getframeinfo(currentframe()).lineno})")
                                             break
                                         elif isinstance(v, LocalVariable) and v.expression is not None:
                                             e = v.expression
                                             if isinstance(e, Identifier) and e.value.is_constant:
                                                 self._proxy_impl_slot = e.value
-                                                if print_debug: print(f"Found storage slot: {e.value.name} (Slither "
-                                                                      f"line:{getframeinfo(currentframe()).lineno})")
                                                 break
                                 else:
                                     delegate = self.find_delegate_from_call_exp(exp, lv, print_debug)
-        if print_debug:
-            print(f"\nSearching Parameter Variables (Slither line:{getframeinfo(currentframe()).lineno})")
         # TODO: Split searching parameter variables into its own separate method
         for idx, pv in enumerate(parent_func.parameters):
-            if print_debug: print(f"Checking {pv.name} (Slither line:{getframeinfo(currentframe()).lineno})")
             if pv.name == dest:
                 # delegate = pv
-                if isinstance(parent_func, ChildContract):
-                    if print_debug:
-                        print(f"{dest} is a Parameter in {parent_func.contract.name}.{parent_func.name}"
-                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
                 for node in self.fallback_function.all_nodes():
                     if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
                         exp = node.expression
                         if isinstance(exp, AssignmentOperation):
-                            print(f"AssignmentOperation: {exp.expression_right}"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             exp = exp.expression_right
                         if isinstance(exp, MemberAccess):
-                            print(f"exp is a MemberAccess: {exp}\n exp.expression = {exp.expression}"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             exp = exp.expression
                         if isinstance(exp, CallExpression):
-                            print(f"CallExpression: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
                             called = exp.called
                             if isinstance(called, MemberAccess):
-                                print(f"called is a MemberAccess: {called}\ncalled.expression = {called.expression}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 if str(called) == f"{parent_func.contract.name}.{parent_func.name}":
                                     var = exp.arguments[idx]
-                                    print(f"argument #{idx} = {var}"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     if isinstance(var, Identifier) and isinstance(var.value, StateVariable):
                                         delegate = var.value
                                         break
                             if isinstance(called, Identifier) and called.value == parent_func:
-                                if print_debug: print(f"Found where {parent_func.name} is called: {exp}"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 arg = exp.arguments[idx]
-                                if print_debug: print(f"The value passed to parameter #{idx} is {arg}"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                 if isinstance(arg, Identifier):
                                     v = arg.value
-                                    if print_debug: print(f"which is an Identifier with value {v}"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     if isinstance(v, StateVariable):
-                                        if print_debug: print(f"{v.name} is a State Variable"
-                                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                         delegate = v
                                         break
                                     elif isinstance(v, LocalVariable) and v.expression is not None:
                                         delegate = v
                                         exp = v.expression
-                                        if print_debug:
-                                            print(f"{v.name} is a Local Variable with the expression: {exp}"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                         if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                             delegate = exp.value
                                         elif isinstance(exp, CallExpression):
@@ -1771,16 +1695,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate = _delegate
                                         break
                                 elif isinstance(arg, IndexAccess):
-                                    if print_debug: print(f"which is an IndexAccess"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     if isinstance(arg.expression_left, Identifier):
                                         delegate = arg.expression_left.value
                                         delegate.expression = arg
                                     break
                 break
         if parent_func.contains_assembly and delegate is None:  # and self._proxy_impl_slot is not None:
-            if print_debug: print(f"{parent_func} contains assembly, searching for sload"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
+            # If we still haven't found the delegate variable, and the function contains assembly, look for sload
             for node in parent_func.all_nodes():
                 if node.type == NodeType.ASSEMBLY:
                     if isinstance(node.inline_asm, str):
@@ -1788,8 +1709,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         for s in asm:
                             if f"{dest}" in s and ":=" in s:
                                 if "sload" in s:
-                                    if print_debug: print(f"Found sload in assembly: {s}"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     dest = s.replace(")", "(").split("(")[1]
                                     if not dest.endswith("_slot"):
                                         slot_var = parent_func.get_local_variable_from_name(dest)
@@ -1800,7 +1719,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     break
                     else:
                         asm = node.inline_asm
-                        # print(asm)
                         for statement in asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulVariableDeclaration" \
                                     and statement["variables"][0]["name"] == dest:
@@ -1811,8 +1729,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     statement["value"] = statement["value"]["arguments"][0]
                                 if statement["value"]["nodeType"] == "YulFunctionCall" \
                                         and statement["value"]["functionName"]["name"] == "sload":
-                                    if print_debug: print(f"{statement['value']['arguments'][0]}" 
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                     if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
                                         slot = statement["value"]["arguments"][0]["value"]
                                         if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
@@ -1828,13 +1744,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                             impl_slot.set_contract(node.function.contract
                                                                    if isinstance(node.function, ChildContract)
                                                                    else self)
-                                            if print_debug:
-                                                print(f"Found hardcoded storage slot in {node.function}: {impl_slot}"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                             self._proxy_impl_slot = impl_slot
                                             break
                                         elif slot == "0":
-                                            print(f"Found sload(0), getting first state variable")
                                             delegate = self.state_variables_ordered[0]
                                     elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
                                         for sv in self.state_variables:
@@ -1844,15 +1756,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 # delegate.set_type(ElementaryType("address"))
                                                 # delegate.name = dest
                                                 # delegate.set_location(slot)
-                                                if print_debug:
-                                                    print(f"Found storage slot in {node.function}: {sv}"
-                                                          f" (Slither line:{getframeinfo(currentframe()).lineno})")
                                                 self._proxy_impl_slot = sv
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func, print_debug)
-        if print_debug:
-            print(f"\nEnd {self.name}.find_delegate_variable_from_name"
-                  f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return delegate
 
     def find_delegate_from_call_exp(self, exp, var, print_debug=False) -> Optional["Variable"]:
