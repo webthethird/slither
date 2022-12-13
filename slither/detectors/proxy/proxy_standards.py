@@ -136,7 +136,7 @@ or one of the proxy patterns developed by OpenZeppelin.
     def find_mapping_in_var_exp(
             delegate: Variable,
             proxy: Contract
-    ) -> (Optional["Variable"], Optional["IndexAccess"]):
+    ) -> Tuple(Optional["Variable"], Optional["IndexAccess"]):
         mapping = None
         exp = None
         e = delegate.expression
