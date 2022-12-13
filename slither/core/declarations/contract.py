@@ -2042,7 +2042,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     dest = s.replace(")", "(").split("(")[1]
                                     if not dest.endswith("_slot"):
                                         slot_var = parent_func.get_local_variable_from_name(dest)
-                                        if slot_var.expression is not None:
+                                        if slot_var is not None and slot_var.expression is not None:
                                             slot_exp = slot_var.expression
                                             if isinstance(slot_exp, Identifier) and slot_exp.value.is_constant:
                                                 self._proxy_impl_slot = slot_exp.value
