@@ -105,7 +105,7 @@ class ProxyFeatureExtraction:
             # print(f"dependencies: {[str(dep) for dep in dependencies]}")
         return self._impl_address_location
 
-    def is_impl_address_also_declared_in_logic(self) -> Tuple(int, Optional[Contract]):
+    def is_impl_address_also_declared_in_logic(self) -> (int, Optional[Contract]):
         """
         If the implementation address variable is a StateVariable declared in the proxy,
         but the implementation setter is not declared in the proxy, then we need to determine
@@ -368,7 +368,7 @@ class ProxyFeatureExtraction:
                     return self._proxy_only_contains_fallback
         return self._proxy_only_contains_fallback
 
-    def has_transparent_admin_checks(self) -> Tuple(bool, str):
+    def has_transparent_admin_checks(self) -> (bool, str):
         """
         Determine whether all external functions (besides fallback() and receive())
         are only callable by a specific address, and whether the fallback and receive
@@ -405,7 +405,7 @@ class ProxyFeatureExtraction:
                 checks.append(check)
         return (all(checks) and has_external_functions), admin_str
 
-    def impl_address_from_contract_call(self) -> Tuple(bool, Optional[Expression], Optional[Type]):
+    def impl_address_from_contract_call(self) -> (bool, Optional[Expression], Optional[Type]):
         """
         Determine whether the proxy contract retrieves the address of the
         implementation contract by calling a function in a third contract,
@@ -678,7 +678,7 @@ class ProxyFeatureExtraction:
                             ret = True
         return ret
 
-    def has_compatibility_checks(self) -> Tuple(bool, List[Tuple[FunctionContract, Optional[Expression], bool]]):
+    def has_compatibility_checks(self) -> (bool, List[Tuple[FunctionContract, Optional[Expression], bool]]):
         """
         For every function that can update the implementation address,
         determines whether it contains a compatibility check expression.
@@ -1514,7 +1514,7 @@ class ProxyFeatureExtraction:
     def find_mapping_in_var_exp(
             delegate: Variable,
             proxy: Contract
-    ) -> Tuple(Optional["Variable"], Optional["IndexAccess"]):
+    ) -> (Optional["Variable"], Optional["IndexAccess"]):
         mapping = None
         exp = None
         e = delegate.expression
