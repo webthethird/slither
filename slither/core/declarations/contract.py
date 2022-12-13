@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         Enum,
         Event,
         Modifier,
+        Structure,
         EnumContract,
         StructureContract,
         FunctionContract,
@@ -3088,7 +3089,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             var_to_set: Union[str, "Variable"],
             storage_slot: Optional["Variable"],
             print_debug: bool
-    ) -> (Optional[Function], Union[str, "Variable"]):
+    ) -> Tuple(Optional[Function], Union[str, "Variable"]):
         """
         Tries to find the setter function for a given variable.
         Static because we can use this for cross-contract implementation setters, i.e. EIP 1822 Proxy/Proxiable
