@@ -153,7 +153,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         if struct.name == "DiamondStorage":
                             features["diamond_storage"] = True
                             if struct.canonical_name == "LibDiamond.DiamondStorage":
-                                features["diamond_storage_location"] = "LibDiamond (" + struct.source_mapping_str + ")"
+                                features["diamond_storage_location"] = "LibDiamond (" + str(struct.source_mapping) + ")"
                                 features["eip_2535"] = True
                                 info += [
                                     delegate.name,
@@ -165,7 +165,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                                 # results.append(json)
                             elif isinstance(struct, StructureContract):
                                 features["diamond_storage_location"] = struct.contract.name + " (" + \
-                                                                       struct.source_mapping_str + ")"
+                                                                       str(struct.source_mapping) + ")"
                                 features["eip_2535"] = "true (non-standard)"
                                 info += [
                                     delegate.name,
@@ -490,7 +490,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         delegate.name,
                         " is declared in the proxy.\n"
                     ]
-                    features["impl_address_location"] = proxy.name + " (" + proxy.source_mapping_str + ")"
+                    features["impl_address_location"] = proxy.name + " (" + str(proxy.source_mapping) + ")"
                     # json = self.generate_result(info)
                     # results.append(json)
 
@@ -538,7 +538,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                             """
                             idx, logic = proxy_features.is_impl_address_also_declared_in_logic()
                             if idx >= 0 and logic is not None:
-                                features["impl_address_also_declared_in"] = logic.source_mapping_str
+                                features["impl_address_also_declared_in"] = str(logic.source_mapping)
                                 features["impl_address_slot"] = str(idx)
                                 features["master_copy_coupling"] = True
                                 info += [
@@ -718,7 +718,7 @@ or one of the proxy patterns developed by OpenZeppelin.
                         " was found in a different contract.\n"
                     ]
                     features["impl_address_location"] = (proxy_features.impl_address_location.name + " (" +
-                                                         proxy_features.impl_address_location.source_mapping_str + ")")
+                                                         str(proxy_features.impl_address_location.source_mapping) + ")")
                     # json = self.generate_result(info)
                     # results.append(json)
                     """
