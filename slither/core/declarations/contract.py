@@ -1286,8 +1286,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.expressions.identifier import Identifier
         from slither.core.expressions.literal import Literal
 
-        print_debug = True
-
         if self._is_upgradeable_proxy is None:
             self._is_upgradeable_proxy = False
             self._is_upgradeable_proxy_confirmed = False
@@ -1347,7 +1345,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._is_upgradeable_proxy = True
                         self._is_upgradeable_proxy_confirmed = True
                     else:
-                        self._is_upgradeable_proxy = self.getter_return_is_non_constant(print_debug)
+                        self._is_upgradeable_proxy = self.getter_return_is_non_constant()
                     return self._is_upgradeable_proxy
                 else:
                     if self.handle_missing_getter():
@@ -1364,22 +1362,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         """
         from slither.core.cfg.node import NodeType
 
-        print_debug = True
-
         if self._is_proxy is None:
             self._is_proxy = False
-            if print_debug:
-                print(f"\nBegin {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
 
             if self.fallback_function is None:
-                print(f"\nEnd {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 return self._is_proxy
 
             self._delegate_variable = None
             for node in self.fallback_function.all_nodes():
-                if print_debug: print(f"{node.type} (Slither line:{getframeinfo(currentframe()).lineno})")
                 # first try to find a delegetecall in non-assembly code region
-                is_proxy, self._delegate_variable = self.find_delegatecall_in_ir(node, print_debug)
+                is_proxy, self._delegate_variable = self.find_delegatecall_in_ir(node)
                 if not self._is_proxy:
                     self._is_proxy = is_proxy
                 if self._is_proxy and self._delegate_variable is not None:
@@ -1391,17 +1383,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     Calls self.find_delegatecall_in_asm to search in an assembly CFG node.
                     That method cannot always find the delegates_to Variable for solidity versions >= 0.6.0
                     """
-                    if print_debug: print(f"\nFound Assembly Node "
-                                          f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
                     if node.inline_asm:
-                        # print("\nFound Inline ASM\n")
                         is_proxy, self._delegate_variable = self.find_delegatecall_in_asm(node.inline_asm,
-                                                                                          node.function,
-                                                                                          print_debug=print_debug)
+                                                                                          node.function)
                         if not is_proxy:
                             is_proxy, self._delegate_variable = self.find_delegatecall_in_asm(node.inline_asm,
                                                                                               node.function,
-                                                                                              print_debug=print_debug,
                                                                                               include_call=True)
                         if not self._is_proxy:
                             self._is_proxy = is_proxy
@@ -1409,7 +1396,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                or self._proxy_impl_slot is not None):
                             break
                 elif node.type == NodeType.EXPRESSION:
-                    is_proxy, self._delegate_variable = self.find_delegatecall_in_exp_node(node, print_debug)
+                    is_proxy, self._delegate_variable = self.find_delegatecall_in_exp_node(node)
                     if not self._is_proxy:
                         self._is_proxy = is_proxy
                     if self._is_proxy and (self._delegate_variable is not None
@@ -1417,10 +1404,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         break
             if self.is_proxy and self._delegate_variable is None and self._proxy_impl_slot is not None:
                 self._delegate_variable = self._proxy_impl_slot
-                if print_debug: print(f"Setting {self.name}._delegate_variable = {self.name}._proxy_impl_slot: "
-                                      f"{self._proxy_impl_slot} (Slither line:{getframeinfo(currentframe()).lineno})\n")
-            if print_debug:
-                print(f"\nEnd {self.name}.is_proxy (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return self._is_proxy
 
     """
@@ -1485,8 +1468,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         asm_split = None
         dest = None
 
-        if print_debug: print(f"\nBegin {self.name}.find_delegatecall_in_asm "
-                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             """
             inline_asm is a Yul AST for Solidity versions >= 0.6.0
@@ -1506,11 +1487,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = args[1]
                         if dest["nodeType"] == "YulIdentifier":
                             dest = dest["name"]
-                        if print_debug:
-                            print(f"\nFound {statement['functionName']['name']} in YulFunctionCall "
-                                  f"(Slither line:{getframeinfo(currentframe()).lineno})\n"
-                                  f"Destination param is called '{dest}'\nLooking for corresponding Variable\n"
-                                  f"Current function: {parent_func.name}")
                         break
         else:
             """
@@ -1520,15 +1496,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             asm_split = inline_asm.split("\n")
             dest = None
             for asm in asm_split:
-                if print_debug: print(f"{asm} (Slither line:{getframeinfo(currentframe()).lineno})")
                 if "delegatecall" in asm or (include_call and "call(" in asm):
-                    # need to know what to print for debugging
                     if "delegatecall" not in inline_asm:
-                        print_call = "call"
                         self._uses_call_not_delegatecall = True
                     else:
                         # found delegatecall somewhere in full inline_asm
-                        print_call = "delegatecall"
                         if "delegatecall" not in asm:
                             continue
                         else:
@@ -1543,8 +1515,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         dest = dest.replace(")", "(").split("(")[1]
                         for v in parent_func.variables_read_or_written:
                             if v.name == dest:
-                                if print_debug: print(f"sload from variable: {v} "
-                                                      f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                 if isinstance(v, LocalVariable) and v.expression is not None:
                                     e = v.expression
                                     if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
@@ -1553,9 +1523,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         Fall through, use constant storage slot as delegates_to and proxy_impl_slot
                                         """
                                 if isinstance(v, StateVariable) and v.is_constant:
-                                    if print_debug: print(f"Found storage slot: {v}\nSetting {self.name}"
-                                                          f"._delegate_variable = {self.name}._proxy_impl_slot "
-                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
                                     # slot = str(v.expression)
                                     # delegates_to = LocalVariable()
                                     # delegates_to.set_type(ElementaryType("address"))
@@ -1565,11 +1532,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     self._proxy_impl_slot = v   # and also as proxy_impl_slot
                     if dest.endswith(")"):
                         dest = params[2]
-                    if print_debug:
-                        print(f"\nFound {print_call} in inline asm "
-                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n"
-                              f"Destination param is called '{dest}'\nLooking for corresponding Variable\n"
-                              f"Current function: {parent_func.name}")
                     break
         if is_proxy and delegates_to is None and dest is not None:
             """
@@ -1581,15 +1543,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             delegates_to = self.find_delegate_variable_from_name(dest, parent_func, print_debug)
             if delegates_to is None and asm_split is not None:
                 delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, parent_func, print_debug)
-        if print_debug: print(f"\nEnd {self.name}.find_delegatecall_in_asm "
-                              f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
         return is_proxy, delegates_to
 
     def find_delegate_variable_from_name(
             self,
             dest: str,
             parent_func: Function,
-            print_debug: bool
+            print_debug=False
     ) -> Optional["Variable"]:
         """
         Called by find_delegatecall_in_asm, which can only extract the name of the destination variable, not the object.
@@ -1895,7 +1855,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                   f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return delegate
 
-    def find_delegate_from_call_exp(self, exp, var, print_debug) -> Optional["Variable"]:
+    def find_delegate_from_call_exp(self, exp, var, print_debug=False) -> Optional["Variable"]:
         """
         Called by self.find_delegate_variable_from_name
         Having found a LocalVariable matching the destination name extracted from the delegatecall,
@@ -2657,7 +2617,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return delegates_to
 
     @staticmethod
-    def find_delegatecall_in_ir(node, print_debug):     # General enough to keep as is
+    def find_delegatecall_in_ir(node):     # General enough to keep as is
         """
         Handles finding delegatecall outside of an assembly block, as a LowLevelCall
         i.e. delegate.delegatecall(msg.data)  
@@ -2678,32 +2638,23 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
         b = False
         d = None
-        if print_debug:
-            print(f"\nBegin Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
+
         for ir in node.irs:
             if isinstance(ir, LowLevelCall):
-                if print_debug: print(f"\nFound LowLevelCall (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 if ir.function_name == "delegatecall":
-                    if print_debug: print(f"\nFound delegatecall in LowLevelCall"
-                                          f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                     b = True
                     d = ir.destination
                     break
         if isinstance(d, LocalVariable):
             e = d.expression
-            if print_debug: print(f"{e} (Slither line:{getframeinfo(currentframe()).lineno})")
             if e is not None:
-                if isinstance(e, Identifier):
-                    if print_debug: print(f"Identifier (Slither line:{getframeinfo(currentframe()).lineno})")
                 if isinstance(e, CallExpression) and isinstance(d, ChildFunction):
                     if isinstance(d.function, ChildContract):
-                        d = d.function.contract.find_delegate_from_call_exp(e, d, print_debug)
+                        d = d.function.contract.find_delegate_from_call_exp(e, d, False)
                 elif isinstance(e, MemberAccess) and isinstance(d, ChildFunction):
-                    d = d.contract.find_delegate_from_member_access(e, d, print_debug)
+                    d = d.contract.find_delegate_from_member_access(e, d, False)
         elif isinstance(d, TemporaryVariable):
             exp = d.expression
-            if print_debug: print(f"TemporaryVariable {d} expression: {exp}"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
             if isinstance(exp, CallExpression):
                 called = exp.called
                 if isinstance(called, Identifier):
@@ -2713,12 +2664,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for f in node.function.contract.functions:
                                 if f.name == func.name and f.is_implemented:
                                     func = f
-                        d = func.contract.find_delegate_from_call_exp(exp, d, print_debug)
-        if print_debug:
-            print(f"\nEnd Contract.find_delegatecall_in_ir (Slither line:{getframeinfo(currentframe()).lineno})\n")
+                        d = func.contract.find_delegate_from_call_exp(exp, d, False)
         return b, d
 
-    def find_delegatecall_in_exp_node(self, node, print_debug):
+    def find_delegatecall_in_exp_node(self, node, print_debug=False):
         """
         For versions >= 0.6.0, in addition to Assembly nodes as seen above, it seems that 
         Slither creates Expression nodes for expressions within an inline assembly block.
@@ -2743,48 +2692,29 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         is_proxy = False
         delegate_to = None
         expression = node.expression
-        if print_debug:
-            print(f"\nBegin {self.name}.find_delegatecall_in_exp_node\n\n"
-                  f"Found Expression Node: {expression} (Slither line:{getframeinfo(currentframe()).lineno})")
         if isinstance(expression, ExpressionTyped):
-            if print_debug: print(f"Expression Type: {expression.type}"
-                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
             if isinstance(expression, AssignmentOperation):
                 """
                 Handles the common case like this: 
                 let result := delegatecall(gas, implementation, 0, calldatasize, 0, 0)
                 """
                 expression = expression.expression_right
-                if print_debug: print("Checking right side of assignment expression..."
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
         if isinstance(expression, CallExpression):
-            if print_debug:
-                print(f"Expression called: {expression.called}\nType of call: {expression.type_call}"
-                      f" (Slither line:{getframeinfo(currentframe()).lineno})\nArgs:")
-                if len(expression.arguments) > 0:
-                    for arg in expression.arguments:
-                        print(str(arg))
             if "delegatecall" in str(expression.called):
                 is_proxy = True
-                if print_debug: print(f"\nFound delegatecall in expression:\n{expression.called}"
-                                      f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
                 if len(expression.arguments) > 1:
                     dest = expression.arguments[1]
-                    if print_debug: print(f"Destination is {dest} (Slither line:{getframeinfo(currentframe()).lineno})")
                     if isinstance(dest, Identifier):
                         val = dest.value
-                        if print_debug: print(f"dest.value: {val} (Slither line:{getframeinfo(currentframe()).lineno})")
                         if isinstance(val, StateVariable):
                             delegate_to = val
                         elif isinstance(val, LocalVariable):
                             exp = val.expression
-                            if print_debug: print(f"Expression: {exp}"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
                             if exp is not None:
                                 if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
                                     delegate_to = exp.value
                                 elif isinstance(exp, CallExpression):
-                                    delegate_to = self.find_delegate_from_call_exp(exp, val, print_debug)
+                                    delegate_to = self.find_delegate_from_call_exp(exp, val)
                                 elif isinstance(exp, MemberAccess):
                                     exp = exp.expression
                                     if isinstance(exp, IndexAccess):
@@ -2798,13 +2728,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 elif isinstance(exp, Literal) and str(exp.type) == "address":
                                     delegate_to = val
                             else:
-                                delegate_to = self.find_delegate_variable_from_name(val.name, node.function, print_debug)
-        if print_debug:
-            print(f"\nEnd {self.name}.find_delegatecall_in_exp_node "
-                  f"(Slither line:{getframeinfo(currentframe()).lineno})\n")
+                                delegate_to = self.find_delegate_variable_from_name(val.name, node.function)
         return is_proxy, delegate_to
 
-    def getter_return_is_non_constant(self, print_debug) -> bool:
+    def getter_return_is_non_constant(self) -> bool:
         """
         If we could only find the getter, but not the setter, make sure that the getter does not return
         a variable that can never be set (i.e. is practically constant, but not declared constant)
@@ -2824,23 +2751,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.variables.state_variable import StateVariable
         from slither.analyses.data_dependency import data_dependency
 
-        if print_debug:
-            print(f"\nBegin {self.name}.getter_return_is_non_constant"
-                  f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
-            print("Found getter function but not setter\nChecking if getter calls any other function")
         for node in self._proxy_impl_getter.all_nodes():
             exp = node.expression
-            if print_debug: print(f"{node.type}: {exp} (Slither line:{getframeinfo(currentframe()).lineno})")
             if node.type == NodeType.EXPRESSION and isinstance(exp, AssignmentOperation):
                 left = exp.expression_left
                 right = exp.expression_right
                 if isinstance(left, Identifier) and left.value == self._delegate_variable:
-                    if print_debug: print(f"{right} (Slither line:{getframeinfo(currentframe()).lineno})")
                     if isinstance(right, Identifier) and right.value.is_constant:
                         self._is_upgradeable_proxy = False
                         return self._is_upgradeable_proxy
                     elif isinstance(right, CallExpression):
-                        if print_debug: print(f"Call Expression (Slither line:{getframeinfo(currentframe()).lineno})")
                         if "sload" in str(right):
                             slot = right.arguments[0]
                             if isinstance(slot, Identifier):
@@ -2859,8 +2779,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                     for n in f.all_nodes():
                                         if n.type == NodeType.EXPRESSION:
                                             e = n.expression
-                                            if print_debug: print(f"{e} (Slither line:"
-                                                                  f"{getframeinfo(currentframe()).lineno})")
                                             if isinstance(e, AssignmentOperation):
                                                 l = e.expression_left
                                                 r = e.expression_right
@@ -2876,16 +2794,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
                     elif isinstance(right, MemberAccess):
-                        if print_debug: print(f"Member Access (Slither line:{getframeinfo(currentframe()).lineno})")
                         self._is_upgradeable_proxy = True
                         return self._is_upgradeable_proxy
             elif node.type == NodeType.RETURN:
                 if isinstance(exp, CallExpression):
                     self._is_upgradeable_proxy = True
                     return self._is_upgradeable_proxy
-        if print_debug:
-            print(f"\nEnd {self.name}.getter_return_is_non_constant"
-                  f" (Slither line:{getframeinfo(currentframe()).lineno})\n")
         return self._is_upgradeable_proxy
 
     @staticmethod
