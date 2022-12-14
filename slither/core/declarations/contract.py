@@ -1885,18 +1885,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     if n.type == NodeType.EXPRESSION:
                         e = n.expression
                         if isinstance(e, AssignmentOperation):
-                            if print_debug: print(f"AssignmentOperation: {e}"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            l = e.expression_left
-                            r = e.expression_right
-                            if isinstance(l, Identifier) and l.value == ret:
-                                if isinstance(r, CallExpression):
-                                    if print_debug: print(f"CallExpression: {r.called} "
-                                                          f"(Slither line:{getframeinfo(currentframe()).lineno})")
-                                    ret.expression = r
-                                    if str(r.called) == "sload(uint256)":
-                                        # delegate = ret
-                                        arg = r.arguments[0]
+                            left = e.expression_left
+                            right = e.expression_right
+                            if isinstance(left, Identifier) and left.value == ret:
+                                if isinstance(right, CallExpression):
+                                    ret.expression = right
+                                    if str(right.called) == "sload(uint256)":
+                                        arg = right.arguments[0]
                                         if isinstance(arg, Identifier):
                                             v = arg.value
                                             if isinstance(v, Variable) and v.is_constant:
@@ -1932,16 +1927,12 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                             delegate = ret
                                                             break
                                     else:
-                                        delegate = self.find_delegate_from_call_exp(r, ret, print_debug)
-                                        rc = r.called
-                                        if delegate is None and isinstance(rc, MemberAccess):
-                                            m = rc.expression
-                                            if print_debug: print(f"Member access expression: {m}"
-                                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                            if isinstance(m, TypeConversion):
-                                                if print_debug: print(f"TypeConversion: {m.expression} (Slither line:"
-                                                                      f"{getframeinfo(currentframe()).lineno})")
-                                                e = m.expression
+                                        delegate = self.find_delegate_from_call_exp(right, ret, print_debug)
+                                        right_called = right.called
+                                        if delegate is None and isinstance(right_called, MemberAccess):
+                                            member_access_exp = right_called.expression
+                                            if isinstance(member_access_exp, TypeConversion):
+                                                e = member_access_exp.expression
                                                 if isinstance(e, Identifier) and str(e.value.type) == "address":
                                                     delegate = self.find_delegate_variable_from_name(e.value.name,
                                                                                                      func, print_debug)
@@ -1956,18 +1947,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         asm_split = n.inline_asm.split("\n")
                         for asm in asm_split:
                             if ret.name + " := sload(" in asm:
-                                if print_debug: print(f"Return value set by sload in asm"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                # delegate = ret
-                                slotname = asm.split("sload(")[1].split(")")[0]
-                                if slotname.startswith("0x"):
+                                # Return value set by sload in asm: extract the name of the slot variable
+                                slot_name = asm.split("sload(")[1].split(")")[0]
+                                if slot_name.startswith("0x"):
                                     delegate = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, ret.name,
                                                                                               func, print_debug)
                                     if delegate is not None:
                                         break
                                 # Find the slot variable by its name
                                 for v in func.variables_read_or_written:
-                                    if v.name == slotname:
+                                    if v.name == slot_name:
                                         if isinstance(v, StateVariable) and v.is_constant:
                                             self._proxy_impl_slot = v
                                             break
@@ -1978,21 +1967,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 break
                                 break
                     elif n.type == NodeType.EXPRESSION and ret.name in str(n.expression):
-                        # handle versions >= 0.6.0
-                        if print_debug: print(f"Looking in EXPRESSION node"
-                                              f" (Slither line:{getframeinfo(currentframe()).lineno})")
+                        # handle versions >= 0.6.0: we have expression nodes for assembly expressions
                         e = n.expression
                         if isinstance(e, AssignmentOperation):
-                            if print_debug: print(f"Assignment operation: {e}"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            l = e.expression_left
-                            r = e.expression_right
-                            if isinstance(l, Identifier) and l.value == ret:
-                                if print_debug: print(f"Found {ret.name} on left side of assignment"
-                                                      f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                                if isinstance(r, CallExpression) and "sload" in str(r):
-                                    # delegate = ret
-                                    arg = r.arguments[0]
+                            left = e.expression_left
+                            right = e.expression_right
+                            if isinstance(left, Identifier) and left.value == ret:
+                                if isinstance(right, CallExpression) and "sload" in str(right):
+                                    arg = right.arguments[0]
                                     if isinstance(arg, Identifier):
                                         v = arg.value
                                         if isinstance(v, StateVariable) and v.is_constant:
@@ -2021,17 +2003,15 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         if n.type == NodeType.EXPRESSION:
                                             e = n.expression
                                             if isinstance(e, AssignmentOperation):
-                                                if print_debug: print(f"AssignmentOperation: {e} (Slither line:"
-                                                                      f"{getframeinfo(currentframe()).lineno})")
-                                                l = e.expression_left
-                                                r = e.expression_right
-                                                if isinstance(l, Identifier) and l.value == val:
-                                                    ret.expression = r
+                                                left = e.expression_left
+                                                right = e.expression_right
+                                                if isinstance(left, Identifier) and left.value == val:
+                                                    ret.expression = right
                                                     break
-                                                elif isinstance(l, TupleExpression):
-                                                    for v in l.expressions:
+                                                elif isinstance(left, TupleExpression):
+                                                    for v in left.expressions:
                                                         if isinstance(v, Identifier) and v.value == val:
-                                                            ret.expression = r
+                                                            ret.expression = right
                                                             break
                                     e = ret.expression
                                     if isinstance(e, CallExpression) and isinstance(e.called, MemberAccess):
@@ -2075,11 +2055,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.user_defined_type import UserDefinedType
         from slither.core.solidity_types.elementary_type import ElementaryType
 
-        if print_debug:
-            print(f"\nBegin {self.name}.find_delegate_from_member_access\n\nExpression: {exp}"
-                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-        delegate: Variable = None
-        contract: Contract = None
+        delegate: Optional[Variable] = None
+        contract: Optional[Contract] = None
         member_name = None
         args = None
         orig_exp = exp
@@ -2257,10 +2234,10 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 if n.type == NodeType.EXPRESSION:
                                     e = n.expression
                                     if isinstance(e, AssignmentOperation):
-                                        l = e.expression_left
-                                        r = e.expression_right
-                                        if isinstance(l, Identifier) and l.value == ret:
-                                            ret.expression = r
+                                        left = e.expression_left
+                                        right = e.expression_right
+                                        if isinstance(left, Identifier) and left.value == ret:
+                                            ret.expression = right
                                 elif n.type == NodeType.ASSEMBLY:
                                     # TODO: check for assignment inside of assembly
                                     asm = n.inline_asm
@@ -2338,13 +2315,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @staticmethod
     def find_delegatecall_in_ir(node):     # General enough to keep as is
         """
-        Handles finding delegatecall outside of an assembly block, as a LowLevelCall
+        Handles finding delegatecall outside an assembly block, as a LowLevelCall
         i.e. delegate.delegatecall(msg.data)  
         ex: tests/proxies/Delegation.sol (appears to have been written to demonstrate a vulnerability)
 
         :param node: a CFG Node object
         :param print_debug: if True, print debugging information
-        :return: the corresponding Variable object, if found
+        :return: boolean indicating if delegatecall was found, and the corresponding Variable object, if found
         """
         from slither.slithir.operations import LowLevelCall
         from slither.core.expressions.identifier import Identifier
@@ -2355,25 +2332,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.declarations.function_contract import ChildContract, FunctionContract
         from slither.slithir.variables.temporary import TemporaryVariable
 
-        b = False
-        d = None
+        is_proxy = False
+        delegate_to = None
 
         for ir in node.irs:
             if isinstance(ir, LowLevelCall):
                 if ir.function_name == "delegatecall":
-                    b = True
-                    d = ir.destination
+                    is_proxy = True
+                    delegate_to = ir.destination
                     break
-        if isinstance(d, LocalVariable):
-            e = d.expression
+        if isinstance(delegate_to, LocalVariable):
+            e = delegate_to.expression
             if e is not None:
-                if isinstance(e, CallExpression) and isinstance(d, ChildFunction):
-                    if isinstance(d.function, ChildContract):
-                        d = d.function.contract.find_delegate_from_call_exp(e, d, False)
-                elif isinstance(e, MemberAccess) and isinstance(d, ChildFunction):
-                    d = d.contract.find_delegate_from_member_access(e, d, False)
-        elif isinstance(d, TemporaryVariable):
-            exp = d.expression
+                if isinstance(e, CallExpression) and isinstance(delegate_to, ChildFunction):
+                    if isinstance(delegate_to.function, ChildContract):
+                        delegate_to = delegate_to.function.contract.find_delegate_from_call_exp(e, delegate_to, False)
+                elif isinstance(e, MemberAccess) and isinstance(delegate_to, ChildFunction):
+                    delegate_to = delegate_to.contract.find_delegate_from_member_access(e, delegate_to, False)
+        elif isinstance(delegate_to, TemporaryVariable):
+            exp = delegate_to.expression
             if isinstance(exp, CallExpression):
                 called = exp.called
                 if isinstance(called, Identifier):
@@ -2383,8 +2360,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for f in node.function.contract.functions:
                                 if f.name == func.name and f.is_implemented:
                                     func = f
-                        d = func.contract.find_delegate_from_call_exp(exp, d, False)
-        return b, d
+                        delegate_to = func.contract.find_delegate_from_call_exp(exp, delegate_to, False)
+        return is_proxy, delegate_to
 
     def find_delegatecall_in_exp_node(self, node, print_debug=False):
         """
@@ -2458,8 +2435,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         possibly a function in another contract.
         ex: in /tests/proxies/APMRegistry.sol, AppProxyPinned should not be identified as upgradeable,
             though AppProxyUpgradeable obviously should be
-
-        :param print_debug: if True, print debugging information
         """
         from slither.core.cfg.node import NodeType
         from slither.core.expressions.call_expression import CallExpression
@@ -2525,7 +2500,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def find_getter_in_contract(
             contract: "Contract", 
             var_to_get: Union[str, "Variable"],
-            print_debug: bool = False
+            print_debug=False
     ) -> Optional[Function]:
         """
         Tries to find the getter function for a given variable.
@@ -2600,15 +2575,14 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                 break
                         if contract.proxy_impl_storage_offset is not None and f.contains_assembly:
                             slot = contract.proxy_impl_storage_offset
-                            if print_debug: print(f"{f.name} contains assembly"
-                                                  f" (Slither line:{getframeinfo(currentframe()).lineno})")
-                            if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str) and "sloa" in n.inline_asm:
-                                slotname = n.inline_asm.split("sload(")[1].split(")")[0]
-                                if slotname == slot.name:
+                            if n.type == NodeType.ASSEMBLY and isinstance(n.inline_asm, str) \
+                                    and "sload(" in n.inline_asm:
+                                slot_name = n.inline_asm.split("sload(")[1].split(")")[0]
+                                if slot_name == slot.name:
                                     getter = f
                                     break
                                 for v in n.function.variables_read_or_written:
-                                    if v.name == slotname and isinstance(v, LocalVariable) and v.expression is not None:
+                                    if v.name == slot_name and isinstance(v, LocalVariable) and v.expression is not None:
                                         e = v.expression
                                         if isinstance(e, Identifier) and e.value == slot:
                                             getter = f
