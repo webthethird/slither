@@ -102,7 +102,6 @@ class ProxyFeatureExtraction:
                     self._impl_address_location = struct.contract
             # dependencies = data_dependency.get_dependencies_recursive(self._impl_address_variable,
             #                                                           self._impl_address_location)
-            # print(f"dependencies: {[str(dep) for dep in dependencies]}")
         return self._impl_address_location
 
     def is_impl_address_also_declared_in_logic(self) -> (int, Optional[Contract]):
@@ -219,7 +218,7 @@ class ProxyFeatureExtraction:
         """
         for sv in self.contract.state_variables:
             if data_dependency.is_dependent(delegate, sv, self.contract):
-                print(f"{delegate} is dependent on {sv}")
+                # print(f"{delegate} is dependent on {sv}")
                 if str(sv.type) == "bytes32" and sv.is_constant:
                     getter = self.contract.proxy_implementation_getter
                     if getter is not None and getter.contains_assembly and getter.is_reading(sv):
@@ -243,18 +242,18 @@ class ProxyFeatureExtraction:
             Means the variable was assigned a value when it was first declared. 
             """
             exp = delegate.expression
-            print(f"Expression for {delegate}: {exp}")
+            # print(f"Expression for {delegate}: {exp}")
             if isinstance(exp, Identifier):
                 v = self.unwrap_identifiers(self.impl_address_location, exp)
                 if v.expression is not None:
                     exp = v.expression
-                else:
-                    print(f"{v}.expression is None")
+                # else:
+                    # print(f"{v}.expression is None")
             if isinstance(exp, MemberAccess):
-                print(f"MemberAccess: {exp.expression}")
+                # print(f"MemberAccess: {exp.expression}")
                 exp = exp.expression
             if isinstance(exp, CallExpression):
-                print(f"Called: {exp.called}")
+                # print(f"Called: {exp.called}")
                 # if str(exp.called).startswith("sload"):
                 if len(exp.arguments) > 0:
                     arg = exp.arguments[0]
@@ -270,17 +269,17 @@ class ProxyFeatureExtraction:
                                 return str(v)
                             elif isinstance(exp, Literal):
                                 return str(exp)
-                        else:
-                            print(f"{v}.expression is None")
-                    else:
-                        print(f"CallExpression argument {arg} is not an Identifier")
+                        # else:
+                        #     print(f"{v}.expression is None")
+                    # else:
+                    #     print(f"CallExpression argument {arg} is not an Identifier")
         else:
             """
             Means the variable was declared before it was assigned a value.
             i.e., if the return value was given a name in the function signature.
             In this case we must search for where it was assigned a value. 
             """
-            print(f"Expression for {delegate} is None")
+            # print(f"Expression for {delegate} is None")
             func = self.contract.proxy_implementation_getter
             if func is None:
                 func = fallback
@@ -289,13 +288,13 @@ class ProxyFeatureExtraction:
                     if node.variable_declaration != delegate:
                         continue
                     exp = node.variable_declaration.expression
-                    print(f"find_impl_slot_from_sload: VARIABLE node: {exp}")
+                    # print(f"find_impl_slot_from_sload: VARIABLE node: {exp}")
                     if exp is not None and isinstance(exp, Identifier):
                         slot = str(exp.value.expression)
                         return slot
                 elif node.type == NodeType.EXPRESSION:
                     exp = node.expression
-                    print(f"find_impl_slot_from_sload: EXPRESSION node: {exp}")
+                    # print(f"find_impl_slot_from_sload: EXPRESSION node: {exp}")
                     if isinstance(exp, AssignmentOperation):
                         left = exp.expression_left
                         right = exp.expression_right
@@ -303,7 +302,7 @@ class ProxyFeatureExtraction:
                             if isinstance(right, CallExpression) and str(right.called) == "sload":
                                 slot = right.arguments[0]
                 elif node.type == NodeType.ASSEMBLY:
-                    print(f"find_impl_slot_from_sload: ASSEMBLY node: {node.inline_asm}")
+                    # print(f"find_impl_slot_from_sload: ASSEMBLY node: {node.inline_asm}")
                     if "AST" in node.inline_asm and isinstance(node.inline_asm, Dict):
                         for statement in node.inline_asm["AST"]["statements"]:
                             if statement["nodeType"] == "YulExpressionStatement":
@@ -338,10 +337,10 @@ class ProxyFeatureExtraction:
                     if sv is not None and sv.expression is not None and (sv.is_constant or str(sv.type) == "bytes32"):
                         slot = str(sv.expression)
                         break
-                    elif sv is not None and sv.expression is None:
-                        print(f"{sv} is missing an expression")
-                    else:
-                        print(f"Could not find StateVariable from {slot}")
+                    # elif sv is not None and sv.expression is None:
+                    #     print(f"{sv} is missing an expression")
+                    # else:
+                    #     print(f"Could not find StateVariable from {slot}")
                 elif slot is not None:
                     break
         return slot
@@ -358,10 +357,10 @@ class ProxyFeatureExtraction:
             self._proxy_only_contains_fallback = False
             for function in self.contract.functions:
                 if function.is_fallback:
-                    print(f"Found {function.name}")
+                    # print(f"Found {function.name}")
                     self._proxy_only_contains_fallback = True
                 elif function.visibility in ["external", "public"]:
-                    print(f"Found {function.visibility} function: {function.name}")
+                    # print(f"Found {function.visibility} function: {function.name}")
                     if function.is_receive or function.is_constructor:
                         continue
                     self._proxy_only_contains_fallback = False
@@ -424,12 +423,12 @@ class ProxyFeatureExtraction:
         """
         delegate = self.impl_address_variable
         e = delegate.expression
-        print(f"impl_address_from_contract_call: {e}")
+        # print(f"impl_address_from_contract_call: {e}")
         ret_exp = None
         c_type = None
         is_cross_contract = False
         if isinstance(delegate, StateVariable) and delegate.contract != self.contract:
-            print(f"impl_address_from_contract_call: StateVariable {delegate}")
+            # print(f"impl_address_from_contract_call: StateVariable {delegate}")
             """
             This indicates that cross-contract analysis during the initial execution of
             contract.is_upgradeable_proxy() was able to identify the variable which is
@@ -437,15 +436,15 @@ class ProxyFeatureExtraction:
             CallExpression which returned this value, we need to re-find it first.
             """
             getter = self.contract.proxy_implementation_getter
-            print(f"impl_address_from_contract_call: getter is {getter}")
+            # print(f"impl_address_from_contract_call: getter is {getter}")
             if getter is None and delegate.visibility in ["public", "external"]:
                 getter = delegate
             elif getter is not None:
-                print(f"getter.full_name = {getter.full_name}")
+                # print(f"getter.full_name = {getter.full_name}")
                 for (c, f) in self.contract.all_library_calls:
-                    print(f"library call: {c.name}.{f.name}")
+                    # print(f"library call: {c.name}.{f.name}")
                     if f"{c.name}.{f.full_name}" == getter.canonical_name:
-                        print(f"Found {getter} in {self.contract.name}.all_library_calls")
+                        # print(f"Found {getter} in {self.contract.name}.all_library_calls")
                         return is_cross_contract, ret_exp, c_type
             for node in self.contract.fallback_function.all_nodes():
                 exp = node.expression
@@ -453,26 +452,26 @@ class ProxyFeatureExtraction:
                     exp = exp.expression_right
                     """Fall through to below"""
                 if isinstance(exp, CallExpression):
-                    print(f"impl_address_from_contract_call: CallExpression {exp}")
+                    # print(f"impl_address_from_contract_call: CallExpression {exp}")
                     called = exp.called
                     if isinstance(called, Identifier):
                         f = called.value
                         if isinstance(f, FunctionContract) and f == getter \
                                 and f.contract != self.contract and f.contract not in self.contract.inheritance:
                             e = exp
-                            print(f"found CallExpression calling getter in another contract: {e}")
+                            # print(f"found CallExpression calling getter in another contract: {e}")
                             break
                         elif len(exp.arguments) > 0:
                             for arg in exp.arguments:
-                                print(f"impl_address_from_contract_call: arg is {arg}")
+                                # print(f"impl_address_from_contract_call: arg is {arg}")
                                 if isinstance(arg, CallExpression):
-                                    print(f"impl_address_from_contract_call: CallExpression {arg}")
+                                    # print(f"impl_address_from_contract_call: CallExpression {arg}")
                                     exp = arg
                                     called = arg.called
                                     break
                     if isinstance(called, MemberAccess) and called.member_name == getter.name:
                         e = exp
-                        print(f"found MemberAccess calling getter in another contract: {e}")
+                        # print(f"found MemberAccess calling getter in another contract: {e}")
                         break
         while isinstance(e, CallExpression):
             """
@@ -491,12 +490,12 @@ class ProxyFeatureExtraction:
                 }
             """
             called = e.called
-            print(f"called: {called}")
+            # print(f"called: {called}")
             if isinstance(called, Identifier):
                 f = called.value
                 if isinstance(f, FunctionContract) and f.return_node() is not None:
                     e = f.return_node().expression
-                    print(f"{called} returns {e}")
+                    # print(f"{called} returns {e}")
 
                 elif isinstance(f, SolidityFunction):
                     break
@@ -505,9 +504,9 @@ class ProxyFeatureExtraction:
             elif isinstance(called, MemberAccess):
                 ret_exp = e
                 e = called
-                print(f"found MemberAccess: {e}")
+                # print(f"found MemberAccess: {e}")
             else:
-                print(f"{called} is not Identifier or MemberAccess")
+                # print(f"{called} is not Identifier or MemberAccess")
                 break
         if isinstance(e, MemberAccess):
             e = e.expression
@@ -523,16 +522,16 @@ class ProxyFeatureExtraction:
             if isinstance(e, TypeConversion) or isinstance(e, Identifier):
                 c_type = e.type
                 if isinstance(e, Identifier):
-                    print(f"Identifier: {e}")
+                    # print(f"Identifier: {e}")
                     if isinstance(e.value, Contract):
-                        print(f"value is Contract: {e.value}")
+                        # print(f"value is Contract: {e.value}")
                         c_type = UserDefinedType(e.value)
                     else:
                         c_type = e.value.type
-                        if isinstance(e.value, StateVariable):
-                            print(f"value is StateVariable: {e.value}\nType: {c_type}")
+                        # if isinstance(e.value, StateVariable):
+                        #     print(f"value is StateVariable: {e.value}\nType: {c_type}")
                 elif isinstance(e, TypeConversion):
-                    print(f"TypeConversion: {e}")
+                    # print(f"TypeConversion: {e}")
                     exp = e.expression
                     if isinstance(exp, Literal) and not isinstance(ret_exp, CallExpression):
                         ret_exp = exp
@@ -557,34 +556,34 @@ class ProxyFeatureExtraction:
 
         :param call: The CallExpression returned by impl_address_from_contract_call()
         """
-        print(f"find_registry_address_source: {call}")
+        # print(f"find_registry_address_source: {call}")
         exp = call.called
         value = None
         if isinstance(exp, MemberAccess):
-            print(f"MemberAccess: {exp}")
+            # print(f"MemberAccess: {exp}")
             exp = exp.expression
             """fall-through to below"""
         if isinstance(exp, TypeConversion):
-            print(f"TypeConversion: {exp}")
+            # print(f"TypeConversion: {exp}")
             exp = exp.expression
             """fall-through to below"""
         if isinstance(exp, CallExpression):
-            print(f"CallExpression: {exp}")
+            # print(f"CallExpression: {exp}")
             exp = exp.called
             """fall-through to below"""
         if isinstance(exp, Identifier):
-            print(f"Identifier: {exp}")
+            # print(f"Identifier: {exp}")
             value = exp.value
             if isinstance(value, LocalVariable):
                 func = value.function
                 if isinstance(func, FunctionContract):
                     dependencies = data_dependency.get_dependencies_recursive(value, func.contract)
-                    print(f"dependencies for {value} in context {func.contract}: "
-                          f"{[str(dep) for dep in dependencies]}")
+                    # print(f"dependencies for {value} in context {func.contract}: "
+                    #       f"{[str(dep) for dep in dependencies]}")
                     for dep in dependencies:
                         if isinstance(dep, TemporaryVariable):
                             dep_exp = dep.expression
-                            print(f"TemporaryVariable expression: {dep_exp}")
+                            # print(f"TemporaryVariable expression: {dep_exp}")
                             if isinstance(dep_exp, CallExpression) and isinstance(dep_exp.called, Identifier):
                                 value = dep_exp.called.value
                         elif isinstance(dep, StateVariable) and str(dep.type) == "bytes32":
@@ -613,13 +612,13 @@ class ProxyFeatureExtraction:
                         for node in func.all_nodes():
                             if node.type == NodeType.EXPRESSION:
                                 exp = node.expression
-                                print(f"EXPRESSION node: {exp}")
+                                # print(f"EXPRESSION node: {exp}")
                                 if isinstance(exp, AssignmentOperation):
                                     left = exp.expression_left
                                     right = exp.expression_right
                                     if isinstance(left, Identifier) and left.value == value:
                                         if isinstance(right, CallExpression):
-                                            print(f"Called: {right.called}")
+                                            # print(f"Called: {right.called}")
                                             if str(right.called).startswith("sload"):
                                                 exp = right.arguments[0]
                                                 if isinstance(exp, Identifier):
@@ -706,17 +705,17 @@ class ProxyFeatureExtraction:
         elif getter is not None and getter.contract != self.contract:
             dependencies += list(data_dependency.get_dependencies_recursive(delegate, getter.contract))
         dependencies = set(dependencies)
-        print(f"has_compatibility_checks: dependencies: {[str(dep) for dep in dependencies]}")
+        # print(f"has_compatibility_checks: dependencies: {[str(dep) for dep in dependencies]}")
         for dep in dependencies:
             if isinstance(dep, StateVariable):
                 writing_funcs += self.functions_writing_to_delegate(dep, dep.contract)
         for (func, var_written) in writing_funcs:
             if isinstance(func, FunctionContract):
                 if func.visibility in ["internal", "private"] and func != setter:
-                    print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
+                    # print(f"has_compatibility_checks: skipping {func.visibility} function {func}")
                     continue
-                else:
-                    print(f"has_compatibility_checks: checking {func.visibility} function {func}")
+                # else:
+                #     print(f"has_compatibility_checks: checking {func.visibility} function {func}")
                 check_exp = None
                 has_check = False
                 for node in func.all_nodes():
@@ -740,9 +739,9 @@ class ProxyFeatureExtraction:
                             Only CallExpressions we care about here are require and assert
                             """
                             if called.name in ["require(bool)", "require(bool,string)", "assert(bool)"]:
-                                print(exp)
+                                # print(exp)
                                 condition = exp.arguments[0]
-                                print(f"has_compatibility_checks: condition {condition}")
+                                # print(f"has_compatibility_checks: condition {condition}")
                                 """
                                 The static helper method check_condition_from_expression will return an
                                 Expression object if exp is a compatibility check, and will append any
@@ -761,17 +760,17 @@ class ProxyFeatureExtraction:
                                 if check_ is not None:
                                     check_exp = check_
                                     has_check = True
-                    elif isinstance(exp, ConditionalExpression):
-                        """
-                        Even when there is clearly an if-else block in the source code, Function.all_expressions()
-                        never seems to contain any ConditionalExpression objects. Rather, only the condition itself,
-                        often a BinaryOperation or an Identifier for a boolean variable, and the expressions within
-                        the `then` and `else` blocks appear in the list of all expressions. Therefore we need to use
-                        Function.all_nodes() instead to find the IF nodes in the CFG. Unfortunately we cannot use 
-                        all_nodes() instead of all_expressions() for the section above, because all_nodes() does not
-                        handle Solidity function CallExpressions correctly.
-                        """
-                        print(f"has_compatibility_checks: ConditionalExpression {exp}")
+                    # elif isinstance(exp, ConditionalExpression):
+                    #     """
+                    #     Even when there is clearly an if-else block in the source code, Function.all_expressions()
+                    #     never seems to contain any ConditionalExpression objects. Rather, only the condition itself,
+                    #     often a BinaryOperation or an Identifier for a boolean variable, and the expressions within
+                    #     the `then` and `else` blocks appear in the list of all expressions. Therefore we need to use
+                    #     Function.all_nodes() instead to find the IF nodes in the CFG. Unfortunately we cannot use
+                    #     all_nodes() instead of all_expressions() for the section above, because all_nodes() does not
+                    #     handle Solidity function CallExpressions correctly.
+                    #     """
+                    #     print(f"has_compatibility_checks: ConditionalExpression {exp}")
                     elif isinstance(exp, AssignmentOperation):
                         """
                         Need to check for incorrect compatibility check where the variable written is a Contract type,
@@ -794,19 +793,19 @@ class ProxyFeatureExtraction:
                             if isinstance(var_written, LocalVariable) and isinstance(func, FunctionContract):
                                 var_type = var_written.type
                                 if isinstance(var_type, UserDefinedType):
-                                    print(f"has_compatibility_checks: {var_written}"
-                                          f" is UserDefinedType: {var_type}")
+                                    # print(f"has_compatibility_checks: {var_written}"
+                                    #       f" is UserDefinedType: {var_type}")
                                     var_type = var_type.type
                                 if isinstance(var_type, Contract):
-                                    print(f"has_compatibility_checks: {var_written}"
-                                          f" is Contract type: {var_type}")
+                                    # print(f"has_compatibility_checks: {var_written}"
+                                    #       f" is Contract type: {var_type}")
                                     if var_written in func.parameters:
                                         check_exp = exp
                                         has_check = True
                                         is_check_correct = False
                                         func_exp_list.append((func, check_exp, is_check_correct))
                     elif node.type == NodeType.IF:
-                        print(f"has_compatibility_checks: IF node exp = {exp}")
+                        # print(f"has_compatibility_checks: IF node exp = {exp}")
                         """
                         Found an IF node, so check if it can lead to a revert.
                         Node.sons only gives us the immediate children of the IF node,
@@ -815,15 +814,15 @@ class ProxyFeatureExtraction:
                         # TODO: It may be better to implement a recursive getter for Node children.
                         # TODO: Use Dominators / Control Dependency Graph instead
                         if any(["revert(" in str(son.expression) for son in node.sons if son.expression is not None]):
-                            print("has_compatibility_checks: IF node can lead to revert"
-                                  f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                            # print("has_compatibility_checks: IF node can lead to revert"
+                            #       f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
                             """
                             Unfortunately the IF Node does not contain a ConditionalExpression
                             already, so we must construct one using the CFG info from the Node. 
                             """
                             if len(node.sons) > 1:
-                                print("has_compatibility_checks: IF node can lead to revert"
-                                      f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
+                                # print("has_compatibility_checks: IF node can lead to revert"
+                                #       f" {[str(son.expression) for son in node.sons if son.expression is not None]}")
                                 son0 = node.sons[0]
                                 while son0.expression is None and son0.sons[0] is not None:
                                     son0 = son0.sons[0]
@@ -833,7 +832,7 @@ class ProxyFeatureExtraction:
                                 conditional_exp = ConditionalExpression(exp, son0.expression, son1.expression)
                             else:
                                 conditional_exp = ConditionalExpression(exp, node.sons[0].expression)
-                            print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
+                            # print(f"has_compatibility_checks: ConditionalExpression {conditional_exp}")
                             """
                             The static helper method check_condition_from_expression will return an
                             Expression object if exp is a compatibility check, and will append any
@@ -876,7 +875,7 @@ class ProxyFeatureExtraction:
         setter = self.contract.proxy_implementation_setter
         slot = self.contract.proxy_impl_storage_offset
         to_search = contract.functions
-        print(f"functions_writing_to_variable: {delegate}")
+        # print(f"functions_writing_to_variable: {delegate}")
         if setter is not None and setter.contract != contract:
             """
             If the implementation setter was found in a different contract, 
@@ -892,8 +891,8 @@ class ProxyFeatureExtraction:
                 """
                 continue
             value_written = None
-            print(f"functions_writing_to_variable: checking function {func.contract.name}.{func}"
-                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+            # print(f"functions_writing_to_variable: checking function {func.contract.name}.{func}"
+            #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
             if func.is_writing(delegate) and delegate not in func.returns:
                 """
                 Function.is_writing only works in the simplest cases, i.e., when writing to
@@ -903,28 +902,28 @@ class ProxyFeatureExtraction:
                 find the AssignmentOperation and extract the value being written.
                 """
                 for exp in func.expressions:
-                    print(f"functions_writing_to_variable: exp = {exp}"
-                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                    # print(f"functions_writing_to_variable: exp = {exp}"
+                    #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                     if isinstance(exp, AssignmentOperation):
-                        print(f"functions_writing_to_variable: AssignmentOperation: {exp}"
-                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                        # print(f"functions_writing_to_variable: AssignmentOperation: {exp}"
+                        #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                         left = exp.expression_left
                         right = exp.expression_right
                         if isinstance(left, IndexAccess):
                             """
                             If the delegate variable is a mapping, then we expect an IndexAccess
                             """
-                            print(f"functions_writing_to_variable: IndexAccess: {left}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                            # print(f"functions_writing_to_variable: IndexAccess: {left}"
+                            #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             left = left.expression_left
                         if isinstance(left, Identifier) and left.value == delegate:
-                            print(f"functions_writing_to_variable: Identifier: {left}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                            # print(f"functions_writing_to_variable: Identifier: {left}"
+                            #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             value_written = self.get_value_assigned(exp)
                 if value_written is not None:
                     setters.append([func, value_written])
-                    print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                    # print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                    #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
             elif slot is not None:
                 """
                 If the implementation address storage slot was detected during the initial analysis,
@@ -947,15 +946,15 @@ class ProxyFeatureExtraction:
                             if node.function.is_reading(slot) or slot.name in node.inline_asm:
                                 for asm in asm_split:
                                     if "sstore" in asm:
-                                        print(f"functions_writing_to_variable: found sstore:\n{asm}\n"
-                                              f"(proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                        # print(f"functions_writing_to_variable: found sstore:\n{asm}\n"
+                                        #       f"(proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         val_str = asm.split("sstore")[1].split(",")[1].split(")")[0].strip()
-                                        print(val_str)
+                                        # print(val_str)
                                         value_written = node.function.get_local_variable_from_name(val_str)
                                         setters.append([func, value_written])
-                                        print(f"functions_writing_to_variable: {func} writes {value_written}"
-                                              f" to {slot} w/ sstore"
-                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                        # print(f"functions_writing_to_variable: {func} writes {value_written}"
+                                        #       f" to {slot} w/ sstore"
+                                        #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         break
                     elif node.type == NodeType.EXPRESSION:
                         exp = node.expression
@@ -986,14 +985,14 @@ class ProxyFeatureExtraction:
                                         continue
                                     value_written = self.get_value_assigned(exp)
                                     setters.append([func, value_written])
-                                    print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                                          f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                    # print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                                    #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                     break
                             elif isinstance(exp, CallExpression) and str(exp.called).startswith("sstore"):
                                 value_written = self.get_value_assigned(exp)
                                 setters.append([func, value_written])
-                                print(f"functions_writing_to_variable: {func} writes {value_written} to {slot}"
-                                      f" using sstore (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                # print(f"functions_writing_to_variable: {func} writes {value_written} to {slot}"
+                                #       f" using sstore (proxy_features line:{getframeinfo(currentframe()).lineno})")
             else:
                 for exp in func.all_expressions():
                     if isinstance(exp, AssignmentOperation):
@@ -1007,8 +1006,8 @@ class ProxyFeatureExtraction:
                                                       if isinstance(dep, Variable)
                                                       and dep.expression == right))
                             setters.append([func, value_written])
-                            print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
-                                  f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                            # print(f"functions_writing_to_variable: {func} writes {value_written} to {delegate}"
+                            #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                             break
                         elif delegate.expression is not None:
                             d_exp = delegate.expression
@@ -1032,9 +1031,9 @@ class ProxyFeatureExtraction:
                                     if str(d_exp) == str(left):
                                         value_written = self.get_value_assigned(exp)
                                         setters.append([func, value_written])
-                                        print(f"functions_writing_to_variable: {func} writes {value_written}"
-                                              f" to {member_exp}"
-                                              f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
+                                        # print(f"functions_writing_to_variable: {func} writes {value_written}"
+                                        #       f" to {member_exp}"
+                                        #       f" (proxy_features line:{getframeinfo(currentframe()).lineno})")
                                         break
         return setters
 
@@ -1058,9 +1057,9 @@ class ProxyFeatureExtraction:
         for c in self.compilation_unit.contracts:
             if c == self.contract or c.is_interface:
                 continue
-            print(f"Looking for Loupe functions in {c}")
+            # print(f"Looking for Loupe functions in {c}")
             for f in c.functions:
-                print(f.signature_str)
+                # print(f.signature_str)
                 if f.signature_str in loupe_sigs:
                     loupe_sigs.remove(f.signature_str)
                     loupe_facets.append((f.signature_str, c))
@@ -1079,7 +1078,7 @@ class ProxyFeatureExtraction:
         for node in self.contract.fallback_function.all_nodes():
             if node.type == NodeType.ASSEMBLY and isinstance(node.inline_asm, str):
                 if "delegatecall" in node.inline_asm:
-                    print(f"can_toggle_delegatecall_on_off: found delegatecall in ASSEMBLY node: {node.inline_asm}")
+                    # print(f"can_toggle_delegatecall_on_off: found delegatecall in ASSEMBLY node: {node.inline_asm}")
                     dominators = node.dominators
                     delegatecall_node = node
                     break
@@ -1088,16 +1087,16 @@ class ProxyFeatureExtraction:
                 if isinstance(exp, AssignmentOperation):
                     exp = exp.expression_right
                 if isinstance(exp, CallExpression) and "delegatecall" in str(exp.called):
-                    print(f"can_toggle_delegatecall_on_off: found delegatecall in EXPRESSION node: {node.inline_asm}")
+                    # print(f"can_toggle_delegatecall_on_off: found delegatecall in EXPRESSION node: {node.inline_asm}")
                     dominators = node.dominators
                     delegatecall_node = node
                     break
         if dominators is not None:
             dom_node = None
             for node in dominators:
-                print(f"can_toggle_delegatecall_on_off:\n"
-                      f" dominator node type: {node.type}\n"
-                      f" dominator expression: {node.expression}")
+                # print(f"can_toggle_delegatecall_on_off:\n"
+                #       f" dominator node type: {node.type}\n"
+                #       f" dominator expression: {node.expression}")
                 # if node.is_conditional(include_loop=False) and all([call not in str(node.expression)
                 #                                                     for call in ["require", "assert"]]):
                 if node.type == NodeType.IF:
@@ -1107,18 +1106,18 @@ class ProxyFeatureExtraction:
                     break
             if dom_node is not None:
                 successors = dom_node.dominator_successors_recursive
-                if len(successors) > 0:
-                    print(f"can_toggle_delegatecall_on_off: successors:")
+                # if len(successors) > 0:
+                #     print(f"can_toggle_delegatecall_on_off: successors:")
                 for successor in successors:
-                    print(f" NodeType: {successor.type}"
-                          f"  expression: "
-                          f"{successor.inline_asm if successor.inline_asm is not None else successor.expression}")
+                    # print(f" NodeType: {successor.type}"
+                    #       f"  expression: "
+                    #       f"{successor.inline_asm if successor.inline_asm is not None else successor.expression}")
                     if successor == delegatecall_node:
                         if successor == dom_node.son_true or dom_node.son_true in successor.dominators:
-                            print(f"can_toggle_delegatecall_on_off: delegatecall_condition = True")
+                            # print(f"can_toggle_delegatecall_on_off: delegatecall_condition = True")
                             delegatecall_condition = True
                         elif successor == dom_node.son_false or dom_node.son_false in successor.dominators:
-                            print(f"can_toggle_delegatecall_on_off: delegatecall_condition = False")
+                            # print(f"can_toggle_delegatecall_on_off: delegatecall_condition = False")
                             delegatecall_condition = False
                 if delegatecall_condition is not None:
                     for successor in successors:
@@ -1144,7 +1143,7 @@ class ProxyFeatureExtraction:
                 for node in setter.all_nodes():
                     if node.expression is not None:
                         exp = node.expression
-                        print(f"has_time_delay: (node.type) {node.type}\n(Expression) {exp}")
+                        # print(f"has_time_delay: (node.type) {node.type}\n(Expression) {exp}")
                         if isinstance(exp, CallExpression):
                             # print(f"has_time_delay: (node.type) {node.type}\n(CallExpression) {exp}")
                             if str(exp.called) in ["require(bool)", "require(bool,string)", "assert(bool)"]:
@@ -1155,7 +1154,7 @@ class ProxyFeatureExtraction:
                                                                 for n in node.dominator_successors_recursive
                                                                 if isinstance(n.expression, AssignmentOperation) and
                                                                 isinstance(n.expression.expression_left, Identifier)]:
-                        print(f"has_time_delay: found condition using `now`: {condition}")
+                        # print(f"has_time_delay: found condition using `now`: {condition}")
                         self._has_time_delay["has_delay"] = True
                         self._has_time_delay["upgrade_condition"] = str(condition)
                         break
@@ -1170,10 +1169,10 @@ class ProxyFeatureExtraction:
                         compare_to_exp = left
                         now_exp = right
                     if isinstance(compare_to_exp, BinaryOperation) and str(compare_to_exp.type) == "+":
-                        print(f"has_time_delay: comparing (BinaryOperation) {compare_to_exp} to {now_exp}")
+                        # print(f"has_time_delay: comparing (BinaryOperation) {compare_to_exp} to {now_exp}")
                         compare_to_exp, delay_duration = self.delay_duration_from_binary_operation(compare_to_exp)
                     if isinstance(compare_to_exp, Identifier):
-                        print(f"has_time_delay: comparing (Identifier) {compare_to_exp} to {now_exp}")
+                        # print(f"has_time_delay: comparing (Identifier) {compare_to_exp} to {now_exp}")
                         compare_to_var = compare_to_exp.value
                         self._has_time_delay["timestamp_variable"] = compare_to_var.name
                         timestamp_setters = self.contract.get_functions_writing_to_variable(compare_to_var)
@@ -1187,14 +1186,14 @@ class ProxyFeatureExtraction:
                                                    and "now" in str(exp.expression_right)), None)
                                 if assignment is not None:
                                     right = assignment.expression_right
-                                    print(f"has_time_delay: function {func} assigns {right} to {compare_to_var}")
+                                    # print(f"has_time_delay: function {func} assigns {right} to {compare_to_var}")
                                     if isinstance(right, BinaryOperation) and str(right.type) == "+":
-                                        print(f"has_time_delay: assigned (BinaryOperation) {right}")
+                                        # print(f"has_time_delay: assigned (BinaryOperation) {right}")
                                         compare_to_exp, delay_duration = self.delay_duration_from_binary_operation(right)
                                         if delay_duration is not None:
                                             break
                     if delay_duration is not None:
-                        print(f"has_time_delay: time delay = {delay_duration}")
+                        # print(f"has_time_delay: time delay = {delay_duration}")
                         self._has_time_delay["delay_duration"] = delay_duration
         return self._has_time_delay
 
@@ -1211,11 +1210,11 @@ class ProxyFeatureExtraction:
     ) -> Tuple[Expression, Optional[str]]:
         delay_duration = None
         if isinstance(compare_to_exp, BinaryOperation):
-            print(f"delay_duration_from_binary_operation: (BinaryOperation) {compare_to_exp}")
+            # print(f"delay_duration_from_binary_operation: (BinaryOperation) {compare_to_exp}")
             left = compare_to_exp.expression_left
             right = compare_to_exp.expression_right
             if isinstance(right, Literal):
-                print(f"delay_duration_from_binary_operation: right side (Literal) {right.value}")
+                # print(f"delay_duration_from_binary_operation: right side (Literal) {right.value}")
                 delay_duration = right.value
                 if right.subdenomination is not None:
                     delay_duration = f"{delay_duration} {right.subdenomination}"
@@ -1237,14 +1236,14 @@ class ProxyFeatureExtraction:
     ) -> Tuple[bool, Optional[str]]:
         check = False
 
-        print(f"Checking {function.visibility} function {function}")
+        # print(f"Checking {function.visibility} function {function}")
         for exp in function.all_expressions():
             """
             function.all_expressions() is a recursive getter which includes
             expressions from all functions/modifiers called in given function.
             """
-            if ('msg.sender ' + comparator) in str(exp):
-                print(f"Found 'msg.sender {comparator}' in expression: {exp}")
+            # if ('msg.sender ' + comparator) in str(exp):
+            #     print(f"Found 'msg.sender {comparator}' in expression: {exp}")
             if "require" in str(exp) or "assert" in str(exp):
                 """
                 'require' and 'assert' are Solidity functions which always
@@ -1366,10 +1365,10 @@ class ProxyFeatureExtraction:
             """
             return check_exp, func_exp_list
         elif isinstance(condition, Identifier):
-            print(f"check_condition_from_expression: Identifier {condition}")
+            # print(f"check_condition_from_expression: Identifier {condition}")
             if condition.value.expression is not None:
-                print(f"check_condition_from_expression: Identifier.value.expression "
-                      f"{condition.value.expression}")
+                # print(f"check_condition_from_expression: Identifier.value.expression "
+                #       f"{condition.value.expression}")
                 condition = condition.value.expression
             else:
                 for e in in_function.all_expressions():
@@ -1377,9 +1376,9 @@ class ProxyFeatureExtraction:
                             str(condition) in str(e.expression_left):
                         condition = e.expression_right
                         break
-        elif len(in_function.modifier_calls_as_expressions) > 0:
-            print(f"check_condition_from_expression: modifier calls: "
-                  f"{[str(call) for call in in_function.modifier_calls_as_expressions]}")
+        # elif len(in_function.modifier_calls_as_expressions) > 0:
+        #     print(f"check_condition_from_expression: modifier calls: "
+        #           f"{[str(call) for call in in_function.modifier_calls_as_expressions]}")
         call_func = None
         if isinstance(condition, CallExpression):
             """
@@ -1438,7 +1437,7 @@ class ProxyFeatureExtraction:
                     for e in call_func.all_expressions():
                         if isinstance(e, AssignmentOperation) and str(e.expression_left) == str(right):
                             condition = BinaryOperation(left, e.expression_right, condition.type)
-            print(f"check_condition_from_expression: condition {condition}")
+            # print(f"check_condition_from_expression: condition {condition}")
             if isinstance(original, CallExpression) and call_func is not None:
                 args = [condition]
                 if len(original.arguments) > 1:
@@ -1457,7 +1456,7 @@ class ProxyFeatureExtraction:
 
     @staticmethod
     def get_value_assigned(exp: Expression) -> Optional[Variable]:
-        print(f"get_value_assigned: {exp}")
+        # print(f"get_value_assigned: {exp}")
         value = None
         id_exp = None
         if isinstance(exp, AssignmentOperation):
@@ -1483,26 +1482,26 @@ class ProxyFeatureExtraction:
         if proxy.constructor is not None:
             for exp in proxy.constructor.all_expressions():
                 if isinstance(exp, CallExpression) and str(exp.called) == "assert(bool)" and slot.name in str(exp):
-                    print(f"Found assert statement in constructor:\n{str(exp)}")
+                    # print(f"Found assert statement in constructor:\n{str(exp)}")
                     assert_exp = exp
                     arg = exp.arguments[0]
                     if isinstance(arg, BinaryOperation) and str(arg.type) == "==" and arg.expression_left.value == slot:
                         e = arg.expression_right
-                        print("BinaryOperation ==")
+                        # print("BinaryOperation ==")
                         if isinstance(e, TypeConversion) and str(e.type) == "bytes32":
-                            print(f"TypeConversion bytes32: {str(e)}")
+                            # print(f"TypeConversion bytes32: {str(e)}")
                             e = e.expression
                         if isinstance(e, BinaryOperation) and str(e.type) == "-":
-                            print(f"BinaryOperation -: {str(e)}")
+                            # print(f"BinaryOperation -: {str(e)}")
                             if isinstance(e.expression_right, Literal):
-                                print(f"Minus: {str(e.expression_right.value)}")
+                                # print(f"Minus: {str(e.expression_right.value)}")
                                 minus = int(e.expression_right.value)
                                 e = e.expression_left
                         if isinstance(e, TypeConversion) and str(e.type) == "uint256":
-                            print(f"TypeConversion uint256: {str(e)}")
+                            # print(f"TypeConversion uint256: {str(e)}")
                             e = e.expression
                         if isinstance(e, CallExpression) and "keccak256(" in str(e.called):
-                            print(f"CallExpression keccak256: {str(e)}")
+                            # print(f"CallExpression keccak256: {str(e)}")
                             arg = e.arguments[0]
                             if isinstance(arg, Literal):
                                 if str(arg.type) == "string":
