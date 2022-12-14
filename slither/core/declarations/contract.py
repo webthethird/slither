@@ -1464,9 +1464,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.solidity_types.elementary_type import ElementaryType
 
         is_proxy = False
-        delegates_to: Variable = None
+        delegates_to: Optional[Variable] = None
         asm_split = None
-        dest = None
+        dest: Optional[Union[str, dict]] = None
 
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             """
