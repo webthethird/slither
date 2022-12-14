@@ -237,7 +237,6 @@ or one of the proxy patterns developed by OpenZeppelin.
 
     @staticmethod
     def detect_storage_slot(proxy_features: ProxyFeatureExtraction):
-        print(f"detect_storage_slot: {proxy_features.contract}")
         # results = []
         info = []
         features: Dict = {}
@@ -256,8 +255,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                 Use the getter instead
                 """
                 setter = proxy.proxy_implementation_getter
-            else:
-                print(f"Setter found in contract {setter.contract}")
             if setter is None or setter.contract == proxy or setter.contract in proxy.inheritance:
                 if slot == "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc" or \
                         slot == "bytes32(uint256(keccak256(bytes)(eip1967.proxy.implementation)) - 1)":
@@ -989,10 +986,6 @@ or one of the proxy patterns developed by OpenZeppelin.
                             info += [f"Incorrect compatibility check in {func}: {exp}\n"]
                         features["compatibility_checks"]["functions"][func.canonical_name] = {"check": str(exp),
                                                                                               "is_correct": is_correct}
-                        # print(f"func: {func}  exp: {exp}")
-                        # info += [
-                        #     "In ", func.canonical_name, ": ", str(exp), "\n"
-                        # ]
                 # if len(info) > 0:
                 # json = self.generate_result(info)
                 # results.append(json)
