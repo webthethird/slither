@@ -1887,9 +1887,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         from slither.core.declarations.function_contract import FunctionContract
         from slither.analyses.data_dependency import data_dependency
 
-        delegate: Variable = None
-        func: Function = None
-        ret: Variable = None
+        delegate: Optional[Variable] = None
+        func: Optional[Function] = None
+        ret: Optional[Variable] = None
         if isinstance(exp, CallExpression):     # Guaranteed but type checking never hurts and helps IDE w autocomplete
             called = exp.called
             if isinstance(called, Identifier):
@@ -1897,7 +1897,6 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if isinstance(val, Function):   # Identifier.value is usually a Variable but here it's always a Function
                     func = val
             elif isinstance(called, MemberAccess):
-                val = called.expression
                 delegate = self.find_delegate_from_member_access(exp, var)
                 return delegate
         if func is not None:
