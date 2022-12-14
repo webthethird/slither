@@ -1268,7 +1268,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._is_upgradeable
 
     @property
-    def is_upgradeable_proxy(self) -> Union[bool, str]:
+    def is_upgradeable_proxy(self) -> bool:
         """
         Determines if a proxy contract can be upgraded, i.e. if there's an implementation address setter for upgrading
 
