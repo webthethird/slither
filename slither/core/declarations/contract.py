@@ -1561,19 +1561,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
         :return: the corresponding Variable object, if found
         """
-        from slither.core.cfg.node import NodeType
         from slither.core.variables.variable import Variable
-        from slither.core.variables.state_variable import StateVariable
-        from slither.core.variables.local_variable import LocalVariable
         from slither.core.solidity_types.elementary_type import ElementaryType
-        from slither.core.children.child_contract import ChildContract
-        from slither.core.expressions.literal import Literal
-        from slither.core.expressions.type_conversion import TypeConversion
-        from slither.core.expressions.call_expression import CallExpression
-        from slither.core.expressions.assignment_operation import AssignmentOperation
-        from slither.core.expressions.index_access import IndexAccess
-        from slither.core.expressions.member_access import MemberAccess
-        from slither.core.expressions.identifier import Identifier
 
         delegate = None
         if len(dest) == 42 and dest.startswith("0x"):
