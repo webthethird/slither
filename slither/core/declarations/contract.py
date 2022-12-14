@@ -1434,7 +1434,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     @property
     def is_upgradeable_proxy_confirmed(self) -> Optional[bool]:
         if self._is_upgradeable_proxy_confirmed is None:
-            self.is_upgradeable_proxy()
+            if self.is_upgradeable_proxy:
+                return self._is_upgradeable_proxy_confirmed
         return self._is_upgradeable_proxy_confirmed
 
     @property
