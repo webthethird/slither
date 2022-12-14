@@ -2414,9 +2414,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if e is not None:
                 if isinstance(e, CallExpression) and isinstance(delegate_to, ChildFunction):
                     if isinstance(delegate_to.function, ChildContract):
-                        delegate_to = delegate_to.function.contract.find_delegate_from_call_exp(e, delegate_to, False)
+                        delegate_to = delegate_to.function.contract.find_delegate_from_call_exp(e, delegate_to)
                 elif isinstance(e, MemberAccess) and isinstance(delegate_to, ChildFunction):
-                    delegate_to = delegate_to.contract.find_delegate_from_member_access(e, delegate_to, False)
+                    delegate_to = delegate_to.contract.find_delegate_from_member_access(e, delegate_to)
         elif isinstance(delegate_to, TemporaryVariable):
             exp = delegate_to.expression
             if isinstance(exp, CallExpression):
@@ -2428,7 +2428,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                             for f in node.function.contract.functions:
                                 if f.name == func.name and f.is_implemented:
                                     func = f
-                        delegate_to = func.contract.find_delegate_from_call_exp(exp, delegate_to, False)
+                        delegate_to = func.contract.find_delegate_from_call_exp(exp, delegate_to)
         return is_proxy, delegate_to
 
     def find_delegatecall_in_exp_node(self, node):
