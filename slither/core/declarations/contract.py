@@ -1587,7 +1587,43 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if sv.name == dest:
                 delegate = sv
                 return delegate
-        # TODO: Split searching local variables into its own separate method
+        delegate = self.find_local_delegate_from_name(dest, parent_func)
+        if delegate is not None:
+            return delegate
+        delegate = self.find_parameter_delegate_from_name(dest, parent_func)
+        if delegate is not None:
+            return delegate
+        if parent_func.contains_assembly and delegate is None:  # and self._proxy_impl_slot is not None:
+            delegate = self.find_delegate_in_asm_from_name(dest, parent_func)
+            if delegate is not None:
+                return delegate
+        return delegate
+
+    def find_local_delegate_from_name(
+            self,
+            dest: str,
+            parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Extension of self.find_delegate_variable_by_name()
+        Used to handle searching for matching local variables and tracking them to their source.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
         for lv in parent_func.local_variables:
             if delegate is not None or self._proxy_impl_slot is not None:
                 return delegate
@@ -1649,7 +1685,31 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                                 break
                                 else:
                                     delegate = self.find_delegate_from_call_exp(exp, lv)
-        # TODO: Split searching parameter variables into its own separate method
+        return delegate
+
+    def find_parameter_delegate_from_name(
+            self,
+            dest: str,
+            parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Extension of self.find_delegate_variable_by_name()
+        Used to handle searching for matching parameter variables and tracking them to their source.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
         for idx, pv in enumerate(parent_func.parameters):
             if pv.name == dest:
                 # delegate = pv
@@ -1698,63 +1758,93 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                                         delegate.expression = arg
                                     break
                 break
-        if parent_func.contains_assembly and delegate is None:  # and self._proxy_impl_slot is not None:
-            # If we still haven't found the delegate variable, and the function contains assembly, look for sload
-            for node in parent_func.all_nodes():
-                if node.type == NodeType.ASSEMBLY:
-                    if isinstance(node.inline_asm, str):
-                        asm = node.inline_asm.split("\n")
-                        for s in asm:
-                            if f"{dest}" in s and ":=" in s:
-                                if "sload" in s:
-                                    dest = s.replace(")", "(").split("(")[1]
-                                    if not dest.endswith("_slot"):
-                                        slot_var = parent_func.get_local_variable_from_name(dest)
-                                        if slot_var is not None and slot_var.expression is not None:
-                                            slot_exp = slot_var.expression
-                                            if isinstance(slot_exp, Identifier) and slot_exp.value.is_constant:
-                                                self._proxy_impl_slot = slot_exp.value
-                                    break
-                    else:
-                        asm = node.inline_asm
-                        for statement in asm["AST"]["statements"]:
-                            if statement["nodeType"] == "YulVariableDeclaration" \
-                                    and statement["variables"][0]["name"] == dest:
-                                if statement["value"]["nodeType"] == "YulFunctionCall" \
-                                        and statement["value"]["functionName"]["name"] == "and" \
-                                        and statement["value"]["arguments"][0]["nodeType"] == "YulFunctionCall" \
-                                        and statement["value"]["arguments"][0]["functionName"]["name"] == "sload":
-                                    statement["value"] = statement["value"]["arguments"][0]
-                                if statement["value"]["nodeType"] == "YulFunctionCall" \
-                                        and statement["value"]["functionName"]["name"] == "sload":
-                                    if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
-                                        slot = statement["value"]["arguments"][0]["value"]
-                                        if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
+        return delegate
+
+    def find_delegate_in_asm_from_name(
+            self,
+            dest: str,
+            parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Extension of self.find_delegate_variable_by_name()
+        Used to handle searching for matching variables loaded in assembly using sload(),
+        and determining which storage slot they are loaded from.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.solidity_types.elementary_type import ElementaryType
+        from slither.core.children.child_contract import ChildContract
+        from slither.core.expressions.literal import Literal
+        from slither.core.expressions.type_conversion import TypeConversion
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
+        # If we still haven't found the delegate variable, and the function contains assembly, look for sload
+        for node in parent_func.all_nodes():
+            if node.type == NodeType.ASSEMBLY:
+                if isinstance(node.inline_asm, str):
+                    asm = node.inline_asm.split("\n")
+                    for s in asm:
+                        if f"{dest}" in s and ":=" in s:
+                            if "sload" in s:
+                                dest = s.replace(")", "(").split("(")[1]
+                                if not dest.endswith("_slot"):
+                                    slot_var = parent_func.get_local_variable_from_name(dest)
+                                    if slot_var is not None and slot_var.expression is not None:
+                                        slot_exp = slot_var.expression
+                                        if isinstance(slot_exp, Identifier) and slot_exp.value.is_constant:
+                                            self._proxy_impl_slot = slot_exp.value
+                                break
+                else:
+                    asm = node.inline_asm
+                    for statement in asm["AST"]["statements"]:
+                        if statement["nodeType"] == "YulVariableDeclaration" \
+                                and statement["variables"][0]["name"] == dest:
+                            if statement["value"]["nodeType"] == "YulFunctionCall" \
+                                    and statement["value"]["functionName"]["name"] == "and" \
+                                    and statement["value"]["arguments"][0]["nodeType"] == "YulFunctionCall" \
+                                    and statement["value"]["arguments"][0]["functionName"]["name"] == "sload":
+                                statement["value"] = statement["value"]["arguments"][0]
+                            if statement["value"]["nodeType"] == "YulFunctionCall" \
+                                    and statement["value"]["functionName"]["name"] == "sload":
+                                if statement["value"]["arguments"][0]["nodeType"] == "YulLiteral":
+                                    slot = statement["value"]["arguments"][0]["value"]
+                                    if len(slot) == 66 and slot.startswith("0x"):  # 32-bit memory address
+                                        # delegate = LocalVariable()
+                                        # delegate.set_type(ElementaryType("address"))
+                                        # delegate.name = dest
+                                        # delegate.set_location(slot)
+                                        impl_slot = StateVariable()
+                                        impl_slot.name = slot
+                                        impl_slot.is_constant = True
+                                        impl_slot.expression = Literal(slot, ElementaryType("bytes32"))
+                                        impl_slot.set_type(ElementaryType("bytes32"))
+                                        impl_slot.set_contract(node.function.contract
+                                                               if isinstance(node.function, ChildContract)
+                                                               else self)
+                                        self._proxy_impl_slot = impl_slot
+                                        break
+                                    elif slot == "0":
+                                        delegate = self.state_variables_ordered[0]
+                                elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
+                                    for sv in self.state_variables:
+                                        if sv.name == statement["value"]["arguments"][0]["name"] and sv.is_constant:
+                                            # slot = str(sv.expression)
                                             # delegate = LocalVariable()
                                             # delegate.set_type(ElementaryType("address"))
                                             # delegate.name = dest
                                             # delegate.set_location(slot)
-                                            impl_slot = StateVariable()
-                                            impl_slot.name = slot
-                                            impl_slot.is_constant = True
-                                            impl_slot.expression = Literal(slot, ElementaryType("bytes32"))
-                                            impl_slot.set_type(ElementaryType("bytes32"))
-                                            impl_slot.set_contract(node.function.contract
-                                                                   if isinstance(node.function, ChildContract)
-                                                                   else self)
-                                            self._proxy_impl_slot = impl_slot
-                                            break
-                                        elif slot == "0":
-                                            delegate = self.state_variables_ordered[0]
-                                    elif statement["value"]["arguments"][0]["nodeType"] == "YulIdentifier":
-                                        for sv in self.state_variables:
-                                            if sv.name == statement["value"]["arguments"][0]["name"] and sv.is_constant:
-                                                # slot = str(sv.expression)
-                                                # delegate = LocalVariable()
-                                                # delegate.set_type(ElementaryType("address"))
-                                                # delegate.name = dest
-                                                # delegate.set_location(slot)
-                                                self._proxy_impl_slot = sv
+                                            self._proxy_impl_slot = sv
         if delegate is None and dest.endswith("_slot"):
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func)
         return delegate
