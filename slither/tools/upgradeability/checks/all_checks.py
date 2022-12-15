@@ -27,3 +27,6 @@ from .initialization import (
     InitializablePresent,
     InitializableInherited
 )
+from .diff_with_v2 import (
+    DiffContractV1ContractV2
+)
