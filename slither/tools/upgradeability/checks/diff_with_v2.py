@@ -103,7 +103,9 @@ class DiffContractV1ContractV2(AbstractCheck):
 
         for idx, var in enumerate(order_vars2):
             # Handle incorrect variable order in DifferentVariableContractNewContract
-            slot = contract2.state_variable_slots[var]
+            slot = contract2.state_variable_slots[var][0]
+            read_by = contract2.get_functions_reading_from_variable(var)
+            written_by = contract2.get_functions_writing_to_variable(var)
             # print(f"Variable {idx}, {var} at slot {slot}")
             if len(order_vars1) <= idx:
                 info = [
@@ -113,11 +115,32 @@ class DiffContractV1ContractV2(AbstractCheck):
                     str(slot),
                     "\n",
                 ]
-                info += ["\t ", var, "\n"]
-                json = self.generate_result(info)
-                results.append(json)
+            elif any([func in read_by for func in new_modified_functions]):
+                info = [
+                    "Variable read by new/modified function(s) in ",
+                    contract2,
+                    " at slot ",
+                    str(slot),
+                    "\n",
+                ]
+            elif any([func in written_by for func in new_modified_functions]):
+                info = [
+                    "Variable written by new/modified function(s) in ",
+                    contract2,
+                    " at slot ",
+                    str(slot),
+                    "\n",
+                ]
+            else:
                 continue
-
-
+            info += ["\t ", var, "\n"]
+            additional_fields = {
+                "slot": str(slot),
+                "read_by": [func.canonical_name for func in read_by],
+                "written_by": [func.canonical_name for func in written_by]
+            }
+            json = self.generate_result(info, additional_fields)
+            results.append(json)
+            continue
 
         return results
