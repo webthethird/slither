@@ -72,8 +72,14 @@ class UserDefinedType(Type):
         return str(type_used.name)
 
     def __eq__(self, other):
+        from slither.core.declarations.contract import Contract
+
         if not isinstance(other, UserDefinedType):
             return False
+        if isinstance(self.type, Contract) and isinstance(other.type, Contract):
+            # workaround due to Contract.__eq__() not being implemented in master branch,
+            # except when comparing Contract object to string
+            return self.type == str(other.type)
         return self.type == other.type
 
     def __hash__(self):
