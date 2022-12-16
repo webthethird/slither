@@ -404,20 +404,13 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         return self._state_variables_used_in_reentrant_targets
 
     @property
-    def state_variable_slots(self) -> Dict["StateVariable", int]:
+    def state_variable_slots(self) -> Dict["StateVariable", Tuple[int, int]]:
         """
-        Returns a dictionary mapping StateVariable objects to their storage slot
+        Returns a dictionary mapping StateVariable objects to their storage slot and offset
         """
-        current_slot = 0
-        current_bytes = 0
         variable_slots = {}
         for variable in self.state_variables_ordered:
-            (size, new_slot_only) = variable.type.storage_size
-            if (new_slot_only and current_bytes > 0) or (32 - current_bytes < size):
-                current_slot += 1
-                current_bytes = 0
-            variable_slots[variable] = current_slot
-            current_bytes += size
+            variable_slots[variable] = self.compilation_unit.storage_layout_of(self, variable)
         return variable_slots
 
     # endregion
