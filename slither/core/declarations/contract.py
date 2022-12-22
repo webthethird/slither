@@ -1341,6 +1341,16 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def delegate_variable(self, var: Optional["Variable"]):
         self._delegate_variable = var
 
+    @property
+    def proxy_impl_slot(self) -> Optional["Variable"]:
+        if self.is_proxy:
+            return self._proxy_impl_slot
+        return self._proxy_impl_slot
+
+    @proxy_impl_slot.setter
+    def proxy_impl_slot(self, var: Optional["Variable"]):
+        self._proxy_impl_slot = var
+
     def find_delegatecall_in_asm(
         self, inline_asm: Union[str, Dict], parent_func: Function, include_call=False
     ):
