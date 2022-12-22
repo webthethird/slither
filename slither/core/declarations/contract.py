@@ -95,6 +95,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         self._proxy_impl_setter: Optional["Function"] = None
         self._proxy_impl_getter: Optional["Function"] = None
         self._proxy_impl_slot: Optional["Variable"] = None
+        self._uses_call_not_delegatecall: Optional[bool] = None
 
         self.is_top_level = False  # heavily used, so no @property
 
@@ -1301,16 +1302,21 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
 
             for node in self.fallback_function.all_nodes():
                 for ir in node.irs:
+                    # Low level calls are convenient, because we can get the delegate variable
+                    # directly from ir.destination, but they are uncommon in real-world proxies.
                     if isinstance(ir, LowLevelCall) and ir.function_name == "delegatecall":
                         self._is_proxy = True
                         self._delegate_variable = ir.destination
                         return self._is_proxy
                 if node.type == NodeType.ASSEMBLY:
-                    inline_asm = node.inline_asm
-                    if inline_asm:
-                        if "delegatecall" in inline_asm:
-                            self._is_proxy = True
-                            return self._is_proxy
+                    # We are much more likely to find delegatecall in an assembly block, but this comes
+                    # with some challenges, because assembly blocks are not parsed the same way for all
+                    # solidity versions, and Variable objects are often not directly accessible.
+                    if node.inline_asm:
+                        self._is_proxy, self._delegate_variable = self.find_delegatecall_in_asm(
+                            node.inline_asm, node.function
+                        )
+                        return self._is_proxy
         return self._is_proxy
 
     @is_proxy.setter
@@ -1335,10 +1341,288 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
     def delegate_variable(self, var: Optional["Variable"]):
         self._delegate_variable = var
 
+    def find_delegatecall_in_asm(
+        self, inline_asm: Union[str, Dict], parent_func: Function, include_call=False
+    ):
+        """
+        Called by self.is_proxy to help find 'delegatecall' in an inline assembly block,
+        as well as the address Variable which the 'delegatecall' targets.
+        It is necessary to handle two separate cases, for contracts using Solidity versions
+        < 0.6.0 and >= 0.6.0, due to a change in how assembly is represented after compiling,
+        i.e. as an AST for versions >= 0.6.0 and as a simple string for earlier versions.
+
+        :param: inline_asm: The assembly code as either a string or an AST, depending on the solidity version
+        :param: parent_func: The function associated with the assembly node (maybe another function called by fallback)
+        :param: include_call: Optional, check for use of low level `call()` in addition to `delegatecall`
+        :return: True if delegatecall is found, plus Variable delegates_to (if found)
+        """
+        from slither.core.variables.state_variable import StateVariable
+
+        is_proxy = False
+        delegates_to: Optional[Variable] = None
+        dest: Optional[Union[str, dict]] = None
+
+        if "AST" in inline_asm and isinstance(inline_asm, Dict):
+            # inline_asm is a Yul AST for Solidity versions >= 0.6.0
+            is_proxy, dest = Contract.find_delegatecall_in_yul_ast(inline_asm, include_call)
+        else:
+            # inline_asm is just a string for Solidity versions < 0.6.0.
+            # It contains the entire block of assembly code, so we can split it by line.
+            asm_split = inline_asm.split("\n")
+            dest = None
+            for asm in asm_split:
+                if "delegatecall" in asm or (include_call and "call(" in asm):
+                    if "delegatecall" not in inline_asm:
+                        self._uses_call_not_delegatecall = True
+                    else:
+                        # found delegatecall somewhere in full inline_asm
+                        if "delegatecall" not in asm:  # but not this line
+                            continue
+                        self._uses_call_not_delegatecall = False
+                    is_proxy = True
+                    # Now look for the target of this delegatecall
+                    dest, delegates_to = self.extract_target_name_from_asm_str(asm, parent_func)
+                    break
+        if is_proxy and delegates_to is None and dest is not None:
+            # Now that we extracted the name of the address variable passed as the second parameter to delegatecall,
+            # we need to find the correct Variable object to ultimately assign to self._delegates_to.
+            if "_fallback_asm" in dest:
+                dest = dest.split("_fallback_asm")[0]
+            delegates_to = self.find_delegate_variable_from_name(dest, parent_func)
+            # if delegates_to is None and asm_split is not None:
+            #     delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, parent_func)
+        return is_proxy, delegates_to
+
+    @staticmethod
+    def find_delegatecall_in_yul_ast(inline_asm: dict, include_call=False) -> (bool, str):
+        is_proxy = False
+        dest: Optional[Union[str, dict]] = None
+
+        for statement in inline_asm["AST"]["statements"]:
+            if statement["nodeType"] == "YulExpressionStatement":
+                statement = statement["expression"]
+            if statement["nodeType"] == "YulVariableDeclaration":
+                statement = statement["value"]
+            if statement["nodeType"] == "YulFunctionCall":
+                if statement["functionName"]["name"] == "delegatecall" or (
+                    include_call and statement["functionName"]["name"] == "call"
+                ):
+                    is_proxy = True
+                    args = statement["arguments"]
+                    dest = args[1]
+                    if dest["nodeType"] == "YulIdentifier":
+                        dest = dest["name"]
+                    break
+        return is_proxy, dest
+
+    def extract_target_name_from_asm_str(
+        self, asm: str, parent_func: Function
+    ) -> (Optional[str], Optional["Variable"]):
+        from slither.core.expressions.identifier import Identifier
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+
+        delegates_to: Optional[Variable] = None
+        params = asm.split("call(")[1].split(", ")
+        dest: str = params[1]
+        # Target should be 2nd parameter, but 1st param might have 2 params
+        # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
+        if dest.endswith(")"):
+            dest = params[2]
+        if dest.startswith("sload("):
+            # dest may not be correct, but we have found the storage slot
+            dest = dest.replace(")", "(").split("(")[1]
+            for v in parent_func.variables_read_or_written:
+                if v.name == dest:
+                    if isinstance(v, LocalVariable) and v.expression is not None:
+                        e = v.expression
+                        if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
+                            v = e.value
+                            # Fall through, use constant storage slot as delegates_to and proxy_impl_slot
+                    if isinstance(v, StateVariable) and v.is_constant:
+                        delegates_to = v
+                        self._proxy_impl_slot = v
+        return dest, delegates_to
+
+    def find_delegate_variable_from_name(
+        self, dest: str, parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Called by find_delegatecall_in_asm, which can only extract the name of the destination variable, not the object.
+        Looks in every possible place for a Variable object with exactly the same name as extracted.
+        If it's a state variable, our work is done here.
+        But it may also be a local variable declared within the function, or a parameter declared in its signature.
+        In which case, we need to track it further, but at that point we can stop using names.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.variables.variable import Variable
+
+        for sv in self.state_variables:
+            if sv.name == dest:
+                delegate = sv
+                return delegate
+        delegate = self.find_local_delegate_from_name(dest, parent_func)
+        if delegate is not None:
+            return delegate
+        delegate = self.find_parameter_delegate_from_name(dest, parent_func)
+        if delegate is not None:
+            return delegate
+        return delegate
+
+    def find_local_delegate_from_name(
+        self, dest: str, parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Extension of self.find_delegate_variable_by_name()
+        Used to handle searching for matching local variables and tracking them to their source.
+
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
+        for lv in parent_func.local_variables:
+            if delegate is not None or self._proxy_impl_slot is not None:
+                return delegate
+            if lv.name == dest:
+                if lv.expression is not None:
+                    exp = Contract.unwrap_type_conversion(lv.expression)
+                    if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
+                        delegate = exp.value
+                        return delegate
+                    if (
+                        isinstance(exp, IndexAccess)
+                        and isinstance(exp.expression_left, Identifier)
+                        and isinstance(exp.expression_left.value, StateVariable)
+                    ):
+                        delegate = exp.expression_left.value
+                        return delegate
+                else:
+                    # No expression found, so look for assignment operation
+                    delegate = self.find_local_variable_assignment(lv, parent_func)
+
+        return delegate
+
+    def find_local_variable_assignment(
+        self, lv: "LocalVariable", parent_func: Function
+    ) -> Optional["Variable"]:
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
+        for node in parent_func.all_nodes():
+            if node.type in (NodeType.EXPRESSION, NodeType.VARIABLE):
+                exp = Contract.unwrap_assignment_member_access(node.expression)
+                if isinstance(exp, CallExpression) and str(exp.called) == "sload(uint256)":
+                    delegate = lv
+                    arg = exp.arguments[0]
+                    if isinstance(arg, Identifier):
+                        if (
+                            isinstance(arg.value, LocalVariable)
+                            and arg.value.expression is not None
+                            and isinstance(arg.value.expression, Identifier)
+                        ):
+                            arg = arg.value.expression
+                        if isinstance(arg.value, Variable) and arg.value.is_constant:
+                            self._proxy_impl_slot = arg.value
+                            break
+        return delegate
+
+    def find_parameter_delegate_from_name(
+        self, dest: str, parent_func: Function
+    ) -> Optional["Variable"]:
+        """
+        Extension of self.find_delegate_variable_by_name()
+        Used to handle searching for matching parameter variables and tracking them to their source.
+        :param dest: The name of the delegatecall destination, as a string extracted from assembly
+        :param parent_func: The Function in which we found the ASSEMBLY Node containing delegatecall
+        :return: the corresponding Variable object, if found
+        """
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.index_access import IndexAccess
+        from slither.core.expressions.member_access import MemberAccess
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
+        for idx, pv in enumerate(parent_func.parameters):
+            if pv.name == dest:
+                for node in self.fallback_function.all_nodes():
+                    if node.type in (NodeType.EXPRESSION, NodeType.VARIABLE):
+                        exp = Contract.unwrap_assignment_member_access(node.expression)
+                        if isinstance(exp, CallExpression):
+                            if (
+                                isinstance(exp.called, MemberAccess)
+                                and str(exp.called)
+                                == f"{parent_func.contract.name}.{parent_func.name}"
+                                and isinstance(exp.arguments[idx], Identifier)
+                                and isinstance(exp.arguments[idx].value, StateVariable)
+                            ):
+                                delegate = exp.arguments[idx].value
+                                break
+                            if (
+                                isinstance(exp.called, Identifier)
+                                and exp.called.value == parent_func
+                            ):
+                                if isinstance(exp.arguments[idx], Identifier):
+                                    if isinstance(exp.arguments[idx].value, StateVariable):
+                                        delegate = exp.arguments[idx].value
+                                        break
+                                    if (
+                                        isinstance(exp.arguments[idx].value, LocalVariable)
+                                        and exp.arguments[idx].value.expression is not None
+                                    ):
+                                        delegate = exp.arguments[idx].value
+                                        exp = exp.arguments[idx].value.expression
+                                        if isinstance(exp, Identifier) and isinstance(
+                                            exp.value, StateVariable
+                                        ):
+                                            delegate = exp.value
+                                        break
+                                elif isinstance(exp.arguments[idx], IndexAccess) and isinstance(
+                                    exp.arguments[idx].expression_left, Identifier
+                                ):
+                                    delegate = exp.arguments[idx].expression_left.value
+                                    delegate.expression = exp.arguments[idx]
+                                    break
+                break
+        return delegate
+
+    @staticmethod
+    def unwrap_assignment_member_access(exp: "Expression"):
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.member_access import MemberAccess
+
+        if isinstance(exp, AssignmentOperation):
+            exp = exp.expression_right
+        if isinstance(exp, MemberAccess):
+            exp = exp.expression
+        return exp
+
+    @staticmethod
+    def unwrap_type_conversion(exp: "Expression"):
+        from slither.core.expressions.type_conversion import TypeConversion
+
+        while isinstance(exp, TypeConversion):
+            exp = exp.expression
+        return exp
+
     @staticmethod
     def find_setter_in_contract(
-            contract: "Contract",
-            var_to_set: Union[str, "Variable"]  # , storage_slot: Optional["Variable"]
+        contract: "Contract",
+        var_to_set: Union[str, "Variable"],  # , storage_slot: Optional["Variable"]
     ) -> (Optional[Function], Union[str, "Variable"]):
         """
         Tries to find the setter function for a given variable.
