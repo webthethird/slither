@@ -56,18 +56,26 @@ class DiffContractV1ContractV2(AbstractCheck):
 
         new_modified_functions = []
         for sig in func_sigs2:
+            function = contract2.get_function_from_signature(sig)
             if sig not in func_sigs1:
-                function = contract2.get_function_from_signature(sig)
                 new_modified_functions.append(function)
                 info = [
                     "New function in ",
                     contract2,
                     "\n",
                 ]
-            # elif ...:
-            #     TODO: Determine if a function has been modified
+            # TODO: Find a better way to determine if a function has been modified
             else:
-                continue
+                orig_function = contract1.get_function_from_signature(sig)
+                if str(function.get_summary()) != str(orig_function.get_summary()):
+                    new_modified_functions.append(function)
+                    info = [
+                        "Modified function in ",
+                        contract2,
+                        "\n",
+                    ]
+                else:
+                    continue
             info += ["\t ", function, "\n"]
             state_variables_read = function.state_variables_read
             state_variables_written = function.state_variables_written
