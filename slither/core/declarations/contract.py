@@ -410,6 +410,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         """
         variable_slots = {}
         for variable in self.state_variables_ordered:
+            if variable.is_constant or variable.is_immutable:
+                continue
             variable_slots[variable] = self.compilation_unit.storage_layout_of(self, variable)
         return variable_slots
 
