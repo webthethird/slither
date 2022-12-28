@@ -67,7 +67,7 @@ class DiffContractV1ContractV2(AbstractCheck):
             # TODO: Find a better way to determine if a function has been modified
             else:
                 orig_function = contract1.get_function_from_signature(sig)
-                if str(function.get_summary()) != str(orig_function.get_summary()):
+                if function.get_summary() != orig_function.get_summary():
                     new_modified_functions.append(function)
                     info = [
                         "Modified function in ",
