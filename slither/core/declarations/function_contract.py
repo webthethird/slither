@@ -82,11 +82,11 @@ class FunctionContract(Function, ChildContract, ChildInheritance):
             self.contract_declarer.name,
             self.full_name,
             self.visibility,
-            [str(x) for x in self.modifiers],
-            [str(x) for x in self.state_variables_read + self.solidity_variables_read],
-            [str(x) for x in self.state_variables_written],
-            [str(x) for x in self.internal_calls],
-            [str(x) for x in self.external_calls_as_expressions],
+            sorted([str(x) for x in self.modifiers]),
+            sorted([str(x) for x in self.state_variables_read + self.solidity_variables_read]),
+            sorted([str(x) for x in self.state_variables_written]),
+            sorted([str(x) for x in self.internal_calls]),
+            sorted([str(x) for x in self.external_calls_as_expressions]),
         )
 
     # endregion
