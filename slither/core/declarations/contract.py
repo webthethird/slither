@@ -1656,9 +1656,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     delegate = lv
                     return delegate
                 if lv.expression is not None:
-                    exp = lv.expression
-                    while isinstance(exp, TypeConversion):
-                        exp = exp.expression
+                    exp = self.unwrap_assignment_member_access(lv.expression)
                     if isinstance(exp, Identifier):
                         val = exp.value
                         if isinstance(val, StateVariable):
@@ -1685,8 +1683,8 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 else:
                     # No expression found, so look for assignment operation
                     for node in parent_func.all_nodes():
-                        if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
-                            exp = node.expression
+                        if node.type in (NodeType.EXPRESSION, NodeType.VARIABLE):
+                            exp = Contract.unwrap_assignment_member_access(node.expression)
                             if isinstance(exp, AssignmentOperation):
                                 exp = exp.expression_right
                             if isinstance(exp, MemberAccess):
@@ -1738,11 +1736,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 # delegate = pv
                 for node in self.fallback_function.all_nodes():
                     if node.type == NodeType.EXPRESSION or node.type == NodeType.VARIABLE:
-                        exp = node.expression
-                        if isinstance(exp, AssignmentOperation):
-                            exp = exp.expression_right
-                        if isinstance(exp, MemberAccess):
-                            exp = exp.expression
+                        exp = self.unwrap_assignment_member_access(node.expression)
                         if isinstance(exp, CallExpression):
                             called = exp.called
                             if isinstance(called, MemberAccess):
