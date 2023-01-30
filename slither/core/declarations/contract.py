@@ -1481,70 +1481,11 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         dest: Optional[Union[str, dict]] = None
 
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
-            """
-            inline_asm is a Yul AST for Solidity versions >= 0.6.0
-            see tests/proxies/ExampleYulAST.txt for an example
-            """
-            for statement in inline_asm["AST"]["statements"]:
-                if statement["nodeType"] == "YulExpressionStatement":
-                    statement = statement["expression"]
-                if statement["nodeType"] == "YulVariableDeclaration":
-                    statement = statement["value"]
-                if statement["nodeType"] == "YulFunctionCall":
-                    if statement["functionName"]["name"] == "delegatecall" or (include_call and
-                                                                               statement["functionName"]["name"]
-                                                                               == "call"):
-                        is_proxy = True
-                        args = statement["arguments"]
-                        dest = args[1]
-                        if dest["nodeType"] == "YulIdentifier":
-                            dest = dest["name"]
-                        break
+            is_proxy, dest = Contract.find_delegatecall_in_asm_ast(inline_asm, include_call)
         else:
-            """
-            inline_asm is just a string for Solidity versions < 0.6.0.
-            It contains the entire block of assembly code, so we can split it by line.
-            """
-            asm_split = inline_asm.split("\n")
-            dest = None
-            for asm in asm_split:
-                if "delegatecall" in asm or (include_call and "call(" in asm):
-                    if "delegatecall" not in inline_asm:
-                        self._uses_call_not_delegatecall = True
-                    else:
-                        # found delegatecall somewhere in full inline_asm
-                        if "delegatecall" not in asm:
-                            continue
-                        else:
-                            self._uses_call_not_delegatecall = False
-                    is_proxy = True   # Now look for the target of this delegatecall
-                    params = asm.split("call(")[1].split(", ")
-                    dest: str = params[1]
-                    # Target should be 2nd parameter, but 1st param might have 2 params
-                    # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
-                    if dest.startswith("sload("):
-                        # dest may not be correct, but we have found the storage slot
-                        dest = dest.replace(")", "(").split("(")[1]
-                        for v in parent_func.variables_read_or_written:
-                            if v.name == dest:
-                                if isinstance(v, LocalVariable) and v.expression is not None:
-                                    e = v.expression
-                                    if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
-                                        v = e.value
-                                        """
-                                        Fall through, use constant storage slot as delegates_to and proxy_impl_slot
-                                        """
-                                if isinstance(v, StateVariable) and v.is_constant:
-                                    # slot = str(v.expression)
-                                    # delegates_to = LocalVariable()
-                                    # delegates_to.set_type(ElementaryType("address"))
-                                    # delegates_to.name = dest
-                                    # delegates_to.set_location(slot)
-                                    delegates_to = v
-                                    self._proxy_impl_slot = v   # and also as proxy_impl_slot
-                    if dest.endswith(")"):
-                        dest = params[2]
-                    break
+            is_proxy, dest, asm_split, delegates_to = self.find_delegatecall_in_asm_str(inline_asm,
+                                                                                        parent_func,
+                                                                                        include_call)
         if is_proxy and delegates_to is None and dest is not None:
             """
             Now that we extracted the name of the address variable passed as the second parameter to delegatecall, 
@@ -1556,6 +1497,93 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             if delegates_to is None and asm_split is not None:
                 delegates_to = self.find_delegate_sloaded_from_hardcoded_slot(asm_split, dest, parent_func)
         return is_proxy, delegates_to
+
+    @staticmethod
+    def find_delegatecall_in_asm_ast(
+            inline_asm: Union[str, Dict],
+            include_call: bool
+    ) -> (bool, str):
+        is_proxy = False
+        dest: Optional[Union[str, dict]] = None
+
+        """
+        inline_asm is a Yul AST for Solidity versions >= 0.6.0
+        see tests/proxies/ExampleYulAST.txt for an example
+        """
+        for statement in inline_asm["AST"]["statements"]:
+            if statement["nodeType"] == "YulExpressionStatement":
+                statement = statement["expression"]
+            if statement["nodeType"] == "YulVariableDeclaration":
+                statement = statement["value"]
+            if statement["nodeType"] == "YulFunctionCall":
+                if statement["functionName"]["name"] == "delegatecall" or (include_call and
+                                                                           statement["functionName"]["name"] == "call"):
+                    is_proxy = True
+                    args = statement["arguments"]
+                    dest = args[1]
+                    if dest["nodeType"] == "YulIdentifier":
+                        dest = dest["name"]
+                    break
+        return is_proxy, dest
+
+    def find_delegatecall_in_asm_str(
+            self,
+            inline_asm: Union[str, Dict],
+            parent_func: Function,
+            include_call=False
+    ) -> (bool, str, list[str], Optional[Variable]):
+        from slither.core.expressions.identifier import Identifier
+        from slither.core.variables.state_variable import StateVariable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.solidity_types.elementary_type import ElementaryType
+
+        is_proxy = False
+        delegates_to: Optional[Variable] = None
+        """
+        inline_asm is just a string for Solidity versions < 0.6.0.
+        It contains the entire block of assembly code, so we can split it by line.
+        """
+        asm_split = inline_asm.split("\n")
+        dest: Optional[str] = None
+        for asm in asm_split:
+            if "delegatecall" in asm or (include_call and "call(" in asm):
+                if "delegatecall" not in inline_asm:
+                    self._uses_call_not_delegatecall = True
+                else:
+                    # found delegatecall somewhere in full inline_asm
+                    if "delegatecall" not in asm:
+                        continue
+                    else:
+                        self._uses_call_not_delegatecall = False
+                is_proxy = True  # Now look for the target of this delegatecall
+                params = asm.split("call(")[1].split(", ")
+                dest = params[1]
+                # Target should be 2nd parameter, but 1st param might have 2 params
+                # i.e. delegatecall(sub(gas, 10000), _dst, free_ptr, calldatasize, 0, 0)
+                if dest.startswith("sload("):
+                    # dest may not be correct, but we have found the storage slot
+                    dest = dest.replace(")", "(").split("(")[1]
+                    for v in parent_func.variables_read_or_written:
+                        if v.name == dest:
+                            if isinstance(v, LocalVariable) and v.expression is not None:
+                                e = v.expression
+                                if isinstance(e, Identifier) and isinstance(e.value, StateVariable):
+                                    v = e.value
+                                    """
+                                    Fall through, use constant storage slot as delegates_to and proxy_impl_slot
+                                    """
+                            if isinstance(v, StateVariable) and v.is_constant:
+                                # slot = str(v.expression)
+                                # delegates_to = LocalVariable()
+                                # delegates_to.set_type(ElementaryType("address"))
+                                # delegates_to.name = dest
+                                # delegates_to.set_location(slot)
+                                delegates_to = v
+                                self._proxy_impl_slot = v  # and also as proxy_impl_slot
+                if dest.endswith(")"):
+                    dest = params[2]
+                break
+        return is_proxy, dest, delegates_to
 
     def find_delegate_variable_from_name(
             self,
