@@ -1470,15 +1470,9 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
         :param: parent_func: The function associated with the assembly node (maybe another function called by fallback)
         :return: True if delegatecall is found, plus Variable delegates_to (if found)
         """
-        from slither.core.expressions.identifier import Identifier
-        from slither.core.variables.state_variable import StateVariable
-        from slither.core.variables.local_variable import LocalVariable
-        from slither.core.solidity_types.elementary_type import ElementaryType
 
-        is_proxy = False
         delegates_to: Optional[Variable] = None
         asm_split = None
-        dest: Optional[Union[str, dict]] = None
 
         if "AST" in inline_asm and isinstance(inline_asm, Dict):
             is_proxy, dest = Contract.find_delegatecall_in_asm_ast(inline_asm, include_call)
@@ -1583,7 +1577,7 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                 if dest.endswith(")"):
                     dest = params[2]
                 break
-        return is_proxy, dest, delegates_to
+        return is_proxy, dest, asm_split, delegates_to
 
     def find_delegate_variable_from_name(
             self,
