@@ -1657,24 +1657,18 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                     return delegate
                 if lv.expression is not None:
                     exp = self.unwrap_assignment_member_access(lv.expression)
-                    if isinstance(exp, Identifier):
-                        val = exp.value
-                        if isinstance(val, StateVariable):
-                            delegate = val
-                            return delegate
+                    if isinstance(exp, IndexAccess):
+                        exp = exp.expression_left
+                        # Fall through
+                    if isinstance(exp, Identifier) and isinstance(exp.value, StateVariable):
+                        delegate = exp.value
+                        return delegate
                     elif isinstance(exp, CallExpression):
                         """
                         Must be the getter, but we still need a variable
                         """
                         delegate = self.find_delegate_from_call_exp(exp, lv)
                         return delegate
-                    elif isinstance(exp, IndexAccess):
-                        exp = exp.expression_left
-                        if isinstance(exp, Identifier):
-                            val = exp.value
-                            if isinstance(val, StateVariable):
-                                delegate = val
-                                return delegate
                     if isinstance(exp, MemberAccess):
                         delegate = self.find_delegate_from_member_access(exp, lv)
                         if delegate is None:
