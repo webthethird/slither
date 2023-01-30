@@ -1872,6 +1872,25 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
             delegate = self.find_delegate_variable_from_name(dest.replace('_slot', ''), parent_func)
         return delegate
 
+    @staticmethod
+    def unwrap_assignment_member_access(exp: "Expression"):
+        from slither.core.expressions.assignment_operation import AssignmentOperation
+        from slither.core.expressions.member_access import MemberAccess
+
+        if isinstance(exp, AssignmentOperation):
+            exp = exp.expression_right
+        if isinstance(exp, MemberAccess):
+            exp = exp.expression
+        return exp
+
+    @staticmethod
+    def unwrap_type_conversion(exp: "Expression"):
+        from slither.core.expressions.type_conversion import TypeConversion
+
+        while isinstance(exp, TypeConversion):
+            exp = exp.expression
+        return exp
+
     def find_delegate_from_call_exp(self, exp, var) -> Optional["Variable"]:
         """
         Called by self.find_delegate_variable_from_name
