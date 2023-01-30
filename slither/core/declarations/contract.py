@@ -1682,30 +1682,38 @@ class Contract(SourceMapping):  # pylint: disable=too-many-public-methods
                         return delegate
                 else:
                     # No expression found, so look for assignment operation
-                    for node in parent_func.all_nodes():
-                        if node.type in (NodeType.EXPRESSION, NodeType.VARIABLE):
-                            exp = Contract.unwrap_assignment_member_access(node.expression)
-                            if isinstance(exp, AssignmentOperation):
-                                exp = exp.expression_right
-                            if isinstance(exp, MemberAccess):
-                                exp = exp.expression
-                            if isinstance(exp, CallExpression):
-                                called = exp.called
-                                if str(called) == "sload(uint256)":
-                                    delegate = lv
-                                    arg = exp.arguments[0]
-                                    if isinstance(arg, Identifier):
-                                        v = arg.value
-                                        if isinstance(v, Variable) and v.is_constant:
-                                            self._proxy_impl_slot = v
-                                            break
-                                        elif isinstance(v, LocalVariable) and v.expression is not None:
-                                            e = v.expression
-                                            if isinstance(e, Identifier) and e.value.is_constant:
-                                                self._proxy_impl_slot = e.value
-                                                break
-                                else:
-                                    delegate = self.find_delegate_from_call_exp(exp, lv)
+                    delegate = self.find_local_variable_assignment(lv, parent_func)
+        return delegate
+
+    def find_local_variable_assignment(
+        self, lv: "LocalVariable", parent_func: Function
+    ) -> Optional["Variable"]:
+        from slither.core.cfg.node import NodeType
+        from slither.core.variables.variable import Variable
+        from slither.core.variables.local_variable import LocalVariable
+        from slither.core.expressions.call_expression import CallExpression
+        from slither.core.expressions.identifier import Identifier
+
+        delegate = None
+        for node in parent_func.all_nodes():
+            if node.type in (NodeType.EXPRESSION, NodeType.VARIABLE):
+                exp = Contract.unwrap_assignment_member_access(node.expression)
+                if isinstance(exp, CallExpression):
+                    if str(exp.called) == "sload(uint256)":
+                        delegate = lv
+                        arg = exp.arguments[0]
+                        if isinstance(arg, Identifier):
+                            if (
+                                isinstance(arg.value, LocalVariable)
+                                and arg.value.expression is not None
+                                and isinstance(arg.value.expression, Identifier)
+                            ):
+                                arg = arg.value.expression
+                            if isinstance(arg.value, Variable) and arg.value.is_constant:
+                                self._proxy_impl_slot = arg.value
+                                break
+                    else:
+                        delegate = self.find_delegate_from_call_exp(exp, lv)
         return delegate
 
     def find_parameter_delegate_from_name(
