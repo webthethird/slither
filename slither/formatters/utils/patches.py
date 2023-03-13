@@ -1,28 +1,21 @@
 import os
 import difflib
 from typing import Dict, Tuple, Union
-from collections import defaultdict
-
 from slither.core.compilation_unit import SlitherCompilationUnit
 
 # pylint: disable=too-many-arguments
 def create_patch(
-    result: Dict,
-    file: str,
     start: int,
     end: int,
     old_str: Union[str, bytes],
     new_str: Union[str, bytes],
-) -> None:
+) -> Dict:
     if isinstance(old_str, bytes):
         old_str = old_str.decode("utf8")
     if isinstance(new_str, bytes):
         new_str = new_str.decode("utf8")
-    p = {"start": start, "end": end, "old_string": old_str, "new_string": new_str}
-    if "patches" not in result:
-        result["patches"] = defaultdict(list)
-    if p not in result["patches"][file]:
-        result["patches"][file].append(p)
+
+    return {"start": start, "end": end, "old_string": old_str, "new_string": new_str}
 
 
 def apply_patch(original_txt: bytes, patch: Dict, offset: int) -> Tuple[bytes, int]:

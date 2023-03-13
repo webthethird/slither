@@ -77,17 +77,22 @@ class AbstractMutator(metaclass=abc.ABCMeta):  # pylint: disable=too-few-public-
             return
 
         for file in all_patches["patches"]:
+            mutant_num = 0
             original_txt = self.slither.source_code[file].encode("utf8")
-            patched_txt = original_txt
-            offset = 0
             patches = all_patches["patches"][file]
             patches.sort(key=lambda x: x["start"])
             if not all(patches[i]["end"] <= patches[i + 1]["end"] for i in range(len(patches) - 1)):
                 logger.info(f"Impossible to generate patch; patches collisions: {patches}")
                 continue
             for patch in patches:
-                patched_txt, offset = apply_patch(patched_txt, patch, offset)
-            diff = create_diff(self.slither, original_txt, patched_txt, file)
-            if not diff:
-                logger.info(f"Impossible to generate patch; empty {patches}")
-            print(diff)
+                patched_txt, _ = apply_patch(original_txt, patch, 0)
+                diff = create_diff(self.slither, original_txt, patched_txt, file)
+                if not diff:
+                    logger.info(f"Impossible to generate patch; empty {patches}")
+                    continue
+                with open(
+                    f"{file}_mutant_{self.NAME}_{mutant_num}.patch", "w", encoding="utf8"
+                ) as f:
+                    f.write(diff)
+                mutant_num += 1
+                print(diff)

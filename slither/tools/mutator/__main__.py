@@ -83,5 +83,10 @@ def main() -> None:
         m = M(sl)
         m.mutate()
 
+    ## TODO
+    ## --test-command
+    ## call crytic-compile to get default e.g. "forge test"/ "hardhat test"
+    ## if all tests pass, keep mutant alive
+
 
 # endregion
