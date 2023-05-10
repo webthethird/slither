@@ -90,7 +90,7 @@ class TaintedExternalContract:
 
 # pylint: disable=too-many-locals
 def compare(
-    v1: Contract, v2: Contract
+    v1: Contract, v2: Contract, include_external: bool = False
 ) -> Tuple[
     List[Variable],
     List[Variable],
@@ -107,6 +107,7 @@ def compare(
     Args:
         v1: Original version of (upgradeable) contract
         v2: Updated version of (upgradeable) contract
+        include_external: Optional flag to enable cross-contract external taint analysis
 
     Returns:
         missing-vars-in-v2: list[Variable],
@@ -185,10 +186,12 @@ def compare(
         elif any(func in written_by for func in new_modified_functions + tainted_functions):
             tainted_variables.append(var)
 
-    # Find all external contracts and functions called by new/modified/tainted functions
-    tainted_contracts = tainted_external_contracts(
-        new_functions + modified_functions + tainted_functions
-    )
+    tainted_contracts = []
+    if include_external:
+        # Find all external contracts and functions called by new/modified/tainted functions
+        tainted_contracts = tainted_external_contracts(
+            new_functions + modified_functions + tainted_functions
+        )
 
     return (
         missing_vars_in_v2,
