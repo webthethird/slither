@@ -62,6 +62,13 @@ class NewContract(Call, OperationWithLValue):  # pylint: disable=too-many-instan
     def contract_created(self) -> Contract:
         contract_name = self.contract_name
         contract_instance = self.node.file_scope.get_contract_from_name(contract_name)
+        if contract_instance is None:
+            for imp in self.node.file_scope.imports:
+                if str(self.contract_name) in imp.renaming.keys():
+                    contract_instance = self.node.file_scope.get_contract_from_name(
+                        imp.renaming[str(ir.contract_name)]
+                    )
+                    break
         assert contract_instance
         return contract_instance
 
