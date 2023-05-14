@@ -369,7 +369,7 @@ def is_function_modified(f1: Function, f2: Function) -> bool:
         True if the functions differ, otherwise False
     """
     # # If the function content hashes are the same, no need to investigate the function further
-    # # Leads to false negative, e.g., when binary operation flipped from addition to subtraction.
+    # # Appears to cause false negatives, e.g., when a binary operation is flipped from + to -
     # if f1.source_mapping.content_hash == f2.source_mapping.content_hash:
     #     return False
     # If the hashes differ, it is possible a change in a name or in a comment could be the only difference
@@ -442,7 +442,7 @@ def encode_ir_for_compare(ir: Operation) -> str:
     if isinstance(ir, Length):
         return "length"
     if isinstance(ir, Binary):
-        return f"binary({str(ir.variable_left)}{str(ir.type)}{str(ir.variable_right)})"
+        return f"binary({encode_var_for_compare(ir.variable_left)}{ir.type}{encode_var_for_compare(ir.variable_right)})"
     if isinstance(ir, Unary):
         return f"unary({str(ir.type)})"
     if isinstance(ir, Condition):
