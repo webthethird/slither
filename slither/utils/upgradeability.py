@@ -368,9 +368,10 @@ def is_function_modified(f1: Function, f2: Function) -> bool:
     Returns:
         True if the functions differ, otherwise False
     """
-    # If the function content hashes are the same, no need to investigate the function further
-    if f1.source_mapping.content_hash == f2.source_mapping.content_hash:
-        return False
+    # # If the function content hashes are the same, no need to investigate the function further
+    # # Leads to false negative, e.g., when binary operation flipped from addition to subtraction.
+    # if f1.source_mapping.content_hash == f2.source_mapping.content_hash:
+    #     return False
     # If the hashes differ, it is possible a change in a name or in a comment could be the only difference
     # So we need to resort to walking through the CFG and comparing the IR operations
     queue_f1 = [f1.entry_point]
