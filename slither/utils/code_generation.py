@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from slither.core.declarations import FunctionContract, CustomErrorContract
     from slither.core.variables.state_variable import StateVariable
     from slither.core.variables.local_variable import LocalVariable
+    from slither.core.variables.structure_variable import StructureVariable
 
 
 # pylint: disable=too-many-arguments
@@ -59,7 +60,9 @@ def generate_interface(
         for struct in contract.structures:
             interface += generate_struct_interface_str(struct, indent=4)
     for var in contract.state_variables_entry_points:
-        interface += f"    function {generate_interface_variable_signature(var, unroll_structs)};\n"
+        var_sig = generate_interface_variable_signature(var, unroll_structs)
+        if var_sig is not None and var_sig != "":
+            interface += f"    function {var_sig};\n"
     for func in contract.functions_entry_points:
         if func.is_constructor or func.is_fallback or func.is_receive:
             continue
@@ -75,6 +78,10 @@ def generate_interface_variable_signature(
 ) -> Optional[str]:
     if var.visibility in ["private", "internal"]:
         return None
+    if isinstance(var.type, UserDefinedType) and isinstance(var.type.type, Structure):
+        for elem in var.type.type.elems_ordered:
+            if isinstance(elem.type, MappingType):
+                return ""
     if unroll_structs:
         params = [
             convert_type_for_solidity_signature_to_string(x).replace("(", "").replace(")", "")
@@ -93,6 +100,10 @@ def generate_interface_variable_signature(
             _type = _type.type_to
         while isinstance(_type, (ArrayType, UserDefinedType)):
             _type = _type.type
+        if isinstance(_type, Structure):
+            for elem in _type.elems_ordered:
+                if isinstance(elem.type, MappingType):
+                    return ""
         ret = str(_type)
         if isinstance(_type, Structure) or (isinstance(_type, Type) and _type.is_dynamic):
             ret += " memory"
@@ -125,6 +136,8 @@ def generate_interface_function_signature(
                 .replace("(", "")
                 .replace(")", "")
             )
+        if var.type.is_dynamic:
+            return f"{_handle_dynamic_struct_elem(var.type)} {var.location}"
         if isinstance(var.type, ArrayType) and isinstance(
             var.type.type, (UserDefinedType, ElementaryType)
         ):
@@ -139,8 +152,6 @@ def generate_interface_function_signature(
                 return f"{str(var.type.type)} memory"
             if isinstance(var.type.type, Contract):
                 return "address"
-        if var.type.is_dynamic:
-            return f"{var.type} {var.location}"
         return str(var.type)
 
     name, _, _ = func.signature
@@ -154,6 +165,12 @@ def generate_interface_function_signature(
     view = " view" if func.view and not func.pure else ""
     pure = " pure" if func.pure else ""
     payable = " payable" if func.payable else ""
+    # Make sure the function doesn't return a struct with nested mappings
+    for ret in func.returns:
+        if isinstance(ret.type, UserDefinedType) and isinstance(ret.type.type, Structure):
+            for elem in ret.type.type.elems_ordered:
+                if isinstance(elem.type, MappingType):
+                    return ""
     returns = [format_var(ret, unroll_structs) for ret in func.returns]
     parameters = [format_var(param, unroll_structs) for param in func.parameters]
     _interface_signature_str = (
@@ -184,7 +201,9 @@ def generate_struct_interface_str(struct: "Structure", indent: int = 0) -> str:
         spaces += " "
     definition = f"{spaces}struct {struct.name} {{\n"
     for elem in struct.elems_ordered:
-        if isinstance(elem.type, UserDefinedType):
+        if elem.type.is_dynamic:
+            definition += f"{spaces}    {_handle_dynamic_struct_elem(elem.type)} {elem.name};\n"
+        elif isinstance(elem.type, UserDefinedType):
             if isinstance(elem.type.type, (Structure, Enum)):
                 definition += f"{spaces}    {elem.type.type} {elem.name};\n"
             elif isinstance(elem.type.type, Contract):
@@ -193,6 +212,33 @@ def generate_struct_interface_str(struct: "Structure", indent: int = 0) -> str:
             definition += f"{spaces}    {elem.type} {elem.name};\n"
     definition += f"{spaces}}}\n"
     return definition
+
+
+def _handle_dynamic_struct_elem(elem_type: Type) -> str:
+    if isinstance(elem_type, ElementaryType):
+        return f"{elem_type}"
+    if isinstance(elem_type, ArrayType):
+        base_type = elem_type.type
+        if isinstance(base_type, UserDefinedType):
+            if isinstance(base_type.type, Contract):
+                return "address[]"
+            else:
+                return f"{base_type.type.name}[]"
+        else:
+            return f"{base_type}[]"
+    elif isinstance(elem_type, MappingType):
+        type_to = elem_type.type_to
+        type_from = elem_type.type_from
+        if isinstance(type_from, UserDefinedType) and isinstance(type_from.type, Contract):
+            type_from = ElementaryType("address")
+        if isinstance(type_to, MappingType):
+            return f"mapping({type_from} => {_handle_dynamic_struct_elem(type_to)})"
+        elif isinstance(type_to, UserDefinedType):
+            if isinstance(type_to.type, Contract):
+                return f"mapping({type_from} => address)"
+            else:
+                return f"mapping({type_from} => {type_to.type.name})"
+        return f"{elem_type}"
 
 
 def generate_custom_error_interface(
