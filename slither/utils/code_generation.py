@@ -71,7 +71,7 @@ def generate_interface(
         if var_sig is not None and var_sig != "":
             interface += f"    function {var_sig};\n"
     for func in contract.functions_entry_points:
-        if func.is_constructor or func.is_fallback or func.is_receive:
+        if func.is_constructor or func.is_fallback or func.is_receive or not func.is_implemented:
             continue
         interface += (
             f"    function {generate_interface_function_signature(func, unroll_structs)};\n"
