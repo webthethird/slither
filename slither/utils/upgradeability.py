@@ -368,12 +368,11 @@ def is_function_modified(f1: Function, f2: Function) -> bool:
     Returns:
         True if the functions differ, otherwise False
     """
-    # # If the function content hashes are the same, no need to investigate the function further
-    # # Appears to cause false negatives, e.g., when a binary operation is flipped from + to -
-    # if f1.source_mapping.content_hash == f2.source_mapping.content_hash:
-    #     return False
-    # If the hashes differ, it is possible a change in a name or in a comment could be the only difference
-    # So we need to resort to walking through the CFG and comparing the IR operations
+    if not (f1.is_implemented or f2.is_implemented):
+        return f1.signature_str != f2.signature_str or f1.visibility != f2.visibility
+    # If only one function is implemented, return true
+    if not (f1.is_implemented and f2.is_implemented):
+        return True
     queue_f1 = [f1.entry_point]
     queue_f2 = [f2.entry_point]
     visited = []
