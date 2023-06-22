@@ -180,8 +180,10 @@ def generate_interface_function_signature(
                 + f" {var.location}"
             )
         if isinstance(var.type, UserDefinedType):
-            if isinstance(var.type.type, (Structure, Enum)):
+            if isinstance(var.type.type, Structure):
                 return f"{str(var.type.type)} memory"
+            if isinstance(var.type.type, Enum):
+                return str(var.type.type)
             if isinstance(var.type.type, Contract):
                 return "address"
         return str(var.type)
