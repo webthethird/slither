@@ -12,6 +12,7 @@ from slither.core.solidity_types import (
     MappingType,
     ArrayType,
     ElementaryType,
+    TypeAlias
 )
 from slither.core.declarations import Structure, StructureContract, Enum, Contract
 
@@ -129,6 +130,8 @@ def generate_interface_variable_signature(
         params = [p + " memory" if p in ["bytes", "string"] else p for p in params]
         returns = []
         _type = var.type
+        if isinstance(_type, TypeAlias):
+            _type = _type.type
         while isinstance(_type, MappingType):
             _type = _type.type_to
         while isinstance(_type, (ArrayType, UserDefinedType)):
@@ -186,6 +189,8 @@ def generate_interface_function_signature(
                 return str(var.type.type)
             if isinstance(var.type.type, Contract):
                 return "address"
+        if isinstance(var.type, TypeAlias):
+            return str(var.type.type)
         return str(var.type)
 
     name, _, _ = func.signature
@@ -242,6 +247,8 @@ def generate_struct_interface_str(struct: "Structure", indent: int = 0) -> str:
                 definition += f"{spaces}    {elem.type.type} {elem.name};\n"
             else:
                 definition += f"{spaces}    {convert_type_for_solidity_signature_to_string(elem.type)} {elem.name};\n"
+        elif isinstance(elem.type, TypeAlias):
+            definition += f"{spaces}    {elem.type.type} {elem.name};\n"
         else:
             definition += f"{spaces}    {elem.type} {elem.name};\n"
     definition += f"{spaces}}}\n"
