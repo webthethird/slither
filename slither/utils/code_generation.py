@@ -130,11 +130,11 @@ def generate_interface_variable_signature(
         params = [p + " memory" if p in ["bytes", "string"] else p for p in params]
         returns = []
         _type = var.type
-        if isinstance(_type, TypeAlias):
-            _type = _type.type
         while isinstance(_type, MappingType):
             _type = _type.type_to
         while isinstance(_type, (ArrayType, UserDefinedType)):
+            _type = _type.type
+        if isinstance(_type, TypeAlias):
             _type = _type.type
         if isinstance(_type, Structure):
             if any(isinstance(elem.type, MappingType) for elem in _type.elems_ordered):
