@@ -166,7 +166,7 @@ def compare(
         ):
             continue
         modified_calls = [
-            func for func in new_modified_functions if func in function.internal_calls
+            func for func in new_modified_functions if func in function.all_internal_calls()
         ]
         tainted_vars = [
             var
@@ -472,13 +472,13 @@ def encode_ir_for_compare(ir: Operation) -> str:
     if isinstance(ir, EventCall):  # is this useful?
         return "event"
     if isinstance(ir, LibraryCall):
-        return "library_call"
+        return f"library_call({ir.function.full_name})"
     if isinstance(ir, InternalDynamicCall):
         return "internal_dynamic_call"
     if isinstance(ir, HighLevelCall):  # TODO: improve
-        return "high_level_call"
+        return f"high_level_call({ir.function.full_name})"
     if isinstance(ir, LowLevelCall):  # TODO: improve
-        return "low_level_call"
+        return f"low_level_call({ir.function_name})"
     if isinstance(ir, TypeConversion):
         return f"type_conversion({ntype(ir.type)})"
     if isinstance(ir, Return):  # this can be improved using values
