@@ -537,14 +537,15 @@ def get_proxy_implementation_slot(proxy: Contract) -> Optional[SlotInfo]:
             srs = SlitherReadStorage([proxy], 20)
             return srs.get_storage_slot(delegate, proxy)
         if delegate.is_constant and delegate.type.name == "bytes32":
-            if isinstance(delegate.expression, CallExpression) and delegate.expression.called.name == "keccak256(bytes)":
+            if isinstance(delegate.expression, CallExpression) \
+                    and delegate.expression.called.value.name == "keccak256(bytes)":
                 args = delegate.expression.arguments
                 digest = keccak.new(digest_bits=256)
                 digest.update(str(args[0]).encode("utf-8"))
                 return SlotInfo(
                     name=delegate.name,
                     type_string="address",
-                    slot=int(digest.digest(), 16),
+                    slot=int.from_bytes(digest.digest(), "big"),
                     size=160,
                     offset=0,
                 )
