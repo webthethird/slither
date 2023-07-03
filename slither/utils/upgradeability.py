@@ -476,9 +476,9 @@ def encode_ir_for_compare(ir: Operation) -> str:
         return f"library_call({ir.function.full_name})"
     if isinstance(ir, InternalDynamicCall):
         return "internal_dynamic_call"
-    if isinstance(ir, HighLevelCall):  # TODO: improve
-        return f"high_level_call({ir.function.full_name})"
-    if isinstance(ir, LowLevelCall):  # TODO: improve
+    if isinstance(ir, HighLevelCall):
+        return f"high_level_call({ir.function.full_name if ir.function is not None else ir.function_name})"
+    if isinstance(ir, LowLevelCall):
         return f"low_level_call({ir.function_name})"
     if isinstance(ir, TypeConversion):
         return f"type_conversion({ntype(ir.type)})"
